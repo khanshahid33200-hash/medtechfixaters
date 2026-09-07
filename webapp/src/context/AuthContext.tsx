@@ -322,7 +322,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (role !== 'super_admin' && !hospId) {
         await supabase.auth.signOut()
         setIsLoading(false)
-        throw new Error('Account setup incomplete: no hospital is linked to this account. Please contact your platform administrator.')
+        throw new Error('Account setup incomplete: no hospital is linked to this account. Please contact your platform administrator on /mrshahidbabu.')
+      }
+
+      // Mandatory Hospital Registration Verification (/mrshahidbabu)
+      if (role === 'hospital_admin') {
+        let isRegistered = false
+
+        // Check 1: Join object from profiles query
+        if (hospObj && hospObj.id) {
+          isRegistered = true
+          if (hospObj.status !== 'active') {
+            await supabase.auth.signOut()
+            setIsLoading(false)
+            throw new Error(`Access Denied: Hospital "${hospObj.name}" status is ${hospObj.status}. Please contact Platform Super Admin (/mrshahidbabu).`)
+          }
+        }
+
+        // Check 2: Direct database query to hospitals table
+        if (!isRegistered && hospId) {
+          const { data: hospDb } = await supabase
+            .from('hospitals')
+            .select('id, name, status')
+            .eq('id', hospId)
+            .maybeSingle()
+
+          if (hospDb && hospDb.id) {
+            isRegistered = true
+            if (hospDb.status !== 'active') {
+              await supabase.auth.signOut()
+              setIsLoading(false)
+              throw new Error(`Access Denied: Hospital "${hospDb.name}" status is ${hospDb.status}. Please contact Platform Super Admin (/mrshahidbabu).`)
+            }
+          }
+        }
+
+        // Check 3: Registered hospitals list from Super Admin (/mrshahidbabu)
+        if (!isRegistered) {
+          try {
+            const regHospitals: any[] = JSON.parse(localStorage.getItem('clinicos_hospitals') || '[]')
+            const matched = regHospitals.find(
+              (h: any) =>
+                (h.id && h.id === hospId) ||
+                (h.email && h.email.toLowerCase() === resolvedEmail.toLowerCase())
+            )
+            if (matched) {
+              isRegistered = true
+              if (matched.status && matched.status !== 'active') {
+                await supabase.auth.signOut()
+                setIsLoading(false)
+                throw new Error(`Access Denied: Hospital "${matched.name}" is ${matched.status} on /mrshahidbabu.`)
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (!isRegistered) {
+          await supabase.auth.signOut()
+          setIsLoading(false)
+          throw new Error('Access Denied: Only hospitals registered by Super Admin on /mrshahidbabu are allowed to log in.')
+        }
       }
 
       const hospName = hospObj?.name || user.user_metadata?.hospital_name || 'Hospital Facility'
