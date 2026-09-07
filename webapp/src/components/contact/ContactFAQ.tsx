@@ -11,14 +11,14 @@ interface FAQItem {
 
 const contactFaqs: FAQItem[] = [
   {
-    question: "What is Med Rapidly?",
+    question: "What is MedTech Fixaters?",
     answer:
-      "Med Rapidly is an all-in-one AI-powered digital healthcare platform built by MedTech Fixaters. It brings hospital administration, doctor workspaces, live token queues, QR appointment booking, and an inbuilt patient CRM into a single connected system.",
+      "MedTech Fixaters is an all-in-one AI-powered digital healthcare platform. It brings hospital administration, doctor workspaces, live token queues, QR appointment booking, and an inbuilt patient CRM into a single connected system.",
   },
   {
-    question: "Who is Med Rapidly designed for?",
+    question: "Who is MedTech Fixaters designed for?",
     answer:
-      "Med Rapidly is designed for solo clinical practices, polyclinics, nursing homes, and multi-specialty hospital networks looking to streamline OPD operations, eliminate waiting room congestion, and securely manage patient records.",
+      "MedTech Fixaters is designed for solo clinical practices, polyclinics, nursing homes, and multi-specialty hospital networks looking to streamline OPD operations, eliminate waiting room congestion, and securely manage patient records.",
   },
   {
     question: "How does the hospital QR appointment system work?",
@@ -84,7 +84,7 @@ export default function ContactFAQ() {
             transition={{ duration: 0.55, delay: 0.2 }}
             className="mt-2.5 sm:mt-3 text-xs sm:text-sm lg:text-base text-slate-500 max-w-xl mx-auto"
           >
-            Find quick answers about Med Rapidly, data isolation, QR check-ins, and onboarding.
+            Find quick answers about MedTech Fixaters, data isolation, QR check-ins, and onboarding.
           </motion.p>
         </div>
 

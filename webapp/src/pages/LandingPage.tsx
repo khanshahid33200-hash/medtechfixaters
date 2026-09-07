@@ -246,7 +246,7 @@ export default function LandingPage() {
       {/* ─── SECTION 2A: WHAT WE SOLVE ─── */}
       <WhatWeSolveSection />
 
-      {/* ─── SECTION 2B: KEY BENEFITS (WHY MED RAPIDLY) ─── */}
+      {/* ─── SECTION 2B: KEY BENEFITS (WHY MEDTECH FIXATERS) ─── */}
       <KeyBenefits />
 
       {/* ─── SECTION 2C: HOW PLATFORM WORKS ─── */}

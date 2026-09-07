@@ -84,7 +84,7 @@ export default function Layout({ children }: LayoutProps) {
                 M
               </div>
               <div>
-                <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">Med Rapidly</h2>
+                <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">MedTech Fixaters</h2>
                 <span className="text-[11px] font-semibold text-slate-400">Doctor Dashboard</span>
               </div>
             </Link>
@@ -152,7 +152,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             <p className="text-[10px] text-slate-500 leading-tight">Contact hospital admin or support team.</p>
             <a
-              href="mailto:support@medrapidly.com"
+              href="mailto:support@medtechfixaters.com"
               className="w-full py-1.5 bg-white hover:bg-indigo-600 hover:text-white text-indigo-600 border border-indigo-200 rounded-xl text-[11px] font-bold shadow-sm transition flex items-center justify-center gap-1.5"
             >
               <span>🎧 Get Support</span>

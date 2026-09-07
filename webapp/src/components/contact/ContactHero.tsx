@@ -63,7 +63,7 @@ export default function ContactHero() {
               transition={{ duration: 0.6, delay: 0.2 }}
               className="mt-4 sm:mt-6 max-w-xl text-sm sm:text-base lg:text-lg leading-relaxed text-slate-600"
             >
-              Have a question about MedTech Fixaters, Med Rapidly, hospital workflows, AI-powered operations, or partnerships? Talk to our team.
+              Have a question about MedTech Fixaters, hospital workflows, AI-powered operations, or partnerships? Talk to our team.
             </motion.p>
 
             {/* Two Action Buttons */}
@@ -85,7 +85,7 @@ export default function ContactHero() {
                 to="/features"
                 className="flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl border border-slate-200/90 bg-white/80 px-6 py-3 sm:py-3.5 text-xs sm:text-sm font-bold text-[#17191F] shadow-2xs backdrop-blur-xl transition-all duration-300 hover:border-blue-200 hover:bg-blue-50/70 hover:text-blue-600 hover:scale-[1.02] active:scale-[0.98]"
               >
-                <span>Explore Med Rapidly</span>
+                <span>Explore MedTech Fixaters</span>
               </Link>
             </motion.div>
 

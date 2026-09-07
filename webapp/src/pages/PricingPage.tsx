@@ -9,7 +9,7 @@ import { useSEO } from '../hooks/useSEO'
 
 export default function PricingPage() {
   useSEO({
-    title: 'Pricing Plans — Transparent OPD Software | Med Rapidly',
+    title: 'Pricing Plans — Transparent OPD Software | MedTech Fixaters',
     description: 'Affordable, transparent pricing plans for standalone clinics, multi-doctor polyclinics, and enterprise multi-bed hospitals.',
   })
 

@@ -97,7 +97,7 @@ export default function HospitalJourney() {
             <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-white/10">
               <div>
                 <span className="text-[9px] font-extrabold tracking-[0.2em] text-blue-400 uppercase block">
-                  MED RAPIDLY HOSPITAL COMMAND CENTER
+                  MEDTECH FIXATERS HOSPITAL COMMAND CENTER
                 </span>
                 <h3 className="text-xl sm:text-2xl font-black text-white mt-0.5">
                   Apex City Hospital & Research Center

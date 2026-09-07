@@ -86,7 +86,7 @@ interface DashboardProps {
 
 export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) {
   useSEO({
-    title: 'Doctor Clinical Workspace — Med Rapidly',
+    title: 'Doctor Clinical Workspace — MedTech Fixaters',
     description: 'Smart Clinical OPD Doctor Dashboard, Queue Manager & 30-Second Prescription Engine.',
   })
 
@@ -283,7 +283,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   // Doctor OPD Profile & Settings Form State
   const [profileForm, setProfileForm] = useState({
     name: doctorName,
-    email: doctorProfile?.email || 'doctor@medrapidly.com',
+    email: doctorProfile?.email || 'doctor@medtechfixaters.com',
     phone: '+91 98765 43210',
     specialization: doctorSpecialty,
     qualification: 'MBBS, MD (Cardiology)',
@@ -548,7 +548,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               M
             </div>
             <div>
-              <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">Med Rapidly</h2>
+              <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">MedTech Fixaters</h2>
               <span className="text-[11px] font-semibold text-slate-400">Doctor Dashboard</span>
             </div>
           </Link>
@@ -2421,7 +2421,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
             <h3 className="font-black text-base text-slate-900">Hospital Tech Support</h3>
             <p className="text-xs text-slate-500">For hardware integration, OPD printer issues, or urgent queries:</p>
             <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1 font-bold">
-              <p className="text-indigo-600">Email: support@medrapidly.com</p>
+              <p className="text-indigo-600">Email: support@medtechfixaters.com</p>
               <p className="text-slate-700">Reception Desk Ext: #301</p>
             </div>
             <button

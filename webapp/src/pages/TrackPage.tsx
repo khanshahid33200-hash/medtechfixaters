@@ -29,7 +29,7 @@ export default function TrackPage() {
   const trackingTokenParam = searchParams.get('t') || searchParams.get('token') || ''
 
   useSEO({
-    title: 'Live OPD Queue & Token Tracker — Med Rapidly',
+    title: 'Live OPD Queue & Token Tracker — MedTech Fixaters',
     description: 'Track your real-time doctor queue position, live room status, and estimated consultation wait time.',
   })
 
@@ -177,7 +177,7 @@ export default function TrackPage() {
               M
             </div>
             <div>
-              <span className="font-black text-xs text-slate-900 block leading-tight">Med Rapidly</span>
+              <span className="font-black text-xs text-slate-900 block leading-tight">MedTech Fixaters</span>
               <span className="text-[10px] text-slate-400 font-semibold">Live Patient Telemetry</span>
             </div>
           </Link>
@@ -304,7 +304,7 @@ export default function TrackPage() {
 
             {/* Footer info */}
             <div className="pt-2 text-center text-[10px] text-slate-400 font-medium">
-              Last Synced: {lastUpdated.toLocaleTimeString()} • Powered by Med Rapidly High-Speed Clinical OS
+              Last Synced: {lastUpdated.toLocaleTimeString()} • Powered by MedTech Fixaters High-Speed Clinical OS
             </div>
           </div>
         )}

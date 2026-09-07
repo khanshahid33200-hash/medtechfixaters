@@ -172,7 +172,7 @@ export default function AboutUsPage() {
               to="/features"
               className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#FF6B2C] via-[#FF8A4C] to-[#FF4500] hover:from-[#E65100] hover:to-[#FF6B2C] text-white text-xs sm:text-sm font-bold shadow-lg shadow-orange-500/25 transition-all flex items-center gap-2 hover:scale-105 active:scale-98"
             >
-              <span>Explore Med Rapidly</span>
+              <span>Explore MedTech Fixaters</span>
               <ArrowRight size={14} />
             </Link>
             <Link
@@ -383,7 +383,7 @@ export default function AboutUsPage() {
         </motion.div>
       </section>
 
-      {/* ─── 4. OUR PRODUCT: INTRODUCING MED RAPIDLY (3D ECOSYSTEM) ─── */}
+      {/* ─── 4. OUR PRODUCT: INTRODUCING MEDTECH FIXATERS (3D ECOSYSTEM) ─── */}
       <section className="py-20 px-6 max-w-6xl mx-auto">
         <div className="p-8 sm:p-14 rounded-[36px] bg-gradient-to-br from-white via-white/90 to-blue-50/50 border border-slate-200/90 shadow-[0_20px_70px_rgba(15,23,42,0.06)] backdrop-blur-2xl text-center space-y-8">
           <motion.div
@@ -397,13 +397,13 @@ export default function AboutUsPage() {
               FLAGSHIP PRODUCT
             </span>
             <h2 className="text-3xl sm:text-5xl font-black text-slate-900 tracking-tight">
-              Introducing Med Rapidly.
+              Introducing MedTech Fixaters.
             </h2>
             <p className="text-base sm:text-lg font-bold text-blue-600">
               The Smart OPD and Reception Operating System by MedTech Fixaters.
             </p>
             <p className="text-xs sm:text-sm text-slate-600 max-w-xl mx-auto font-normal">
-              Med Rapidly brings hospital administration, doctors, patients, appointments, live queues, and AI-assisted booking into one connected platform.
+              MedTech Fixaters brings hospital administration, doctors, patients, appointments, live queues, and AI-assisted booking into one connected platform.
             </p>
           </motion.div>
 
@@ -415,11 +415,11 @@ export default function AboutUsPage() {
             variants={reveal}
             className="pt-6 max-w-4xl mx-auto space-y-6"
           >
-            {/* Top Node: MED RAPIDLY AI */}
+            {/* Top Node: MEDTECH FIXATERS AI */}
             <div className="flex justify-center">
               <div className="px-6 py-3 rounded-2xl bg-gradient-to-r from-[#0080E6] to-[#2563EB] text-white font-black text-sm shadow-lg shadow-blue-500/25 flex items-center gap-2">
                 <Brain size={18} />
-                <span>MED RAPIDLY AI</span>
+                <span>MEDTECH FIXATERS AI</span>
               </div>
             </div>
 
@@ -802,7 +802,7 @@ export default function AboutUsPage() {
               to="/features"
               className="px-7 py-3.5 rounded-full bg-gradient-to-r from-[#FF6B2C] via-[#FF8A4C] to-[#FF4500] hover:from-[#E65100] hover:to-[#FF6B2C] text-white text-xs sm:text-sm font-bold shadow-lg shadow-orange-500/25 transition-all flex items-center gap-2 hover:scale-105 active:scale-98"
             >
-              <span>Explore Med Rapidly</span>
+              <span>Explore MedTech Fixaters</span>
               <ArrowRight size={14} />
             </Link>
             <Link

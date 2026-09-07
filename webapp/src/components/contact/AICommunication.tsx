@@ -117,7 +117,7 @@ export default function AICommunication() {
                     <span className="text-[9px] sm:text-[10px] text-slate-400">Hospital Administrator</span>
                   </div>
                   <p className="mt-1 text-xs sm:text-sm font-semibold text-slate-800 leading-snug">
-                    &ldquo;How can Med Rapidly improve our hospital OPD workflow and eliminate queue bottlenecks?&rdquo;
+                    &ldquo;How can MedTech Fixaters improve our hospital OPD workflow and eliminate queue bottlenecks?&rdquo;
                   </p>
                 </div>
               </motion.div>

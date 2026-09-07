@@ -16,7 +16,7 @@ export default function AppointmentBookingPage() {
     "";
 
   useSEO({
-    title: "Hospital Appointment Booking — Med Rapidly Digital Reception",
+    title: "Hospital Appointment Booking — MedTech Fixaters Digital Reception",
     description:
       "Apple-inspired Liquid Glass QR appointment booking system. Book OPD appointments via AI-assisted symptom guidance or direct doctor roster selection.",
   });

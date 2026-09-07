@@ -150,9 +150,9 @@ const UPCOMING_FEATURES: UpcomingFeature[] = [
 
 export default function UpcomingFeaturesPage() {
   useSEO({
-    title: 'Upcoming Features & Product Roadmap — Med Rapidly AI Healthcare',
+    title: 'Upcoming Features & Product Roadmap — MedTech Fixaters AI Healthcare',
     description:
-      'Explore upcoming Med Rapidly innovations: Ambient AI voice scribing, WhatsApp queue sync, IoT vitals telemetry, ABDM compliance, and multi-branch enterprise control.',
+      'Explore upcoming MedTech Fixaters innovations: Ambient AI voice scribing, WhatsApp queue sync, IoT vitals telemetry, ABDM compliance, and multi-branch enterprise control.',
   })
 
   const [activeCategory, setActiveCategory] = useState<string>('All')
@@ -207,7 +207,7 @@ export default function UpcomingFeaturesPage() {
             className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/80 border border-slate-200/80 shadow-2xs backdrop-blur-xl text-xs font-bold text-[#FF6B2C]"
           >
             <Sparkles size={14} className="animate-spin" style={{ animationDuration: '4s' }} />
-            <span>MED RAPIDLY PRODUCT ROADMAP</span>
+            <span>MEDTECH FIXATERS PRODUCT ROADMAP</span>
             <span className="w-1.5 h-1.5 rounded-full bg-[#FF6B2C]" />
             <span className="text-slate-600 font-semibold">2026 - 2027 Vision</span>
           </motion.div>

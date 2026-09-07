@@ -65,7 +65,7 @@ export default function ContactCTA() {
                 to="/features"
                 className="flex items-center justify-center gap-2 rounded-xl sm:rounded-2xl border border-slate-200/90 bg-white px-6 py-3 sm:py-3.5 text-xs sm:text-sm font-bold text-[#17191F] shadow-2xs transition-all duration-300 hover:border-blue-200 hover:bg-blue-50/70 hover:text-blue-600 hover:scale-[1.02] active:scale-[0.98]"
               >
-                <span>Explore Med Rapidly</span>
+                <span>Explore MedTech Fixaters</span>
               </Link>
             </div>
 

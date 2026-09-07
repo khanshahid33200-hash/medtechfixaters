@@ -29,9 +29,9 @@ import { useSEO } from "../../hooks/useSEO"
 
 export default function HowItWorksComponent() {
   useSEO({
-    title: "How Med Rapidly Works — One Connected Healthcare Platform",
+    title: "How MedTech Fixaters Works — One Connected Healthcare Platform",
     description:
-      "Med Rapidly connects patients, hospitals, and doctors through one AI-powered healthcare platform. Explore patient QR booking, hospital operations, and doctor workspaces.",
+      "MedTech Fixaters connects patients, hospitals, and doctors through one AI-powered healthcare platform. Explore patient QR booking, hospital operations, and doctor workspaces.",
   })
 
   const [demoModalOpen, setDemoModalOpen] = useState(false)
@@ -85,7 +85,7 @@ export default function HowItWorksComponent() {
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
                     <span className="relative inline-flex rounded-full h-2 w-2 bg-[#FF6B2C]" />
                   </span>
-                  <span>HOW MED RAPIDLY WORKS</span>
+                  <span>HOW MEDTECH FIXATERS WORKS</span>
                   <span className="text-slate-300">•</span>
                   <span className="text-slate-600 font-semibold">End-to-End Clinical Flow</span>
                 </motion.div>
@@ -113,7 +113,7 @@ export default function HowItWorksComponent() {
                   transition={{ duration: 0.7, delay: 0.2 }}
                   className="max-w-xl text-base sm:text-lg text-slate-600 font-normal leading-relaxed"
                 >
-                  Med Rapidly bridges patients, hospitals, and physicians through a unified AI-powered ecosystem. Every user gets dedicated workflows, real-time sync, and cryptographic isolation.
+                  MedTech Fixaters bridges patients, hospitals, and physicians through a unified AI-powered ecosystem. Every user gets dedicated workflows, real-time sync, and cryptographic isolation.
                 </motion.p>
 
                 {/* Live Telemetry Pill */}

@@ -26,7 +26,7 @@ const contactOptions = [
     icon: Layers,
     title: "Product & Platform",
     description:
-      "Questions about Med Rapidly, platform features, hospital workflows, or AI capabilities.",
+      "Questions about MedTech Fixaters, platform features, hospital workflows, or AI capabilities.",
     ctaText: "Talk About the Platform",
     badge: "Platform Demo",
     accentColor: "from-blue-600 to-indigo-600",

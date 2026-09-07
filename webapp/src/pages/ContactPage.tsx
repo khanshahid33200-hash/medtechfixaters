@@ -9,7 +9,7 @@ export default function ContactPage() {
   useSEO({
     title: "Contact MedTech Fixaters | AI-Powered Healthcare Technology",
     description:
-      "Contact MedTech Fixaters to discuss Med Rapidly, hospital digital workflows, AI-assisted healthcare operations, and technology partnerships.",
+      "Contact MedTech Fixaters to discuss hospital digital workflows, AI-assisted healthcare operations, and technology partnerships.",
   });
 
   return (

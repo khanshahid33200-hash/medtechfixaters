@@ -87,8 +87,8 @@ interface AnnouncementItem {
 
 export default function OwnerAdmin() {
   useSEO({
-    title: 'Super Admin OS — Med Rapidly Platform Infrastructure',
-    description: 'Master Platform Control Dashboard for Med Rapidly Multi-Tenant Infrastructure.',
+    title: 'Super Admin OS — MedTech Fixaters Platform Infrastructure',
+    description: 'Master Platform Control Dashboard for MedTech Fixaters Multi-Tenant Infrastructure.',
   })
 
   const { registerUserInSupabase } = useAuth()
@@ -695,7 +695,7 @@ export default function OwnerAdmin() {
               <ShieldCheck size={32} />
             </div>
             <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">Med Rapidly</h1>
+              <h1 className="text-2xl font-black text-white tracking-tight">MedTech Fixaters</h1>
               <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mt-0.5">Platform Super Admin</p>
             </div>
             <p className="text-xs text-white/40">Enter authorized credentials to access master controls.</p>
@@ -716,7 +716,7 @@ export default function OwnerAdmin() {
                 required
                 value={loginForm.email}
                 onChange={e => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="admin@medrapidly.com"
+                placeholder="admin@medtechfixaters.com"
                 className="w-full px-4 py-3 bg-[#0F1117] border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition placeholder:text-white/20"
               />
             </div>
@@ -762,7 +762,7 @@ export default function OwnerAdmin() {
               M
             </div>
             <div>
-              <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">Med Rapidly</h2>
+              <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">MedTech Fixaters</h2>
               <span className="text-[11px] font-semibold text-slate-400">Platform Admin</span>
             </div>
           </Link>
@@ -1321,7 +1321,7 @@ export default function OwnerAdmin() {
                   🖥️
                 </div>
                 <div>
-                  <h3 className="text-lg font-black text-slate-900 tracking-tight">Med Rapidly Platform Infrastructure</h3>
+                  <h3 className="text-lg font-black text-slate-900 tracking-tight">MedTech Fixaters Platform Infrastructure</h3>
                   <p className="text-xs text-slate-500 font-medium">Clean live environment ready for hospital onboarding and clinical operations.</p>
                 </div>
               </div>

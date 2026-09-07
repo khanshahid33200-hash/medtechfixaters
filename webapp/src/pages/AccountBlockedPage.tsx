@@ -6,7 +6,7 @@ import { useSEO } from '../hooks/useSEO'
 
 export default function AccountBlockedPage() {
   useSEO({
-    title: 'Account Restricted — Med Rapidly Clinical OS',
+    title: 'Account Restricted — MedTech Fixaters Clinical OS',
     description: 'Account access is currently restricted by platform or facility administration.',
   })
 

@@ -39,7 +39,7 @@ export default function FinalCTA({ onOpenDemo }: { onOpenDemo?: () => void }) {
             Ready To See
             <br />
             <span className="bg-gradient-to-r from-orange-500 to-blue-600 bg-clip-text text-transparent">
-              Med Rapidly In Action?
+              MedTech Fixaters In Action?
             </span>
           </motion.h2>
 

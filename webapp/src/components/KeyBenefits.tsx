@@ -98,7 +98,7 @@ export default function KeyBenefits() {
         >
           <div className="mb-3.5 inline-flex items-center gap-1.5 rounded-full border border-blue-100 bg-blue-50/80 px-3.5 py-1.5 text-[11px] font-bold tracking-[0.14em] text-blue-600 shadow-2xs">
             <Sparkles size={13} className="text-orange-500" />
-            WHY MED RAPIDLY
+            WHY MEDTECH FIXATERS
           </div>
 
           <h2 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl lg:text-[44px] leading-tight">
@@ -109,7 +109,7 @@ export default function KeyBenefits() {
           </h2>
 
           <p className="mx-auto mt-4 max-w-xl text-xs sm:text-sm leading-relaxed text-slate-500">
-            Med Rapidly brings patients, doctors, reception staff,
+            MedTech Fixaters brings patients, doctors, reception staff,
             appointments, and daily OPD operations into one connected
             digital system.
           </p>
@@ -214,7 +214,7 @@ export default function KeyBenefits() {
               whileTap={{ scale: 0.97 }}
               className="mt-5 inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-[#FF6B00] via-[#FF8533] to-[#FF4500] hover:from-[#E65100] hover:to-[#FF6B00] px-6 py-2.5 font-bold text-xs sm:text-sm text-white shadow-lg shadow-orange-500/25 transition-all cursor-pointer"
             >
-              <span>Explore Med Rapidly</span>
+              <span>Explore MedTech Fixaters</span>
               <ArrowRight size={15} />
             </motion.button>
           </Link>

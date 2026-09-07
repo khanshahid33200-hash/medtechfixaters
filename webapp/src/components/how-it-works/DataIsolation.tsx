@@ -182,7 +182,7 @@ function Core() {
         </motion.div>
 
         <div>
-          <h5 className="text-sm font-black text-white">Med Rapidly Core</h5>
+          <h5 className="text-sm font-black text-white">MedTech Fixaters Core</h5>
           <span className="text-[9px] text-blue-300 font-bold uppercase tracking-widest block">
             Zero Cross-Access
           </span>

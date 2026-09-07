@@ -118,7 +118,7 @@ export default function PublicFooter() {
             </Link>
 
             <h3 className="text-base font-bold text-slate-900">
-              Med Rapidly
+              MedTech Fixaters
             </h3>
 
             <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">

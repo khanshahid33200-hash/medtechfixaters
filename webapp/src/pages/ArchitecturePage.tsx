@@ -12,8 +12,8 @@ import { useSEO } from '../hooks/useSEO'
 
 export default function ArchitecturePage() {
   useSEO({
-    title: 'Platform Architecture — Enterprise Multi-Tenant Security | Med Rapidly',
-    description: 'Technical deep-dive into Med Rapidly architecture: PostgreSQL Row-Level Security, WebSockets real-time mesh, and ABDM compliance.',
+    title: 'Platform Architecture — Enterprise Multi-Tenant Security | MedTech Fixaters',
+    description: 'Technical deep-dive into MedTech Fixaters architecture: PostgreSQL Row-Level Security, WebSockets real-time mesh, and ABDM compliance.',
   })
 
   const [modalOpen, setModalOpen] = useState(false)
