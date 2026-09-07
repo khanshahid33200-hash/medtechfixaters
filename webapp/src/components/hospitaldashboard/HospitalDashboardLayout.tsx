@@ -86,13 +86,7 @@ export default function HospitalDashboardLayout({ children, pageTitle }: Hospita
       <aside className="hidden lg:flex flex-col w-[250px] bg-white border-r border-slate-200/80 fixed inset-y-0 left-0 z-40">
         {/* Brand Logo & Name */}
         <div className="h-16 px-6 flex items-center gap-3 border-b border-slate-100">
-          <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-500/20">
-            {/* Medtech cross logo */}
-            <div className="w-4 h-4 relative flex items-center justify-center">
-              <span className="w-4 h-1.5 bg-white rounded-full absolute" />
-              <span className="h-4 w-1.5 bg-white rounded-full absolute" />
-            </div>
-          </div>
+          <img src="/assets/brand-icon.png" alt="MedTech Fixaters" className="w-8 h-8 object-contain shrink-0" />
           <div className="flex flex-col">
             <span className="font-extrabold text-[15px] tracking-tight text-slate-900 leading-none">
               medtech fixaters

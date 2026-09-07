@@ -38,12 +38,7 @@ import QRKiosk from './pages/QRKiosk'
 import History from './pages/History'
 import DoctorProfile from './pages/DoctorProfile'
 import OwnerAdmin from './pages/OwnerAdmin'
-import HospitalAdminPage from './pages/HospitalAdminPage'
-import HospitalAdminOverviewPage from './pages/hospital-admin/HospitalAdminOverviewPage'
-import HospitalAdminQueuesPage from './pages/hospital-admin/HospitalAdminQueuesPage'
-import HospitalAdminDoctorsPage from './pages/hospital-admin/HospitalAdminDoctorsPage'
-import HospitalAdminMessagesPage from './pages/hospital-admin/HospitalAdminMessagesPage'
-import HospitalAdminQRPage from './pages/hospital-admin/HospitalAdminQRPage'
+// (Legacy Hospital Admin system deleted & merged into Hospital Dashboard system)
 
 // Medtech Fixaters Hospital Dashboard Pages (design.md)
 import HospitalDashboardHome from './pages/hospitaldashboard/HospitalDashboardHome'
@@ -131,25 +126,17 @@ function App() {
         <Route path="/login/doctordashboard" element={<Login lockedRole="doctor" />} />
         <Route path="/login/hospitaladministration" element={<Login lockedRole="hospital_admin" />} />
         <Route path="/login/platformadmin" element={<Navigate to="/mrshahidbabu" replace />} />
-        <Route path="/hospitaladminmedtech" element={<HospitalAdminPage />} />
-        <Route path="/login/hospitaladminmedtech" element={<HospitalAdminPage />} />
-        <Route path="/login/hospitaladmin009" element={<HospitalAdminPage />} />
-        <Route path="/hospitaladmin009" element={<HospitalAdminPage />} />
-        <Route path="/hospitaladmin" element={<HospitalAdminPage />} />
-        <Route path="/hospitaladmin/*" element={<HospitalAdminPage />} />
+        <Route path="/hospitaladminmedtech" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
+        <Route path="/login/hospitaladminmedtech" element={<Navigate to="/login/hospitaladministration" replace />} />
+        <Route path="/login/hospitaladmin009" element={<Navigate to="/login/hospitaladministration" replace />} />
+        <Route path="/hospitaladmin009" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
+        <Route path="/hospitaladmin" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
 
         {/* Secret Platform Owner Control Portal */}
         <Route path="/mrshahidbabu" element={<OwnerAdmin />} />
         <Route path="/MRSHAHIDBABU" element={<OwnerAdmin />} />
 
-        {/* Medtech Fixaters Hospital Administration Dashboard (design.md)
-            These pages (HospitalDashboardHome and siblings) have no login
-            gate of their own — they assume an authenticated hospital_admin
-            session and query Supabase directly. Previously NONE of these
-            routes were wrapped in ProtectedRoute at all, meaning an
-            unauthenticated visitor got an empty shell (RLS blocks anon
-            reads) but a logged-in DOCTOR could open the full hospital-admin
-            view for their own hospital, since nothing here checked role. */}
+        {/* Medtech Fixaters Unified Hospital Administration Dashboard System */}
         <Route path="/hospitaldashboard" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalDashboardHome /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/dashboard" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalDashboardHome /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/appointments" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalAppointmentsPage /></ProtectedRoute>} />
@@ -165,13 +152,14 @@ function App() {
         <Route path="/hospitaldashboard/users-roles" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalUsersRolesPage /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/qr" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalQRManagementPage /></ProtectedRoute>} />
 
-        {/* Seamless Legacy Hospital Admin Routes — same underlying pages, same gate */}
-        <Route path="/hospitaladmin-dashboard" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalDashboardHome /></ProtectedRoute>} />
-        <Route path="/hospitaladmin/overview" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalDashboardHome /></ProtectedRoute>} />
-        <Route path="/hospitaladmin/queues" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalLiveQueuePage /></ProtectedRoute>} />
-        <Route path="/hospitaladmin/doctors" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalDoctorsPage /></ProtectedRoute>} />
-        <Route path="/hospitaladmin/messages" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalNotificationsPage /></ProtectedRoute>} />
-        <Route path="/hospitaladmin/qr" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalQRManagementPage /></ProtectedRoute>} />
+        {/* Redirect Legacy Hospital Admin Routes to Hospital Dashboard */}
+        <Route path="/hospitaladmin-dashboard" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
+        <Route path="/hospitaladmin/overview" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
+        <Route path="/hospitaladmin/queues" element={<Navigate to="/hospitaldashboard/live-queue" replace />} />
+        <Route path="/hospitaladmin/doctors" element={<Navigate to="/hospitaldashboard/doctors" replace />} />
+        <Route path="/hospitaladmin/messages" element={<Navigate to="/hospitaldashboard/notifications" replace />} />
+        <Route path="/hospitaladmin/qr" element={<Navigate to="/hospitaldashboard/qr" replace />} />
+        <Route path="/hospitaladmin/*" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
         <Route
           path="/dashboard"
           element={

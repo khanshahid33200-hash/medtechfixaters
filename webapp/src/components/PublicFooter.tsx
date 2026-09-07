@@ -18,7 +18,7 @@ const productLinks = [
 ];
 
 const workspaceLinks = [
-  ["Hospital Dashboard", "/hospitaladmin"],
+  ["Hospital Dashboard", "/hospitaldashboard"],
   ["Doctor Workspace", "/doctor"],
   ["Live Queue", "/track"],
   ["Platform Admin", "/mrshahidbabu"],

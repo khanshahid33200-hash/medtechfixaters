@@ -107,6 +107,7 @@ export default function StickyChatbot() {
   // Hide sticky widget on clinical/admin authenticated pages
   const isDashboardRoute =
     location.pathname.startsWith("/dashboard") ||
+    location.pathname.startsWith("/hospitaldashboard") ||
     location.pathname.startsWith("/hospitaladmin") ||
     location.pathname.startsWith("/mrshahidbabu") ||
     location.pathname.startsWith("/display") ||

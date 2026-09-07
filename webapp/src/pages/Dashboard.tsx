@@ -544,9 +544,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
         <div className="p-5 space-y-5">
           {/* Brand Logo */}
           <Link to="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-600 flex items-center justify-center font-black text-xl text-white shadow-md shadow-indigo-500/25 group-hover:scale-105 transition-transform">
-              M
-            </div>
+            <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="w-9 h-9 object-contain group-hover:scale-105 transition-transform" />
             <div>
               <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">MedTech Fixaters</h2>
               <span className="text-[11px] font-semibold text-slate-400">Doctor Dashboard</span>

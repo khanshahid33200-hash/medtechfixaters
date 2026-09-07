@@ -1,9 +1,25 @@
 import React, { useState } from 'react'
 import { useNavigate, useLocation, Link } from 'react-router-dom'
 import {
-  AlertCircle, Stethoscope, Building2, Lock, Mail,
-  Eye, EyeOff, ArrowRight, ShieldCheck, Zap,
-  CheckCircle2, Sparkles, PhoneCall
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+} from 'motion/react'
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  LockKeyhole,
+  Mail,
+  ShieldCheck,
+  Sparkles,
+  ArrowRight,
+  Stethoscope,
+  Building2,
+  AlertCircle,
+  PhoneCall,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
@@ -19,7 +35,7 @@ interface LoginProps {
 
 export default function Login({ lockedRole }: LoginProps) {
   useSEO({
-    title: 'Sign In — Clinical OS by MedTech Fixaters',
+    title: 'Sign In — MedTech Fixaters Clinical OS',
     description: 'Secure Doctor and Hospital Administrator sign-in portal for MedTech Fixaters Clinical OS.',
   })
 
@@ -32,25 +48,39 @@ export default function Login({ lockedRole }: LoginProps) {
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
-  // Wrong-portal denials are delivered via router state by ProtectedRoute
-  // (manual URL access) or thrown directly by loginWithSupabase (wrong
-  // portal at login) — both land here as the same error banner.
+
   const deniedState = (location.state as { message?: string } | null)?.message
   const [error, setError] = useState(deniedState || '')
-  const [isLoading, setIsLoading] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [showForgotModal, setShowForgotModal] = useState(false)
+
+  // Mouse reactive glow coordinates
+  const mouseX = useMotionValue(0)
+  const mouseY = useMotionValue(0)
+
+  const springX = useSpring(mouseX, { stiffness: 50, damping: 20 })
+  const springY = useSpring(mouseY, { stiffness: 50, damping: 20 })
+
+  const glowX = useTransform(springX, [-500, 500], [-80, 80])
+  const glowY = useTransform(springY, [-500, 500], [-50, 50])
+
+  function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    mouseX.set(event.clientX - rect.left - rect.width / 2)
+    mouseY.set(event.clientY - rect.top - rect.height / 2)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setIsLoading(true)
+    setLoading(true)
 
     const cleanEmail = email.trim().toLowerCase()
     const cleanPass = password.trim()
 
     if (!cleanEmail || !cleanPass) {
-      setIsLoading(false)
-      setError('Please enter your registered email address and password.')
+      setLoading(false)
+      setError('Please enter your registered Doctor ID / Email and password.')
       return
     }
 
@@ -65,310 +95,610 @@ export default function Login({ lockedRole }: LoginProps) {
         navigate('/dashboard')
       }
     } catch (err: any) {
-      setError(err.message || 'Invalid email or password. Please verify your credentials.')
+      setError(err.message || 'Invalid credentials. Please verify your email/Doctor ID and password.')
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 sm:p-6 lg:p-8 font-sans text-slate-900 selection:bg-emerald-500 selection:text-white relative overflow-hidden">
-      {/* Subtle Background Glows */}
-      <div className="absolute -top-32 -left-32 w-96 h-96 bg-emerald-200/40 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-teal-200/30 rounded-full blur-3xl pointer-events-none" />
+    <main
+      onMouseMove={handleMouseMove}
+      className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#F7F8FC] px-4 py-6 font-sans text-slate-900 selection:bg-[#007AFF]/20 select-none"
+    >
+      {/* Background grid */}
+      <div
+        className="absolute inset-0 opacity-[0.35] pointer-events-none"
+        style={{
+          backgroundImage: 'radial-gradient(rgba(0,122,255,0.12) 1px, transparent 1px)',
+          backgroundSize: '32px 32px',
+        }}
+      />
 
-      {/* Main Container Card */}
-      <div className="max-w-5xl w-full bg-white rounded-3xl shadow-2xl shadow-slate-200/80 border border-slate-200/90 overflow-hidden grid grid-cols-1 lg:grid-cols-12 min-h-[640px] relative z-10">
-        
-        {/* ─── LEFT BRANDING & VALUE PANEL (lg: 5 cols) ─── */}
-        <div className="lg:col-span-5 bg-gradient-to-br from-slate-950 via-slate-900 to-[#0c1f18] text-white p-8 sm:p-10 flex flex-col justify-between relative overflow-hidden">
-          {/* Subtle Ambient Mesh */}
-          <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-500/10 rounded-full blur-2xl pointer-events-none" />
+      {/* Animated blue liquid */}
+      <motion.div
+        style={{ x: glowX, y: glowY }}
+        className="absolute -left-40 -top-32 h-[520px] w-[520px] rounded-full bg-blue-300/30 blur-[120px] pointer-events-none"
+      />
 
-          {/* Top Logo */}
-          <div className="relative z-10 space-y-6">
-            <Link to="/" className="inline-flex items-center gap-3 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-teal-500 p-0.5 shadow-md shadow-emerald-500/20 group-hover:scale-105 transition">
-                <div className="w-full h-full bg-slate-950 rounded-[10px] flex items-center justify-center font-black text-emerald-400 text-lg">
-                  ⚡
-                </div>
-              </div>
+      <motion.div
+        className="absolute -left-20 top-10 h-[380px] w-[380px] rounded-full bg-[#5AC8FA]/20 blur-[100px] pointer-events-none"
+        animate={{
+          x: [0, 100, 30, 0],
+          y: [0, 80, 120, 0],
+          scale: [1, 1.12, 0.95, 1],
+        }}
+        transition={{
+          duration: 16,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+
+      {/* Animated orange liquid */}
+      <motion.div
+        className="absolute -bottom-48 -right-40 h-[620px] w-[620px] rounded-full bg-orange-300/30 blur-[140px] pointer-events-none"
+        animate={{
+          x: [0, -100, 30, 0],
+          y: [0, -70, 40, 0],
+          scale: [1, 0.9, 1.1, 1],
+        }}
+        transition={{
+          duration: 20,
+          repeat: Infinity,
+          ease: 'easeInOut',
+        }}
+      />
+
+      {/* Floating glass particles */}
+      {[...Array(12)].map((_, index) => (
+        <motion.div
+          key={index}
+          className="absolute rounded-full border border-white/70 bg-white/30 backdrop-blur-md pointer-events-none"
+          style={{
+            width: `${6 + (index % 4) * 5}px`,
+            height: `${6 + (index % 4) * 5}px`,
+            left: `${(index * 17) % 100}%`,
+            top: `${(index * 23) % 100}%`,
+          }}
+          animate={{
+            y: [0, -30, 0],
+            opacity: [0.2, 0.7, 0.2],
+            scale: [1, 1.4, 1],
+          }}
+          transition={{
+            duration: 5 + index,
+            delay: index * 0.3,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+
+      {/* Main glass container */}
+      <motion.div
+        initial={{
+          opacity: 0,
+          scale: 0.9,
+          y: 60,
+          filter: 'blur(24px)',
+        }}
+        animate={{
+          opacity: 1,
+          scale: 1,
+          y: 0,
+          filter: 'blur(0px)',
+        }}
+        transition={{
+          type: 'spring',
+          stiffness: 130,
+          damping: 20,
+          mass: 0.8,
+        }}
+        className="relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[42px] border border-white/80 bg-white/45 shadow-[0_40px_120px_rgba(31,38,135,0.16)] backdrop-blur-[45px] lg:grid-cols-[1fr_1fr]"
+      >
+        {/* Moving glass reflection */}
+        <motion.div
+          animate={{
+            x: ['-120%', '180%'],
+          }}
+          transition={{
+            duration: 7,
+            repeat: Infinity,
+            repeatDelay: 4,
+            ease: 'easeInOut',
+          }}
+          className="pointer-events-none absolute inset-y-0 z-20 w-[30%] -skew-x-12 bg-gradient-to-r from-transparent via-white/25 to-transparent blur-2xl"
+        />
+
+        {/* LEFT SIDE */}
+        <section className="relative hidden min-h-[680px] overflow-hidden border-r border-white/60 p-10 lg:flex lg:flex-col lg:justify-between text-left">
+          {/* Top brand */}
+          <motion.div
+            initial={{ opacity: 0, x: -40 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{
+              delay: 0.3,
+              type: 'spring',
+              stiffness: 180,
+              damping: 20,
+            }}
+            className="relative z-10 flex items-center gap-4"
+          >
+            <Link to="/" className="flex items-center gap-3 group">
+              <motion.div
+                animate={{
+                  rotate: [0, 4, -4, 0],
+                  y: [0, -4, 0],
+                }}
+                transition={{
+                  duration: 5,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+                className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/80 bg-white/60 shadow-[0_15px_40px_rgba(0,122,255,0.12)] backdrop-blur-xl group-hover:scale-105 transition-transform"
+              >
+                <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="h-9 w-9 object-contain" />
+              </motion.div>
+
               <div>
-                <span className="text-base font-black text-white tracking-tight block">MedTech Fixaters</span>
-                <span className="text-[10px] font-bold text-emerald-400 uppercase tracking-wider block">
+                <p className="text-lg font-bold tracking-tight text-[#1D1D1F]">
+                  MedTech Fixaters
+                </p>
+                <p className="text-xs text-[#6E6E73] font-medium">
                   Clinical Operating System
-                </span>
+                </p>
               </div>
             </Link>
+          </motion.div>
 
-            {/* Main Pitch */}
-            <div className="space-y-2 pt-2">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-[11px] font-bold">
-                <Sparkles size={13} />
-                <span>Next-Gen Healthcare OS</span>
-              </div>
-              <h2 className="text-2xl font-black text-white tracking-tight leading-tight">
-                High-Speed OPD, Smart Queue & EMR Console.
-              </h2>
-              <p className="text-xs text-slate-400 leading-relaxed">
-                Sign in to manage patient consultations, issue 30-second digital prescriptions, and monitor live tokens.
+          {/* Center content */}
+          <div className="relative z-10">
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 30,
+                filter: 'blur(12px)',
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+                filter: 'blur(0px)',
+              }}
+              transition={{
+                delay: 0.45,
+                duration: 0.8,
+              }}
+            >
+              <motion.div
+                animate={{
+                  opacity: [0.7, 1, 0.7],
+                }}
+                transition={{
+                  duration: 3,
+                  repeat: Infinity,
+                }}
+                className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-blue-50/60 px-4 py-2 text-xs font-semibold tracking-[0.15em] text-[#007AFF] backdrop-blur-xl"
+              >
+                <span className="h-2 w-2 rounded-full bg-[#007AFF]" />
+                CLINICAL WORKSPACE
+              </motion.div>
+
+              <h1 className="max-w-md text-5xl font-semibold leading-[1.06] tracking-[-0.04em] text-[#1D1D1F]">
+                Healthcare
+                <br />
+                <span className="relative">
+                  connected.
+                  <motion.span
+                    className="absolute -bottom-2 left-0 h-[5px] rounded-full bg-gradient-to-r from-[#007AFF] to-[#5AC8FA]"
+                    initial={{ width: 0 }}
+                    animate={{ width: '100%' }}
+                    transition={{
+                      delay: 1.1,
+                      duration: 1,
+                      ease: 'easeOut',
+                    }}
+                  />
+                </span>
+              </h1>
+
+              <p className="mt-8 max-w-sm text-base leading-7 text-[#6E6E73]">
+                Access your assigned workspace to manage consultations, live tokens, digital prescriptions, and clinical operations.
               </p>
-            </div>
-
-            {/* Feature Highlights */}
-            <div className="space-y-3 pt-2">
-              {[
-                { icon: <Zap size={15} className="text-emerald-400" />, title: '30-Second Prescription EMR', sub: 'Instant drug auto-complete & dosing.' },
-                { icon: <ShieldCheck size={15} className="text-teal-400" />, title: 'Zero-Leakage Multi-Tenant RLS', sub: 'Database-level PostgreSQL isolation.' },
-                { icon: <CheckCircle2 size={15} className="text-emerald-400" />, title: 'Smart QR Kiosk & WhatsApp Rx', sub: 'Automated patient check-in delivery.' },
-              ].map((feat, i) => (
-                <div key={i} className="flex items-start gap-3 p-2.5 rounded-2xl bg-white/[0.03] border border-white/5">
-                  <div className="p-1.5 bg-white/5 rounded-xl shrink-0 mt-0.5">
-                    {feat.icon}
-                  </div>
-                  <div>
-                    <h4 className="text-xs font-bold text-slate-200">{feat.title}</h4>
-                    <p className="text-[11px] text-slate-400">{feat.sub}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
+            </motion.div>
           </div>
 
-          {/* Bottom Security Trust Badges */}
-          <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[10px] text-slate-400 relative z-10">
-            <span className="font-semibold flex items-center gap-1">
-              <ShieldCheck size={13} className="text-emerald-400" /> ABDM & HIPAA Ready
-            </span>
-            <span className="font-mono">256-Bit SSL Encrypted</span>
-          </div>
-        </div>
-
-        {/* ─── RIGHT AUTHENTICATION FORM (lg: 7 cols) ─── */}
-        <div className="lg:col-span-7 p-8 sm:p-12 flex flex-col justify-between bg-white text-left space-y-6">
-          
-          {/* Top Bar: Return Link & Role Switcher */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            {/* Role Switcher Pill — hidden on a dedicated single-role portal
-                (lockedRole set); that page IS the role, so there's nothing
-                to switch, and switching here was purely cosmetic anyway
-                since loginWithSupabase now rejects a mismatched role. */}
-            {lockedRole ? (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl border border-emerald-200 text-xs font-extrabold">
-                {lockedRole === 'doctor' ? <Stethoscope size={15} /> : <Building2 size={15} />}
-                <span>{lockedRole === 'doctor' ? 'Doctor Portal' : 'Hospital Administration Portal'}</span>
+          {/* Floating security card */}
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 30,
+            }}
+            animate={{
+              opacity: 1,
+              y: [0, -8, 0],
+            }}
+            transition={{
+              opacity: {
+                delay: 0.8,
+                duration: 0.6,
+              },
+              y: {
+                duration: 5,
+                repeat: Infinity,
+                ease: 'easeInOut',
+              },
+            }}
+            className="relative z-10 rounded-[28px] border border-white/80 bg-white/50 p-5 shadow-[0_20px_60px_rgba(0,122,255,0.08)] backdrop-blur-[30px]"
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 to-white shadow-sm shrink-0">
+                <ShieldCheck className="h-6 w-6 text-[#007AFF]" />
               </div>
-            ) : (
-            <div className="p-1 bg-slate-100 rounded-2xl border border-slate-200/80 inline-flex items-center text-xs font-bold">
-              <button
-                type="button"
-                onClick={() => setSelectedRole('doctor')}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl transition-all ${
-                  selectedRole === 'doctor'
-                    ? 'bg-white text-emerald-700 shadow-sm font-extrabold'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Stethoscope size={15} />
-                <span>Doctor Portal</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setSelectedRole('hospital_admin')}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-xl transition-all ${
-                  selectedRole === 'hospital_admin'
-                    ? 'bg-white text-emerald-700 shadow-sm font-extrabold'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Building2 size={15} />
-                <span>Hospital Admin</span>
-              </button>
+
+              <div>
+                <p className="font-semibold text-[#1D1D1F]">
+                  Secure workspace access
+                </p>
+
+                <p className="mt-1 text-xs text-[#6E6E73]">
+                  Protected by PostgreSQL Row-Level Security & HIPAA standards.
+                </p>
+              </div>
             </div>
+          </motion.div>
+        </section>
+
+        {/* RIGHT SIDE */}
+        <section className="relative flex min-h-[680px] items-center justify-center p-6 sm:p-10 text-left">
+          {/* Small mobile brand */}
+          <div className="absolute left-6 top-6 flex items-center gap-3 lg:hidden">
+            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/80 bg-white/60 backdrop-blur-xl">
+              <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="h-7 w-7 object-contain" />
+            </div>
+
+            <div>
+              <p className="font-semibold text-sm text-[#1D1D1F]">MedTech Fixaters</p>
+              <p className="text-xs text-[#6E6E73]">Clinical OS</p>
+            </div>
+          </div>
+
+          <div className="w-full max-w-md">
+            {/* Heading & Role Switcher */}
+            <motion.div
+              initial={{
+                opacity: 0,
+                x: 30,
+                filter: 'blur(10px)',
+              }}
+              animate={{
+                opacity: 1,
+                x: 0,
+                filter: 'blur(0px)',
+              }}
+              transition={{
+                delay: 0.35,
+                type: 'spring',
+                stiffness: 180,
+                damping: 20,
+              }}
+            >
+              <div className="flex items-center justify-between mb-8">
+                <Link
+                  to="/"
+                  className="group flex items-center gap-2 text-sm text-[#6E6E73] transition-colors hover:text-[#007AFF]"
+                >
+                  <motion.span
+                    whileHover={{ x: -4 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 300,
+                      damping: 20,
+                    }}
+                  >
+                    <ArrowLeft className="h-4 w-4" />
+                  </motion.span>
+                  <span>Back to Home</span>
+                </Link>
+
+                {/* Role indicator or switcher */}
+                {lockedRole ? (
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-[#007AFF] rounded-xl border border-blue-200/80 text-xs font-bold">
+                    {lockedRole === 'doctor' ? <Stethoscope size={14} /> : <Building2 size={14} />}
+                    <span>{lockedRole === 'doctor' ? 'Doctor Portal' : 'Hospital Admin'}</span>
+                  </div>
+                ) : (
+                  <div className="p-1 bg-white/60 backdrop-blur-md rounded-2xl border border-white/80 inline-flex items-center text-xs font-bold shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRole('doctor')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
+                        selectedRole === 'doctor'
+                          ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      <Stethoscope size={13} />
+                      <span>Doctor</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRole('hospital_admin')}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
+                        selectedRole === 'hospital_admin'
+                          ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
+                          : 'text-slate-500 hover:text-slate-900'
+                      }`}
+                    >
+                      <Building2 size={13} />
+                      <span>Hospital Admin</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div className="mb-4 inline-flex rounded-full border border-orange-200/70 bg-orange-50/60 px-4 py-1.5 text-xs font-semibold tracking-[0.12em] text-[#FF9500] backdrop-blur-xl">
+                WELCOME BACK
+              </div>
+
+              <h2 className="text-3xl sm:text-4xl font-semibold tracking-[-0.04em] text-[#1D1D1F]">
+                {selectedRole === 'doctor' ? 'Doctor Sign In.' : 'Hospital Admin Sign In.'}
+              </h2>
+
+              <p className="mt-2 text-sm leading-6 text-[#6E6E73]">
+                {selectedRole === 'doctor'
+                  ? 'Enter your Doctor ID or practitioner email to open today’s OPD console.'
+                  : 'Enter your hospital admin credentials to access workspace settings.'}
+              </p>
+            </motion.div>
+
+            {/* Error Banner */}
+            {error && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-6 p-4 rounded-2xl bg-rose-50/90 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-3 shadow-xs"
+              >
+                <AlertCircle size={18} className="shrink-0 text-rose-500" />
+                <span>{error}</span>
+              </motion.div>
             )}
 
-            <Link
-              to="/"
-              className="text-xs font-bold text-slate-500 hover:text-slate-900 transition flex items-center gap-1 self-end sm:self-auto"
-            >
-              <span>Back to Home</span>
-              <ArrowRight size={13} />
-            </Link>
-          </div>
-
-          {/* Header Title */}
-          <div className="space-y-1.5">
-            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {selectedRole === 'doctor' ? 'Doctor Clinical Sign In' : 'Hospital Admin Portal'}
-            </h1>
-            <p className="text-xs text-slate-500">
-              {selectedRole === 'doctor'
-                ? 'Enter your assigned practitioner email to open today’s OPD consult queue.'
-                : 'Access hospital doctor seats, live lobby display, and reception settings.'}
-            </p>
-          </div>
-
-          {/* Error Banner */}
-          {error && (
-            <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-2xl text-rose-700 text-xs font-semibold flex items-center gap-2.5 animate-shake">
-              <AlertCircle size={17} className="shrink-0 text-rose-500" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          {/* Sign In Form */}
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Identifier (Doctor ID or Email) */}
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700 flex items-center justify-between">
-                <span>{selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}</span>
-                <span className="text-[10px] text-slate-400 font-normal">
-                  {selectedRole === 'doctor' ? 'e.g. H1-D-0001' : 'Supabase Auth'}
-                </span>
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Mail size={16} />
+            {/* Form */}
+            <form onSubmit={handleSubmit} className="mt-8 space-y-5">
+              {/* Identifier */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.5 }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-sm font-medium text-[#1D1D1F]">
+                    {selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}
+                  </label>
+                  <span className="text-[11px] text-[#8E8E93]">
+                    {selectedRole === 'doctor' ? 'e.g. H1-D-0001' : 'Supabase Auth'}
+                  </span>
                 </div>
-                <input
-                  type="text"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
-                  className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition"
-                />
-              </div>
-            </div>
 
-            {/* Password Field */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-slate-700">Password</label>
-                <button
-                  type="button"
-                  onClick={() => setShowForgotModal(true)}
-                  className="text-[11px] font-bold text-emerald-600 hover:text-emerald-700 hover:underline"
-                >
-                  Forgot Password?
-                </button>
-              </div>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none text-slate-400">
-                  <Lock size={16} />
+                <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80 focus-within:shadow-[0_20px_45px_rgba(0,122,255,0.12)]">
+                  <Mail className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
+
+                  <input
+                    type="text"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
+                    className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm"
+                  />
                 </div>
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  className="w-full pl-10 pr-11 py-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition font-mono"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute inset-y-0 right-0 pr-3.5 flex items-center text-slate-400 hover:text-slate-600 transition"
-                  tabIndex={-1}
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </div>
+              </motion.div>
 
-            {/* Remember Me */}
-            <div className="flex items-center justify-between pt-1">
-              <label className="flex items-center gap-2 cursor-pointer select-none">
+              {/* Password */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.6 }}
+              >
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="text-sm font-medium text-[#1D1D1F]">
+                    Password
+                  </label>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowForgotModal(true)}
+                    className="text-sm font-medium text-[#007AFF] transition-opacity hover:opacity-70"
+                  >
+                    Forgot password?
+                  </button>
+                </div>
+
+                <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80 focus-within:shadow-[0_20px_45px_rgba(0,122,255,0.12)]">
+                  <LockKeyhole className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
+
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm font-mono"
+                  />
+
+                  <motion.button
+                    type="button"
+                    whileTap={{ scale: 0.85 }}
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="flex h-10 w-10 items-center justify-center rounded-xl text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#007AFF]"
+                  >
+                    <AnimatePresence mode="wait">
+                      {showPassword ? (
+                        <motion.div
+                          key="hidden"
+                          initial={{ opacity: 0, scale: 0.7, rotate: -30 }}
+                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                          exit={{ opacity: 0, scale: 0.7, rotate: 30 }}
+                        >
+                          <EyeOff className="h-5 w-5" />
+                        </motion.div>
+                      ) : (
+                        <motion.div
+                          key="visible"
+                          initial={{ opacity: 0, scale: 0.7, rotate: 30 }}
+                          animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                          exit={{ opacity: 0, scale: 0.7, rotate: -30 }}
+                        >
+                          <Eye className="h-5 w-5" />
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </motion.button>
+                </div>
+              </motion.div>
+
+              {/* Remember */}
+              <motion.label
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 0.7 }}
+                className="flex cursor-pointer items-center gap-3 pt-1 select-none"
+              >
                 <input
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                  className="h-4 w-4 accent-[#007AFF]"
                 />
-                <span className="text-xs font-medium text-slate-600">Keep me logged in on this clinical workstation</span>
-              </label>
-            </div>
+                <span className="text-sm text-[#6E6E73]">
+                  Keep me signed in on this workstation
+                </span>
+              </motion.label>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className="w-full py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-600/25 transition-all transform active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-2 mt-2 cursor-pointer"
+              {/* Login button */}
+              <motion.button
+                type="submit"
+                disabled={loading}
+                whileHover={{ scale: 1.015, y: -2 }}
+                whileTap={{ scale: 0.97 }}
+                className="relative mt-3 flex h-16 w-full items-center justify-center overflow-hidden rounded-[20px] bg-gradient-to-r from-[#007AFF] via-[#2588FF] to-[#5AC8FA] font-semibold text-white shadow-[0_20px_45px_rgba(0,122,255,0.28)] cursor-pointer disabled:opacity-50"
+              >
+                {/* Animated button light */}
+                <motion.div
+                  animate={{ x: ['-150%', '200%'] }}
+                  transition={{
+                    duration: 3,
+                    repeat: Infinity,
+                    repeatDelay: 1,
+                    ease: 'easeInOut',
+                  }}
+                  className="absolute inset-y-0 w-1/3 -skew-x-12 bg-white/30 blur-md pointer-events-none"
+                />
+
+                <AnimatePresence mode="wait">
+                  {loading ? (
+                    <motion.div
+                      key="loading"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="relative flex items-center gap-3 text-sm font-bold"
+                    >
+                      <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
+                        className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white"
+                      />
+                      <span>Authenticating with Supabase...</span>
+                    </motion.div>
+                  ) : (
+                    <motion.div
+                      key="signin"
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      className="relative flex items-center gap-3 text-sm font-bold"
+                    >
+                      <span>
+                        {selectedRole === 'doctor' ? 'Sign In to Doctor Console' : 'Sign In to Hospital Admin'}
+                      </span>
+                      <ArrowRight className="h-5 w-5" />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </motion.button>
+            </form>
+
+            {/* Footer */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.85 }}
+              className="mt-9 flex items-center justify-center gap-2 text-center"
             >
-              {isLoading ? (
-                <span>Authenticating with Supabase...</span>
-              ) : (
-                <>
-                  <span>
-                    {selectedRole === 'doctor' ? 'Sign In to Doctor Console' : 'Sign In to Hospital Admin'}
-                  </span>
-                  <ArrowRight size={15} />
-                </>
-              )}
-            </button>
-          </form>
-
-          {/* Bottom Security Info & Support */}
-          <div className="pt-4 border-t border-slate-100 space-y-2">
-            <div className="flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-400 gap-2">
-              <div className="flex items-center gap-3">
-                <Link to="/privacy" className="hover:text-slate-700 transition">Privacy Policy</Link>
-                <span>•</span>
-                <Link to="/terms" className="hover:text-slate-700 transition">Terms of Service</Link>
-              </div>
-              <div className="text-[11px]">
-                Need credentials?{' '}
-                <a href="mailto:support@medtechfixaters.com" className="font-bold text-emerald-600 hover:underline">
-                  Contact Super Admin
-                </a>
-              </div>
-            </div>
+              <ShieldCheck className="h-4 w-4 text-[#007AFF]" />
+              <p className="text-xs text-[#8E8E93]">
+                Your workspace access depends on your assigned account role.
+              </p>
+            </motion.div>
           </div>
-        </div>
-      </div>
+        </section>
+      </motion.div>
 
       {/* ─── MODAL: FORGOT PASSWORD RECOVERY ─── */}
-      {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-4 text-left">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <PhoneCall size={16} />
+      <AnimatePresence>
+        {showForgotModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+              className="bg-white/90 backdrop-blur-2xl border border-white/90 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-4 text-left"
+            >
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#007AFF] flex items-center justify-center">
+                    <PhoneCall size={18} />
+                  </div>
+                  <h3 className="font-bold text-base text-[#1D1D1F]">Credential Recovery</h3>
                 </div>
-                <h3 className="font-black text-base text-slate-900">Credential Recovery</h3>
+                <button
+                  onClick={() => setShowForgotModal(false)}
+                  className="text-slate-400 hover:text-slate-700 font-bold text-sm"
+                >
+                  ✕
+                </button>
               </div>
-              <button
-                onClick={() => setShowForgotModal(false)}
-                className="text-slate-400 hover:text-slate-700 font-bold text-sm"
-              >
-                ✕
-              </button>
-            </div>
 
-            <div className="space-y-3 text-xs text-slate-600">
-              <p>
-                Clinical practitioner accounts and hospital admin credentials are cryptographically secured by Supabase Auth and provisioned by your facility or platform super administrator.
-              </p>
-              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1 text-[11px]">
-                <strong className="text-slate-800 block">How to reset your password:</strong>
-                <p>1. Contact your Hospital Administrator to trigger a password reset.</p>
-                <p>2. For Master Hospital Admin access, request a key renewal from Super Admin at <code>/mrshahidbabu</code>.</p>
+              <div className="space-y-3 text-xs text-slate-600 leading-relaxed">
+                <p>
+                  Clinical practitioner accounts and hospital admin credentials are cryptographically secured by Supabase Auth and provisioned by your facility or platform super administrator.
+                </p>
+                <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-1 text-[11px] text-blue-900 font-medium">
+                  <strong className="text-[#007AFF] block font-bold">How to reset your password:</strong>
+                  <p>1. Contact your Hospital Administrator to trigger a password reset.</p>
+                  <p>2. For Master Hospital Admin access, request a key renewal from Super Admin at <code>/mrshahidbabu</code>.</p>
+                </div>
               </div>
-            </div>
 
-            <div className="pt-2 flex justify-end">
-              <button
-                onClick={() => setShowForgotModal(false)}
-                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition"
-              >
-                Understood, Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
+              <div className="pt-2 flex justify-end">
+                <button
+                  onClick={() => setShowForgotModal(false)}
+                  className="px-5 py-2.5 bg-[#007AFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
+                >
+                  Understood, Close
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </main>
   )
 }

@@ -249,19 +249,16 @@ export default function LandingPage() {
       {/* ─── SECTION 2B: KEY BENEFITS (WHY MEDTECH FIXATERS) ─── */}
       <KeyBenefits />
 
-      {/* ─── SECTION 2C: HOW PLATFORM WORKS ─── */}
+      {/* ─── SECTION 2C: HOW PLATFORM WORKS ("One Platform. Different Journeys.") ─── */}
       <HowPlatformWorks />
 
-      {/* ─── SECTION 3: CONNECTED SYSTEM & MULTI-TENANT ARCHITECTURE ─── */}
-      <ConnectedSystemSection />
-
-      {/* ─── SECTION 4: QR APPOINTMENT SYSTEM ─── */}
+      {/* ─── SECTION 3: QR APPOINTMENT SYSTEM ("One QR Code. AI-Guided Booking. A Live Queue") ─── */}
       <QRAppointmentShowcase />
 
-      {/* ─── SECTION 5: QUESTIONS, ANSWERED (FAQ & AI ASSISTANT) ─── */}
-      <AIAutomationSection />
+      {/* ─── SECTION 4: CONNECTED SYSTEM & MULTI-TENANT ARCHITECTURE ─── */}
+      <ConnectedSystemSection />
 
-      {/* ─── SECTION 6: FAQ & AI ASSISTANT ─── */}
+      {/* ─── SECTION 5: FAQ ─── */}
       <FAQSection />
 
       {/* Footer */}

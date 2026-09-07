@@ -44,7 +44,7 @@ export default function TermsPage() {
                 <ShieldCheck size={18} className="text-[#00875A]" /> 2. Doctor Seat Limits & License Rights
               </h2>
               <p>
-                Hospital Administrators are granted non-transferable, non-exclusive license access based on the allocated doctor seat capacity defined by the Platform Owner at <code className="text-emerald-700 font-mono font-bold">/hospitaladminmedtech</code>. Re-selling or sub-licensing doctor accounts without written authorization is strictly prohibited.
+                Hospital Administrators are granted non-transferable, non-exclusive license access based on the allocated doctor seat capacity defined by the Platform Owner at <code className="text-emerald-700 font-mono font-bold">/hospitaldashboard</code>. Re-selling or sub-licensing doctor accounts without written authorization is strictly prohibited.
               </p>
             </section>
 
