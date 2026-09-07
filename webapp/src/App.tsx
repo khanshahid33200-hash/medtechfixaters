@@ -21,6 +21,7 @@ import ThankYouPage from './pages/ThankYouPage'
 import NotFoundPage from './pages/NotFoundPage'
 
 // Self-Service & Sign In
+import AppointmentBookingPage from './pages/AppointmentBookingPage'
 import IntakePage from './pages/IntakePage'
 import TrackPage from './pages/TrackPage'
 import RxPage from './pages/RxPage'
@@ -100,9 +101,11 @@ function App() {
         <Route path="/refund-policy" element={<RefundPolicyPage />} />
         <Route path="/thank-you" element={<ThankYouPage />} />
 
-        {/* Public Patient Self-Service Workflows */}
-        <Route path="/a/:token" element={<IntakePage />} />
-        <Route path="/book/:token" element={<IntakePage />} />
+        {/* Public Patient Self-Service Workflows & AI/Manual QR Appointment Booking */}
+        <Route path="/appointment/:hospitalId" element={<AppointmentBookingPage />} />
+        <Route path="/a/:token" element={<AppointmentBookingPage />} />
+        <Route path="/book/:token" element={<AppointmentBookingPage />} />
+        <Route path="/intake/:token" element={<IntakePage />} />
         <Route path="/track" element={<TrackPage />} />
         <Route path="/rx" element={<RxPage />} />
         <Route path="/display/:token" element={<DisplayBoard />} />
