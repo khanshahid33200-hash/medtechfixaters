@@ -74,3 +74,6 @@ webapp/dist/
 .agents/
 skills-lock.json
 *.log
+
+.vercel
+.env*
