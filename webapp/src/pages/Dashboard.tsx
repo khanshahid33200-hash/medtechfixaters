@@ -8,10 +8,11 @@ import {
   X, UserCheck, Stethoscope, Layers, Phone,
   Clock, Volume2, FileText, CheckCircle,
   Star, Upload, Edit3, Trash2, DollarSign, Send, Eye, ShieldCheck,
-  Check
+  Check, QrCode, Download, Copy, Share2, ExternalLink
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
+import { supabase } from '../lib/supabase'
 import {
   getDoctorAppointments,
   updateAppointmentStatus,
@@ -110,6 +111,45 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   const selectedHospital = doctorProfile?.hospital_name || 'Hospital Facility'
   const hospitalLocation = 'Clinical OPD Wing'
 
+  // Registered Hospital QR Code state for Doctor Workspace
+  const [hospitalQrToken, setHospitalQrToken] = useState<string>(() => {
+    const fallbackId = hospitalId || 'OPD'
+    return `QR-${fallbackId.replace(/-/g, '').slice(0, 8).toUpperCase()}`
+  })
+
+  useEffect(() => {
+    async function loadHospitalQr() {
+      if (!hospitalId) return
+      try {
+        const { data } = await supabase
+          .from('qr_codes')
+          .select('token')
+          .eq('hospital_id', hospitalId)
+          .maybeSingle()
+        if (data?.token) {
+          setHospitalQrToken(data.token)
+        } else {
+          const uniqueToken = `QR-${hospitalId.replace(/-/g, '').slice(0, 8).toUpperCase()}`
+          setHospitalQrToken(uniqueToken)
+          await supabase.from('qr_codes').upsert([{
+            hospital_id: hospitalId,
+            token: uniqueToken,
+            booking_url: `/book/${uniqueToken}`,
+            intake_url: `/book/${uniqueToken}`,
+            status: 'active',
+            is_active: true
+          }])
+        }
+      } catch (e) {
+        console.warn('Doctor dashboard QR fetch notice:', e)
+      }
+    }
+    loadHospitalQr()
+  }, [hospitalId])
+
+  const hospitalBookingUrl = `${window.location.origin}/book/${hospitalQrToken}`
+  const hospitalQrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(hospitalBookingUrl)}`
+
   // Live Hospital Clock
   const [currentTime, setCurrentTime] = useState(new Date())
   useEffect(() => {
@@ -120,7 +160,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   // Navigation State
   const [activeNav, setActiveNav] = useState<string>(() => {
     const path = window.location.pathname.replace(/^\//, '')
-    if (path && ['queue', 'appointments', 'patients', 'consultations', 'prescriptions', 'templates', 'follow-ups', 'reports', 'profile', 'settings'].includes(path)) {
+    if (path && ['queue', 'appointments', 'patients', 'consultations', 'prescriptions', 'templates', 'follow-ups', 'reports', 'profile', 'qr-kiosk', 'settings'].includes(path)) {
       return path
     }
     return initialTab || 'dashboard'
@@ -533,6 +573,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     { id: 'follow-ups', label: 'Follow Ups', icon: <CheckCircle size={16} /> },
     { id: 'reports', label: 'Reports', icon: <Activity size={16} /> },
     { id: 'profile', label: 'Profile', icon: <UserCheck size={16} /> },
+    { id: 'qr-kiosk', label: 'Hospital Patient QR', icon: <QrCode size={16} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={16} /> },
   ]
 
@@ -1198,6 +1239,59 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   <span className="text-[10px] text-slate-400 font-semibold block">
                     Room: {profileForm.room_number}
                   </span>
+                </div>
+              </div>
+
+              {/* Registered Hospital OPD QR Card */}
+              <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 text-white p-5 rounded-3xl border border-indigo-700/40 shadow-lg space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-300">
+                      <QrCode size={18} />
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-xs text-white leading-tight">Hospital Patient QR</h4>
+                      <span className="text-[10px] text-indigo-300 font-semibold truncate block max-w-[140px]">{selectedHospital}</span>
+                    </div>
+                  </div>
+                  <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 text-[9px] font-black rounded-full border border-emerald-500/30">
+                    Live Kiosk
+                  </span>
+                </div>
+
+                <div className="bg-white p-3 rounded-2xl flex items-center gap-3">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(hospitalBookingUrl)}`}
+                    alt="Hospital Patient Booking QR Code"
+                    className="w-20 h-20 rounded-xl object-contain border border-slate-100 shrink-0"
+                  />
+                  <div className="space-y-1 text-slate-800 min-w-0 flex-1">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Token Code</span>
+                    <span className="font-mono text-xs font-black text-indigo-600 block truncate">{hospitalQrToken}</span>
+                    <p className="text-[10px] text-slate-500 font-medium leading-tight">Patients scan this QR to book OPD slots & view queue.</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs font-bold pt-1">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(hospitalBookingUrl)
+                      setNotice('✓ Hospital QR Booking URL copied to clipboard!')
+                      setTimeout(() => setNotice(null), 3000)
+                    }}
+                    className="py-2 bg-white/10 hover:bg-white/20 border border-white/15 rounded-xl text-white text-[11px] flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Copy size={13} /> Copy Link
+                  </button>
+                  <button
+                    onClick={() => {
+                      setActiveNav('qr-kiosk')
+                      navigate('/qr-kiosk', { replace: true })
+                    }}
+                    className="py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-white text-[11px] flex items-center justify-center gap-1.5 transition shadow-md shadow-indigo-600/30 cursor-pointer"
+                  >
+                    <QrCode size={13} /> Full Poster →
+                  </button>
                 </div>
               </div>
             </section>
@@ -2004,6 +2098,103 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 >
                   Save OPD Settings
                 </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            VIEW 12: REGISTERED HOSPITAL PATIENT QR KIOSK
+        ═══════════════════════════════════════════════════════════════════ */}
+        {activeNav === 'qr-kiosk' && (
+          <section className="space-y-6 max-w-4xl mx-auto">
+            <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 text-xs font-bold mb-2">
+                    <QrCode size={14} /> Registered Hospital OPD QR
+                  </div>
+                  <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+                    Hospital Self-Service Patient QR
+                  </h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Patients scan this QR code on their smartphone at reception or entrance to view live queue, intake medical details, and book instant OPD consultations with {doctorName}.
+                  </p>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 shrink-0 transition cursor-pointer"
+                >
+                  <Printer size={15} /> Print Poster
+                </button>
+              </div>
+
+              {/* Poster Card */}
+              <div className="bg-gradient-to-br from-indigo-900 via-slate-900 to-indigo-950 p-8 rounded-3xl text-white border border-indigo-800/40 shadow-2xl text-center space-y-6 max-w-md mx-auto relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-40 h-40 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="flex items-center justify-center gap-3">
+                  <img src="/assets/brand-icon.png" alt="Logo" className="w-10 h-10 object-contain" />
+                  <div className="text-left">
+                    <h3 className="font-black text-base tracking-tight text-white leading-tight">{selectedHospital}</h3>
+                    <p className="text-[11px] text-indigo-300 font-bold uppercase tracking-wider">{hospitalLocation}</p>
+                  </div>
+                </div>
+
+                <div className="bg-white p-4 rounded-2xl shadow-xl inline-block border-4 border-white">
+                  <img
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(hospitalBookingUrl)}`}
+                    alt="Hospital QR Code"
+                    className="w-56 h-56 object-contain rounded-lg mx-auto"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <span className="px-3 py-1 bg-white/10 rounded-full text-xs font-mono font-bold text-indigo-200 border border-white/15 inline-block">
+                    TOKEN: {hospitalQrToken}
+                  </span>
+                  <p className="text-xs text-indigo-200/80 font-semibold max-w-xs mx-auto">
+                    Scan to Book OPD Slot & Track Live Queue Status
+                  </p>
+                </div>
+              </div>
+
+              {/* Action Controls */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(hospitalBookingUrl)
+                    setNotice('✓ Hospital Booking Link copied to clipboard!')
+                    setTimeout(() => setNotice(null), 3500)
+                  }}
+                  className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 transition cursor-pointer"
+                >
+                  <Copy size={20} className="text-indigo-600 mb-1" />
+                  <span className="text-xs font-bold text-slate-800">Copy Patient Link</span>
+                  <span className="text-[10px] text-slate-400">Share via WhatsApp / SMS</span>
+                </button>
+
+                <a
+                  href={hospitalBookingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 transition cursor-pointer"
+                >
+                  <ExternalLink size={20} className="text-indigo-600 mb-1" />
+                  <span className="text-xs font-bold text-slate-800">Preview Booking Screen</span>
+                  <span className="text-[10px] text-slate-400">Test patient booking flow</span>
+                </a>
+
+                <a
+                  href={hospitalQrImgUrl}
+                  download={`Hospital-QR-${hospitalQrToken}.png`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-4 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-2xl flex flex-col items-center justify-center text-center space-y-1 transition cursor-pointer"
+                >
+                  <Download size={20} className="text-indigo-600 mb-1" />
+                  <span className="text-xs font-bold text-slate-800">Download High-Res QR</span>
+                  <span className="text-[10px] text-slate-400">For printing custom standees</span>
+                </a>
               </div>
             </div>
           </section>

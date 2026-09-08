@@ -1,12 +1,20 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
+  AnimatePresence,
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+} from 'motion/react'
+import {
   Building2, ShieldCheck, Search, Users, Activity, Bell,
   Plus, Settings, ChevronDown, CheckCircle2,
   Calendar, CreditCard, LogOut, ChevronRight,
   TrendingUp, BarChart3, AlertCircle, Trash2, Edit3, Key,
   Radio, X, UserCheck, Stethoscope, Layers, Sliders, Phone,
-  Server, Globe, QrCode, Download, Printer, Copy, ExternalLink
+  Server, Globe, QrCode, Download, Printer, Copy, ExternalLink,
+  Eye, EyeOff, LockKeyhole, Mail, Sparkles, ArrowRight, ArrowLeft
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
@@ -97,6 +105,23 @@ export default function OwnerAdmin() {
   const [loginForm, setLoginForm] = useState({ email: '', password: '' })
   const [loginError, setLoginError] = useState('')
   const [ownerLoginLoading, setOwnerLoginLoading] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
+
+  // Mouse reactive glow coordinates for Super Admin Login screen
+  const mouseX = useMotionValue(0)
+  const mouseY = useMotionValue(0)
+
+  const springX = useSpring(mouseX, { stiffness: 50, damping: 20 })
+  const springY = useSpring(mouseY, { stiffness: 50, damping: 20 })
+
+  const glowX = useTransform(springX, [-500, 500], [-80, 80])
+  const glowY = useTransform(springY, [-500, 500], [-50, 50])
+
+  function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect()
+    mouseX.set(event.clientX - rect.left - rect.width / 2)
+    mouseY.set(event.clientY - rect.top - rect.height / 2)
+  }
 
   // Navigation State
   const [activeNav, setActiveNav] = useState<string>('dashboard')
@@ -688,62 +713,274 @@ export default function OwnerAdmin() {
 
   if (!isOwnerAuthenticated) {
     return (
-      <div className="min-h-screen bg-[#0F1117] flex items-center justify-center p-4 selection:bg-indigo-500 selection:text-white">
-        <div className="max-w-md w-full bg-[#181B26] border border-white/10 rounded-3xl p-8 sm:p-10 shadow-2xl space-y-6">
-          <div className="text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center mx-auto text-indigo-400">
-              <ShieldCheck size={32} />
-            </div>
-            <div>
-              <h1 className="text-2xl font-black text-white tracking-tight">MedTech Fixaters</h1>
-              <p className="text-xs text-indigo-400 font-bold uppercase tracking-widest mt-0.5">Platform Super Admin</p>
-            </div>
-            <p className="text-xs text-white/40">Enter authorized credentials to access master controls.</p>
-          </div>
+      <main
+        onMouseMove={handleMouseMove}
+        className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#0A0C14] px-4 py-8 font-sans text-slate-100 selection:bg-indigo-500/30 select-none"
+      >
+        {/* Background grid */}
+        <div
+          className="absolute inset-0 opacity-[0.25] pointer-events-none"
+          style={{
+            backgroundImage: 'radial-gradient(rgba(99, 102, 241, 0.25) 1px, transparent 1px)',
+            backgroundSize: '32px 32px',
+          }}
+        />
 
-          {loginError && (
-            <div className="p-3.5 bg-rose-500/10 border border-rose-500/20 rounded-xl text-rose-400 text-xs font-semibold flex items-center gap-2">
-              <AlertCircle size={16} className="shrink-0" />
-              <span>{loginError}</span>
-            </div>
-          )}
+        {/* Animated glowing liquid background blobs */}
+        <motion.div
+          style={{ x: glowX, y: glowY }}
+          className="absolute -left-40 -top-32 h-[560px] w-[560px] rounded-full bg-indigo-600/20 blur-[140px] pointer-events-none"
+        />
 
-          <form onSubmit={handleOwnerLogin} className="space-y-4">
-            <div className="space-y-1.5 text-left">
-              <label className="text-xs font-bold text-white/60">Admin Email</label>
-              <input
-                type="email"
-                required
-                value={loginForm.email}
-                onChange={e => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
-                placeholder="admin@medtechfixaters.com"
-                className="w-full px-4 py-3 bg-[#0F1117] border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition placeholder:text-white/20"
-              />
-            </div>
-            <div className="space-y-1.5 text-left">
-              <label className="text-xs font-bold text-white/60">Master Password</label>
-              <input
-                type="password"
-                required
-                value={loginForm.password}
-                onChange={e => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
-                placeholder="••••••••••••"
-                className="w-full px-4 py-3 bg-[#0F1117] border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition placeholder:text-white/20"
-              />
-            </div>
-            <button
-              type="submit"
-              disabled={ownerLoginLoading}
-              className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 text-white font-bold text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-indigo-600/30 transition transform hover:-translate-y-0.5"
+        <motion.div
+          className="absolute -right-40 top-10 h-[480px] w-[480px] rounded-full bg-purple-600/20 blur-[130px] pointer-events-none"
+          animate={{
+            x: [0, -80, 40, 0],
+            y: [0, 60, -50, 0],
+            scale: [1, 1.15, 0.9, 1],
+          }}
+          transition={{
+            duration: 18,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+
+        <motion.div
+          className="absolute -bottom-48 left-1/3 h-[520px] w-[520px] rounded-full bg-blue-600/15 blur-[150px] pointer-events-none"
+          animate={{
+            x: [0, 60, -60, 0],
+            y: [0, -50, 30, 0],
+            scale: [1, 0.95, 1.1, 1],
+          }}
+          transition={{
+            duration: 22,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+
+        {/* Floating glass particles */}
+        {[...Array(14)].map((_, index) => (
+          <motion.div
+            key={index}
+            className="absolute rounded-full border border-white/20 bg-white/10 backdrop-blur-md pointer-events-none"
+            style={{
+              width: `${5 + (index % 4) * 4}px`,
+              height: `${5 + (index % 4) * 4}px`,
+              left: `${(index * 14 + 5) % 95}%`,
+              top: `${(index * 19 + 7) % 90}%`,
+            }}
+            animate={{
+              y: [0, -35, 0],
+              opacity: [0.15, 0.65, 0.15],
+              scale: [1, 1.35, 1],
+            }}
+            transition={{
+              duration: 4.5 + index,
+              delay: index * 0.25,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+
+        {/* Main liquid glass card container */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.92, y: 50, filter: 'blur(20px)' }}
+          animate={{ opacity: 1, scale: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ type: 'spring', stiffness: 130, damping: 20, mass: 0.8 }}
+          className="relative z-10 grid w-full max-w-5xl overflow-hidden rounded-[36px] border border-white/15 bg-white/[0.04] shadow-[0_32px_100px_rgba(0,0,0,0.6)] backdrop-blur-[45px] lg:grid-cols-[1fr_1.1fr]"
+        >
+          {/* Moving liquid glass reflection */}
+          <motion.div
+            animate={{ x: ['-120%', '200%'] }}
+            transition={{ duration: 7, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }}
+            className="pointer-events-none absolute inset-y-0 z-20 w-[35%] -skew-x-12 bg-gradient-to-r from-transparent via-white/10 to-transparent blur-2xl"
+          />
+
+          {/* LEFT PANEL: Super Admin Feature Showcase */}
+          <section className="relative hidden min-h-[580px] overflow-hidden border-r border-white/10 p-10 lg:flex lg:flex-col lg:justify-between text-left bg-gradient-to-b from-white/[0.02] to-transparent">
+            {/* Top Brand Logo */}
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.2, type: 'spring', stiffness: 180, damping: 20 }}
+              className="relative z-10 flex items-center gap-3.5"
             >
-              {ownerLoginLoading ? 'Signing In…' : 'Sign In to Master Panel →'}
-            </button>
-          </form>
-          <div className="pt-2 text-center">
-            <Link to="/" className="text-xs text-white/30 hover:text-white transition">← Return to Public Homepage</Link>
-          </div>
-        </div>
-      </div>
+              <Link to="/" className="flex items-center gap-3 group">
+                <motion.div
+                  animate={{ rotate: [0, 3, -3, 0], y: [0, -3, 0] }}
+                  transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+                  className="flex h-13 w-13 items-center justify-center rounded-[18px] border border-white/20 bg-white/10 shadow-[0_12px_32px_rgba(99,102,241,0.25)] backdrop-blur-xl group-hover:scale-105 transition-transform"
+                >
+                  <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="h-8 w-8 object-contain" />
+                </motion.div>
+
+                <div>
+                  <p className="text-base font-black tracking-tight text-white">
+                    MedTech Fixaters
+                  </p>
+                  <p className="text-[11px] font-bold text-indigo-400 uppercase tracking-widest">
+                    Platform Master Console
+                  </p>
+                </div>
+              </Link>
+            </motion.div>
+
+            {/* Middle Value Proposition Cards */}
+            <div className="relative z-10 space-y-6 my-auto py-6">
+              <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-indigo-500/10 border border-indigo-500/30 text-indigo-300 text-xs font-semibold">
+                <ShieldCheck size={14} className="text-indigo-400 shrink-0" />
+                <span>Super Admin Authorization Required</span>
+              </div>
+
+              <h2 className="text-3xl font-black text-white leading-tight tracking-tight">
+                Global Infrastructure & Tenant Management
+              </h2>
+
+              <p className="text-xs text-white/60 leading-relaxed font-medium">
+                Master control portal for provisioned OPD hospitals, live queue telemetry, doctor quota management, and platform-wide analytics.
+              </p>
+
+              <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 backdrop-blur-sm space-y-1">
+                  <div className="flex items-center gap-2 text-indigo-400">
+                    <Server size={14} />
+                    <span className="text-xs font-bold text-white">Multi-Tenant</span>
+                  </div>
+                  <p className="text-[11px] text-white/50">Full database & schema isolation</p>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-white/[0.04] border border-white/10 backdrop-blur-sm space-y-1">
+                  <div className="flex items-center gap-2 text-emerald-400">
+                    <Activity size={14} />
+                    <span className="text-xs font-bold text-white">Live Monitoring</span>
+                  </div>
+                  <p className="text-[11px] text-white/50">Real-time OPD patient flow</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Status Indicator */}
+            <div className="relative z-10 flex items-center justify-between pt-4 border-t border-white/10 text-xs text-white/40 font-medium">
+              <div className="flex items-center gap-2">
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span>Platform Cluster Active</span>
+              </div>
+              <span className="text-[11px] font-mono text-white/30">v2.4.0 • Enterprise</span>
+            </div>
+          </section>
+
+          {/* RIGHT PANEL: Login Form */}
+          <section className="relative p-8 sm:p-10 flex flex-col justify-center text-left">
+            {/* Top Header Mobile */}
+            <div className="mb-6 lg:hidden flex items-center gap-3">
+              <img src="/assets/brand-icon.png" alt="Logo" className="w-8 h-8 object-contain" />
+              <div>
+                <h2 className="text-sm font-black text-white">MedTech Fixaters</h2>
+                <p className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider">Super Admin OS</p>
+              </div>
+            </div>
+
+            <div className="space-y-2 mb-6">
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 text-[11px] font-bold tracking-wide uppercase">
+                <Key size={12} />
+                <span>Restricted Master Access</span>
+              </div>
+              <h1 className="text-2xl font-black text-white tracking-tight">
+                Platform Sign In
+              </h1>
+              <p className="text-xs text-white/50">
+                Enter your authorized Super Admin credentials to unlock control tools.
+              </p>
+            </div>
+
+            {loginError && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mb-5 p-3.5 bg-rose-500/15 border border-rose-500/30 rounded-2xl text-rose-300 text-xs font-semibold flex items-center gap-2.5 shadow-lg shadow-rose-950/30"
+              >
+                <AlertCircle size={16} className="shrink-0 text-rose-400" />
+                <span>{loginError}</span>
+              </motion.div>
+            )}
+
+            <form onSubmit={handleOwnerLogin} className="space-y-4">
+              {/* Email field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-white/80 flex items-center justify-between">
+                  <span>Super Admin Email</span>
+                  <span className="text-[10px] font-normal text-white/40">Verified domain</span>
+                </label>
+                <div className="relative">
+                  <Mail size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                  <input
+                    type="email"
+                    required
+                    value={loginForm.email}
+                    onChange={e => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
+                    placeholder="admin@medtechfixaters.com"
+                    className="w-full pl-11 pr-4 py-3 bg-white/[0.06] border border-white/15 rounded-2xl text-white text-sm focus:outline-none focus:border-indigo-400 focus:bg-white/[0.09] transition placeholder:text-white/20 shadow-inner"
+                  />
+                </div>
+              </div>
+
+              {/* Password field */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-white/80 flex items-center justify-between">
+                  <span>Master Access Password</span>
+                </label>
+                <div className="relative">
+                  <LockKeyhole size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={loginForm.password}
+                    onChange={e => setLoginForm(prev => ({ ...prev, password: e.target.value }))}
+                    placeholder="••••••••••••"
+                    className="w-full pl-11 pr-11 py-3 bg-white/[0.06] border border-white/15 rounded-2xl text-white text-sm focus:outline-none focus:border-indigo-400 focus:bg-white/[0.09] transition placeholder:text-white/20 shadow-inner"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Submit button */}
+              <motion.button
+                whileHover={{ scale: 1.01 }}
+                whileTap={{ scale: 0.99 }}
+                type="submit"
+                disabled={ownerLoginLoading}
+                className="w-full py-3.5 mt-2 bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold text-xs uppercase tracking-wider rounded-2xl shadow-xl shadow-indigo-600/30 transition-all disabled:opacity-50 flex items-center justify-center gap-2 group cursor-pointer"
+              >
+                {ownerLoginLoading ? (
+                  <span>Verifying Authorization…</span>
+                ) : (
+                  <>
+                    <span>Unlock Master Panel</span>
+                    <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                  </>
+                )}
+              </motion.button>
+            </form>
+
+            <div className="pt-6 border-t border-white/10 mt-6 flex items-center justify-between text-xs">
+              <Link to="/" className="text-white/40 hover:text-white transition flex items-center gap-1.5 font-medium">
+                <ArrowLeft size={14} />
+                <span>Return to Homepage</span>
+              </Link>
+              <span className="text-[11px] text-white/30">End-to-End Encrypted</span>
+            </div>
+          </section>
+        </motion.div>
+      </main>
     )
   }
 
