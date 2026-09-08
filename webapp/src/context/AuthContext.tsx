@@ -460,7 +460,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const { error: otpErr } = await supabase.auth.signInWithOtp({
+      let { error: otpErr } = await supabase.auth.signInWithOtp({
         email: resolvedEmail,
         options: {
           shouldCreateUser: false,
@@ -468,7 +468,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (otpErr) {
-        throw new Error(otpErr.message || 'Could not send Mail OTP code.')
+        const msg = otpErr.message?.toLowerCase() || ''
+        if (msg.includes('signups are not allowed') || msg.includes('signup') || msg.includes('user not found')) {
+          // Attempt retry with shouldCreateUser: true in case user registration is permitted
+          const { error: retryErr } = await supabase.auth.signInWithOtp({
+            email: resolvedEmail,
+            options: {
+              shouldCreateUser: true,
+            },
+          })
+
+          if (retryErr) {
+            throw new Error(`Account Not Registered: The email/Doctor ID "${cleanId}" was not found in Supabase Auth. Please verify your credentials or ask your hospital administrator to register your email on /mrshahidbabu.`)
+          }
+        } else {
+          throw new Error(otpErr.message || 'Could not send Mail OTP code.')
+        }
       }
 
       setIsLoading(false)
