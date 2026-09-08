@@ -20,9 +20,6 @@ import {
   Building2,
   AlertCircle,
   PhoneCall,
-  CheckCircle2,
-  RefreshCw,
-  KeyRound,
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
@@ -44,78 +41,29 @@ export default function Login({ lockedRole }: LoginProps) {
 
   const navigate = useNavigate()
   const location = useLocation()
-  const { loginWithSupabase } = useAuth()
+  const { loginWithSupabase, sendSupabaseOtp, verifySupabaseOtp } = useAuth()
 
   const [selectedRole, setSelectedRole] = useState<'doctor' | 'hospital_admin'>(lockedRole || 'doctor')
+  const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('password')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(true)
 
-  // 2FA OTP state for Hospital Admin Login
-  const [authStep, setAuthStep] = useState<'credentials' | 'otp'>('credentials')
-  const [generatedOtp, setGeneratedOtp] = useState('')
-  const [otpInputs, setOtpInputs] = useState<string[]>(['', '', '', '', '', ''])
-  const [resendTimer, setResendTimer] = useState(30)
-  const [otpNotice, setOtpNotice] = useState<string | null>(null)
+  // OTP State
+  const [otpSent, setOtpSent] = useState(false)
+  const [otpCode, setOtpCode] = useState('')
+  const [resolvedOtpEmail, setResolvedOtpEmail] = useState('')
+  const [notice, setNotice] = useState<string | null>(null)
+  const [otpTimer, setOtpTimer] = useState(0)
 
   React.useEffect(() => {
-    if (authStep === 'otp' && resendTimer > 0) {
-      const timer = setInterval(() => setResendTimer(p => p - 1), 1000)
-      return () => clearInterval(timer)
+    let interval: any = null
+    if (otpTimer > 0) {
+      interval = setInterval(() => setOtpTimer((prev) => prev - 1), 1000)
     }
-  }, [authStep, resendTimer])
-
-  const handleOtpChange = (index: number, value: string) => {
-    const val = value.replace(/\D/g, '').slice(-1)
-    const newInputs = [...otpInputs]
-    newInputs[index] = val
-    setOtpInputs(newInputs)
-
-    if (val && index < 5) {
-      const nextInput = document.getElementById(`otp-input-${index + 1}`)
-      if (nextInput) nextInput.focus()
-    }
-  }
-
-  const handleOtpKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !otpInputs[index] && index > 0) {
-      const prevInput = document.getElementById(`otp-input-${index - 1}`)
-      if (prevInput) prevInput.focus()
-    }
-  }
-
-  const handleOtpPaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
-    e.preventDefault()
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pasted) {
-      const digits = pasted.split('')
-      const newInputs = ['', '', '', '', '', '']
-      digits.forEach((d, i) => {
-        if (i < 6) newInputs[i] = d
-      })
-      setOtpInputs(newInputs)
-      const lastIndex = Math.min(digits.length - 1, 5)
-      const targetInput = document.getElementById(`otp-input-${lastIndex}`)
-      if (targetInput) targetInput.focus()
-    }
-  }
-
-  const handleAutoFillOtp = () => {
-    if (generatedOtp.length === 6) {
-      setOtpInputs(generatedOtp.split(''))
-      setError('')
-    }
-  }
-
-  const handleResendOtp = () => {
-    const newOtp = Math.floor(100000 + Math.random() * 900000).toString()
-    setGeneratedOtp(newOtp)
-    setResendTimer(30)
-    setOtpInputs(['', '', '', '', '', ''])
-    setOtpNotice(`✓ Security OTP code resent! New code: ${newOtp}`)
-    setTimeout(() => setOtpNotice(null), 5000)
-  }
+    return () => clearInterval(interval)
+  }, [otpTimer])
 
   const deniedState = (location.state as { message?: string } | null)?.message
   const [error, setError] = useState(deniedState || '')
@@ -141,58 +89,87 @@ export default function Login({ lockedRole }: LoginProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setNotice(null)
+    setLoading(true)
 
     const cleanEmail = email.trim().toLowerCase()
     const cleanPass = password.trim()
 
-    if (authStep === 'credentials') {
-      if (!cleanEmail || !cleanPass) {
-        setError('Please enter your registered Doctor ID / Email and password.')
-        return
-      }
+    if (!cleanEmail || !cleanPass) {
+      setLoading(false)
+      setError('Please enter your registered Doctor ID / Email and password.')
+      return
+    }
 
-      setLoading(true)
-
-      try {
-        const res = await loginWithSupabase(cleanEmail, cleanPass, selectedRole)
-        const actualRole = res?.role || selectedRole
-
-        if (actualRole === 'hospital_admin' || selectedRole === 'hospital_admin') {
-          // Trigger 2FA Security OTP step for Hospital Admin
-          const newOtp = Math.floor(100000 + Math.random() * 900000).toString()
-          setGeneratedOtp(newOtp)
-          setAuthStep('otp')
-          setResendTimer(30)
-          setOtpInputs(['', '', '', '', '', ''])
-          setOtpNotice(`✓ 2FA Security OTP (${newOtp}) sent to registered email & mobile!`)
-        } else if (actualRole === 'super_admin') {
-          navigate('/mrshahidbabu')
-        } else {
-          navigate('/dashboard')
-        }
-      } catch (err: any) {
-        setError(err.message || 'Invalid credentials. Please verify your email/Doctor ID and password.')
-      } finally {
-        setLoading(false)
-      }
-    } else {
-      // Step 2: OTP Verification
-      const enteredOtp = otpInputs.join('').trim()
-      if (enteredOtp.length !== 6) {
-        setError('Please enter all 6 digits of the Security OTP.')
-        return
-      }
-
-      if (enteredOtp !== generatedOtp && enteredOtp !== '123456') {
-        setError('Invalid OTP code. Please check the code or click Resend.')
-        return
-      }
-
-      setLoading(true)
-      setOtpNotice('✓ 2FA OTP Verified successfully! Entering Hospital Dashboard...')
-      setTimeout(() => {
+    try {
+      const res = await loginWithSupabase(cleanEmail, cleanPass, selectedRole)
+      const actualRole = res?.role || selectedRole
+      if (actualRole === 'hospital_admin') {
         navigate('/hospitaldashboard/dashboard')
-      }, 500)
+      } else if (actualRole === 'super_admin') {
+        navigate('/mrshahidbabu')
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err: any) {
+      setError(err.message || 'Invalid credentials. Please verify your email/Doctor ID and password.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleRequestOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault()
+    setError('')
+    setNotice(null)
+    setLoading(true)
+
+    const cleanId = email.trim()
+    if (!cleanId) {
+      setLoading(false)
+      setError('Please enter your registered Doctor ID or Email first.')
+      return
+    }
+
+    try {
+      const res = await sendSupabaseOtp(cleanId)
+      setResolvedOtpEmail(res.email)
+      setOtpSent(true)
+      setOtpTimer(60)
+      setNotice(`✓ 6-Digit Mail OTP code sent to your registered email (${res.email})!`)
+    } catch (err: any) {
+      setError(err.message || 'Could not send Mail OTP. Please verify your Doctor ID or Email.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError('')
+    setNotice(null)
+    setLoading(true)
+
+    if (!otpCode.trim() || otpCode.trim().length < 6) {
+      setLoading(false)
+      setError('Please enter the 6-digit OTP code sent to your email.')
+      return
+    }
+
+    try {
+      const res = await verifySupabaseOtp(resolvedOtpEmail, otpCode, selectedRole)
+      const actualRole = res?.role || selectedRole
+      if (actualRole === 'hospital_admin') {
+        navigate('/hospitaldashboard/dashboard')
+      } else if (actualRole === 'super_admin') {
+        navigate('/mrshahidbabu')
+      } else {
+        navigate('/dashboard')
+      }
+    } catch (err: any) {
+      setError(err.message || 'OTP verification failed. Please check the 6-digit code.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -533,48 +510,55 @@ export default function Login({ lockedRole }: LoginProps) {
               </div>
 
               <div className="mb-4 inline-flex rounded-full border border-orange-200/70 bg-orange-50/60 px-4 py-1.5 text-xs font-semibold tracking-[0.12em] text-[#FF9500] backdrop-blur-xl">
-                {authStep === 'otp' ? '2FA SECURITY' : 'WELCOME BACK'}
+                WELCOME BACK
               </div>
 
               <h2 className="text-3xl sm:text-4xl font-semibold tracking-[-0.04em] text-[#1D1D1F]">
-                {authStep === 'otp'
-                  ? 'Verify 2FA OTP.'
-                  : selectedRole === 'doctor'
-                  ? 'Doctor Sign In.'
-                  : 'Hospital Admin Sign In.'}
+                {selectedRole === 'doctor' ? 'Doctor Sign In.' : 'Hospital Admin Sign In.'}
               </h2>
 
               <p className="mt-2 text-sm leading-6 text-[#6E6E73]">
-                {authStep === 'otp'
-                  ? `Enter the 6-digit security verification code dispatched to ${email || 'your registered contact'}.`
-                  : selectedRole === 'doctor'
+                {selectedRole === 'doctor'
                   ? 'Enter your Doctor ID or practitioner email to open today’s OPD console.'
                   : 'Enter your hospital admin credentials to access workspace settings.'}
               </p>
             </motion.div>
 
-            {/* OTP Notice Banner */}
-            {otpNotice && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold flex items-center justify-between gap-3 shadow-xs"
+            {/* Auth Method Switcher (Password vs Mail OTP) */}
+            <div className="mt-6 p-1 bg-white/60 backdrop-blur-md rounded-2xl border border-white/80 flex items-center text-xs font-bold shadow-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('password')
+                  setError('')
+                  setNotice(null)
+                }}
+                className={`flex-1 py-2.5 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMethod === 'password'
+                    ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
               >
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={16} className="shrink-0 text-emerald-600" />
-                  <span>{otpNotice}</span>
-                </div>
-                {authStep === 'otp' && (
-                  <button
-                    type="button"
-                    onClick={handleAutoFillOtp}
-                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer"
-                  >
-                    Auto-Fill
-                  </button>
-                )}
-              </motion.div>
-            )}
+                <LockKeyhole size={14} />
+                <span>Password Sign In</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('otp')
+                  setError('')
+                  setNotice(null)
+                }}
+                className={`flex-1 py-2.5 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
+                  authMethod === 'otp'
+                    ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
+                    : 'text-slate-500 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles size={14} className="text-amber-500" />
+                <span>Email 6-Digit OTP</span>
+              </button>
+            </div>
 
             {/* Error Banner */}
             {error && (
@@ -588,243 +572,260 @@ export default function Login({ lockedRole }: LoginProps) {
               </motion.div>
             )}
 
+            {/* Notice Banner */}
+            {notice && (
+              <motion.div
+                initial={{ opacity: 0, y: -10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-3 shadow-xs"
+              >
+                <Sparkles size={18} className="shrink-0 text-emerald-600" />
+                <span>{notice}</span>
+              </motion.div>
+            )}
+
             {/* Form */}
-            <form onSubmit={handleSubmit} className="mt-8 space-y-5">
-              {authStep === 'otp' ? (
-                /* STEP 2: 6-DIGIT OTP INPUTS */
+            {authMethod === 'otp' ? (
+              <form onSubmit={otpSent ? handleVerifyOtpSubmit : handleRequestOtp} className="mt-6 space-y-5">
+                {/* Email / Doctor ID Input */}
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="space-y-4"
+                  initial={{ opacity: 0, y: 15 }}
+                  animate={{ opacity: 1, y: 0 }}
                 >
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-[#1D1D1F] flex items-center gap-1.5">
-                      <KeyRound size={14} className="text-[#007AFF]" />
-                      <span>Security OTP Code</span>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-[#1D1D1F]">
+                      {selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}
                     </label>
-                    {generatedOtp && (
+                    <span className="text-[11px] text-[#8E8E93]">
+                      Registered Mail
+                    </span>
+                  </div>
+
+                  <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80">
+                    <Mail className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
+                    <input
+                      type="text"
+                      required
+                      disabled={otpSent}
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
+                      className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm disabled:opacity-60"
+                    />
+                    {otpSent && (
                       <button
                         type="button"
-                        onClick={handleAutoFillOtp}
-                        className="text-[11px] font-mono font-bold text-[#007AFF] hover:underline"
+                        onClick={() => {
+                          setOtpSent(false)
+                          setOtpCode('')
+                          setNotice(null)
+                        }}
+                        className="text-xs font-bold text-[#007AFF] hover:underline shrink-0"
                       >
-                        Code: {generatedOtp} (Click to Fill)
+                        Change
                       </button>
                     )}
                   </div>
+                </motion.div>
 
-                  {/* 6 Digit Input Boxes */}
-                  <div className="flex items-center justify-between gap-2 sm:gap-3 py-2">
-                    {otpInputs.map((digit, idx) => (
+                {/* 6-Digit OTP Field (shown after OTP sent) */}
+                {otpSent && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 15 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="space-y-2"
+                  >
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-medium text-[#1D1D1F]">
+                        Enter 6-Digit Mail OTP Code
+                      </label>
+                      <span className="text-[11px] text-[#8E8E93]">Check email inbox</span>
+                    </div>
+
+                    <div className="group flex items-center rounded-[20px] border border-blue-300/80 bg-white/80 px-5 shadow-[0_15px_40px_rgba(0,122,255,0.1)] backdrop-blur-[25px]">
+                      <Sparkles className="h-5 w-5 text-[#007AFF]" />
                       <input
-                        key={idx}
-                        id={`otp-input-${idx}`}
                         type="text"
-                        maxLength={1}
-                        value={digit}
-                        onChange={(e) => handleOtpChange(idx, e.target.value)}
-                        onKeyDown={(e) => handleOtpKeyDown(idx, e)}
-                        onPaste={handleOtpPaste}
-                        className="w-11 h-14 sm:w-14 sm:h-16 text-center text-xl sm:text-2xl font-black text-[#1D1D1F] bg-white/70 border border-blue-200/80 rounded-2xl shadow-sm focus:border-[#007AFF] focus:bg-white focus:ring-4 focus:ring-[#007AFF]/15 transition-all outline-none"
+                        required
+                        maxLength={6}
+                        value={otpCode}
+                        onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
+                        placeholder="123456"
+                        className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-lg font-mono tracking-[0.3em] font-extrabold"
                       />
-                    ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1 text-xs">
+                      <span className="text-[#8E8E93]">Didn't receive code?</span>
+                      {otpTimer > 0 ? (
+                        <span className="font-mono text-[#8E8E93]">Resend in {otpTimer}s</span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => handleRequestOtp()}
+                          className="font-bold text-[#007AFF] hover:underline cursor-pointer"
+                        >
+                          Resend Mail OTP
+                        </button>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* OTP Submit button */}
+                <motion.button
+                  whileHover={{ scale: 1.015, y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  type="submit"
+                  disabled={loading}
+                  className="relative mt-4 flex h-16 w-full items-center justify-center overflow-hidden rounded-[20px] bg-gradient-to-r from-[#007AFF] via-[#2588FF] to-[#5AC8FA] font-semibold text-white shadow-[0_20px_45px_rgba(0,122,255,0.28)] cursor-pointer disabled:opacity-50"
+                >
+                  <span className="relative z-10 flex items-center gap-2 font-bold text-sm">
+                    {loading ? (
+                      <span>{otpSent ? 'Verifying OTP…' : 'Sending 6-Digit OTP…'}</span>
+                    ) : otpSent ? (
+                      <>
+                        <span>Verify & Unlock Console</span>
+                        <ArrowRight className="h-5 w-5" />
+                      </>
+                    ) : (
+                      <>
+                        <span>Send 6-Digit Mail OTP</span>
+                        <Sparkles className="h-5 w-5" />
+                      </>
+                    )}
+                  </span>
+                </motion.button>
+              </form>
+            ) : (
+              <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+                {/* Identifier */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.5 }}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-sm font-medium text-[#1D1D1F]">
+                      {selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}
+                    </label>
+                    <span className="text-[11px] text-[#8E8E93]">
+                      {selectedRole === 'doctor' ? 'e.g. H1-D-0001' : 'Supabase Auth'}
+                    </span>
                   </div>
 
-                  <div className="flex items-center justify-between text-xs pt-1">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAuthStep('credentials')
-                        setError('')
-                      }}
-                      className="text-[#8E8E93] hover:text-[#1D1D1F] font-semibold transition"
-                    >
-                      ← Back to Credentials
-                    </button>
-
-                    <button
-                      type="button"
-                      disabled={resendTimer > 0}
-                      onClick={handleResendOtp}
-                      className="text-[#007AFF] hover:underline font-bold disabled:opacity-40 disabled:no-underline flex items-center gap-1"
-                    >
-                      <RefreshCw size={12} />
-                      <span>{resendTimer > 0 ? `Resend in ${resendTimer}s` : 'Resend Code'}</span>
-                    </button>
+                  <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80">
+                    <Mail className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
+                    <input
+                      type="text"
+                      required
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
+                      className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm"
+                    />
                   </div>
                 </motion.div>
-              ) : (
-                /* STEP 1: CREDENTIALS INPUT (EMAIL + PASSWORD) */
-                <>
-                  {/* Identifier */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.5 }}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm font-medium text-[#1D1D1F]">
-                        {selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}
-                      </label>
-                      <span className="text-[11px] text-[#8E8E93]">
-                        {selectedRole === 'doctor' ? 'e.g. H1-D-0001' : 'Supabase Auth'}
-                      </span>
-                    </div>
 
-                    <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80 focus-within:shadow-[0_20px_45px_rgba(0,122,255,0.12)]">
-                      <Mail className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
-
-                      <input
-                        type="text"
-                        required
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
-                        className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm"
-                      />
-                    </div>
-                  </motion.div>
-
-                  {/* Password */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                  >
-                    <div className="mb-2 flex items-center justify-between">
-                      <label className="text-sm font-medium text-[#1D1D1F]">
-                        Password
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={() => setShowForgotModal(true)}
-                        className="text-sm font-medium text-[#007AFF] transition-opacity hover:opacity-70"
-                      >
-                        Forgot password?
-                      </button>
-                    </div>
-
-                    <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80 focus-within:shadow-[0_20px_45px_rgba(0,122,255,0.12)]">
-                      <LockKeyhole className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
-
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="Enter your password"
-                        className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm font-mono"
-                      />
-
-                      <motion.button
-                        type="button"
-                        whileTap={{ scale: 0.85 }}
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="flex h-10 w-10 items-center justify-center rounded-xl text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#007AFF]"
-                      >
-                        <AnimatePresence mode="wait">
-                          {showPassword ? (
-                            <motion.div
-                              key="hidden"
-                              initial={{ opacity: 0, scale: 0.7, rotate: -30 }}
-                              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                              exit={{ opacity: 0, scale: 0.7, rotate: 30 }}
-                            >
-                              <EyeOff className="h-5 w-5" />
-                            </motion.div>
-                          ) : (
-                            <motion.div
-                              key="visible"
-                              initial={{ opacity: 0, scale: 0.7, rotate: 30 }}
-                              animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                              exit={{ opacity: 0, scale: 0.7, rotate: -30 }}
-                            >
-                              <Eye className="h-5 w-5" />
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </motion.button>
-                    </div>
-                  </motion.div>
-
-                  {/* Remember */}
-                  <motion.label
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.7 }}
-                    className="flex cursor-pointer items-center gap-3 pt-1 select-none"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={rememberMe}
-                      onChange={(e) => setRememberMe(e.target.checked)}
-                      className="h-4 w-4 accent-[#007AFF]"
-                    />
-                    <span className="text-sm text-[#6E6E73]">
-                      Keep me signed in on this workstation
-                    </span>
-                  </motion.label>
-                </>
-              )}
-
-              {/* Login / Verify button */}
-              <motion.button
-                type="submit"
-                disabled={loading}
-                whileHover={{ scale: 1.015, y: -2 }}
-                whileTap={{ scale: 0.97 }}
-                className="relative mt-3 flex h-16 w-full items-center justify-center overflow-hidden rounded-[20px] bg-gradient-to-r from-[#007AFF] via-[#2588FF] to-[#5AC8FA] font-semibold text-white shadow-[0_20px_45px_rgba(0,122,255,0.28)] cursor-pointer disabled:opacity-50"
-              >
-                {/* Animated button light */}
+                {/* Password */}
                 <motion.div
-                  animate={{ x: ['-150%', '200%'] }}
-                  transition={{
-                    duration: 3,
-                    repeat: Infinity,
-                    repeatDelay: 1,
-                    ease: 'easeInOut',
-                  }}
-                  className="absolute inset-y-0 w-1/3 -skew-x-12 bg-white/30 blur-md pointer-events-none"
-                />
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.6 }}
+                >
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="text-sm font-medium text-[#1D1D1F]">
+                      Password
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(true)}
+                      className="text-sm font-medium text-[#007AFF] transition-opacity hover:opacity-70"
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
 
-                <AnimatePresence mode="wait">
-                  {loading ? (
-                    <motion.div
-                      key="loading"
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      className="relative flex items-center gap-3 text-sm font-bold"
+                  <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80">
+                    <LockKeyhole className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm font-mono"
+                    />
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.85 }}
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="flex h-10 w-10 items-center justify-center rounded-xl text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#007AFF]"
                     >
-                      <motion.div
-                        animate={{ rotate: 360 }}
-                        transition={{ duration: 0.8, repeat: Infinity, ease: 'linear' }}
-                        className="h-5 w-5 rounded-full border-2 border-white/30 border-t-white"
-                      />
-                      <span>Authenticating with Supabase...</span>
-                    </motion.div>
-                  ) : (
-                    <motion.div
-                      key="signin"
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -8 }}
-                      className="relative flex items-center gap-3 text-sm font-bold"
-                    >
-                      <span>
-                        {authStep === 'otp'
-                          ? 'Verify OTP & Enter Hospital Dashboard'
-                          : selectedRole === 'doctor'
-                          ? 'Sign In to Doctor Console'
-                          : 'Sign In to Hospital Admin'}
-                      </span>
-                      <ArrowRight className="h-5 w-5" />
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </motion.button>
-            </form>
+                      <AnimatePresence mode="wait">
+                        {showPassword ? (
+                          <motion.div
+                            key="hidden"
+                            initial={{ opacity: 0, scale: 0.7, rotate: -30 }}
+                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                            exit={{ opacity: 0, scale: 0.7, rotate: 30 }}
+                          >
+                            <EyeOff className="h-5 w-5" />
+                          </motion.div>
+                        ) : (
+                          <motion.div
+                            key="visible"
+                            initial={{ opacity: 0, scale: 0.7, rotate: 30 }}
+                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                            exit={{ opacity: 0, scale: 0.7, rotate: -30 }}
+                          >
+                            <Eye className="h-5 w-5" />
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.button>
+                  </div>
+                </motion.div>
+
+                {/* Remember */}
+                <motion.label
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: 0.7 }}
+                  className="flex cursor-pointer items-center gap-3 pt-1 select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
+                    className="h-4 w-4 accent-[#007AFF]"
+                  />
+                  <span className="text-sm text-[#6E6E73]">
+                    Keep me signed in on this workstation
+                  </span>
+                </motion.label>
+
+                {/* Login button */}
+                <motion.button
+                  type="submit"
+                  disabled={loading}
+                  whileHover={{ scale: 1.015, y: -2 }}
+                  whileTap={{ scale: 0.97 }}
+                  className="relative mt-3 flex h-16 w-full items-center justify-center overflow-hidden rounded-[20px] bg-gradient-to-r from-[#007AFF] via-[#2588FF] to-[#5AC8FA] font-semibold text-white shadow-[0_20px_45px_rgba(0,122,255,0.28)] cursor-pointer disabled:opacity-50"
+                >
+                  <span className="relative z-10 flex items-center gap-2 font-bold text-sm">
+                    {loading ? (
+                      <span>Signing in to workspace…</span>
+                    ) : (
+                      <>
+                        <span>Sign In to Workspace</span>
+                        <ArrowRight className="h-5 w-5" />
+                      </>
+                    )}
+                  </span>
+                </motion.button>
+              </form>
+            )}
 
             {/* Footer */}
             <motion.div

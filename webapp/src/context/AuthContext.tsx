@@ -24,6 +24,8 @@ interface AuthContextType {
   isLoading: boolean
   error: string | null
   loginWithSupabase: (identifier: string, pass: string, expectedRole?: 'hospital_admin' | 'doctor') => Promise<any>
+  sendSupabaseOtp: (identifier: string) => Promise<{ email: string }>
+  verifySupabaseOtp: (email: string, otpToken: string, expectedRole?: 'hospital_admin' | 'doctor') => Promise<any>
   registerUserInSupabase: (
     email: string,
     pass: string,
@@ -420,6 +422,114 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // 2.1 SEND SUPABASE MAIL OTP (6-DIGIT CODE)
+  const sendSupabaseOtp = async (identifier: string) => {
+    setIsLoading(true)
+    setError(null)
+    const cleanId = identifier.trim()
+    let resolvedEmail = cleanId.toLowerCase()
+
+    try {
+      // If identifier is a Doctor ID (e.g. H1-D-0001) without @ symbol:
+      if (!cleanId.includes('@')) {
+        const { data: matchedProfile } = await supabase
+          .from('profiles')
+          .select('email, doctor_code, is_active, account_status')
+          .ilike('doctor_code', cleanId)
+          .maybeSingle()
+
+        if (matchedProfile && matchedProfile.email) {
+          if (!matchedProfile.is_active || matchedProfile.account_status !== 'active') {
+            throw new Error('Access Denied: This Doctor ID account is restricted or deactivated.')
+          }
+          resolvedEmail = matchedProfile.email.toLowerCase()
+        } else {
+          // Local registry fallback
+          const localRegistryRaw = localStorage.getItem('clinicos_user_registry')
+          const localRegistry: any[] = localRegistryRaw ? JSON.parse(localRegistryRaw) : []
+          const found = localRegistry.find(
+            (u) =>
+              (u.doctor_code && u.doctor_code.toUpperCase() === cleanId.toUpperCase()) ||
+              (u.id && u.id.toUpperCase() === cleanId.toUpperCase())
+          )
+          if (found && found.email) {
+            resolvedEmail = found.email.toLowerCase()
+          } else {
+            throw new Error(`Doctor ID "${cleanId}" not found. Please verify your assigned Doctor ID.`)
+          }
+        }
+      }
+
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
+        email: resolvedEmail,
+        options: {
+          shouldCreateUser: false,
+        },
+      })
+
+      if (otpErr) {
+        throw new Error(otpErr.message || 'Could not send Mail OTP code.')
+      }
+
+      setIsLoading(false)
+      return { email: resolvedEmail }
+    } catch (err: any) {
+      setIsLoading(false)
+      setError(err.message || 'Sending Mail OTP failed.')
+      throw err
+    }
+  }
+
+  // 2.2 VERIFY SUPABASE MAIL OTP (6-DIGIT CODE)
+  const verifySupabaseOtp = async (email: string, otpToken: string, expectedRole?: 'hospital_admin' | 'doctor') => {
+    setIsLoading(true)
+    setError(null)
+    const cleanEmail = email.trim().toLowerCase()
+    const cleanToken = otpToken.trim()
+
+    try {
+      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
+        email: cleanEmail,
+        token: cleanToken,
+        type: 'email',
+      })
+
+      if (verifyErr || !data.user) {
+        throw new Error(verifyErr?.message || 'Invalid or expired 6-digit OTP code.')
+      }
+
+      const user = data.user
+
+      // Perform security checks
+      const isValid = await validateUserProfile(user)
+      if (!isValid) {
+        throw new Error('Access Restricted: Your account or hospital profile is not active.')
+      }
+
+      // Check expected role portal restriction
+      let { data: profileData } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle()
+
+      const definitiveRole = profileData?.role || user.user_metadata?.role
+      if (expectedRole && definitiveRole && definitiveRole !== expectedRole && definitiveRole !== 'super_admin') {
+        await supabase.auth.signOut()
+        setIsLoading(false)
+        const portalName = definitiveRole === 'hospital_admin' ? 'Hospital Administration' : definitiveRole === 'doctor' ? 'Doctor' : definitiveRole
+        throw new Error(`Wrong portal. This account belongs to ${portalName}. Please use the ${portalName} login.`)
+      }
+
+      setIsLoading(false)
+      return { user, role: definitiveRole }
+    } catch (err: any) {
+      setIsLoading(false)
+      setError(err.message || 'OTP verification failed.')
+      throw err
+    }
+  }
+
   // 3. REGISTER USER IN SUPABASE AUTH & PROFILES TABLE
   const registerUserInSupabase = async (
     email: string,
@@ -607,6 +717,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isLoading,
         error,
         loginWithSupabase,
+        sendSupabaseOtp,
+        verifySupabaseOtp,
         registerUserInSupabase,
         logout,
         validateActiveSession,
