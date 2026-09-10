@@ -49,8 +49,8 @@ export default function PublicHeader() {
   const [loginDropdownOpen, setLoginDropdownOpen] = useState(false)
   const [demoModalOpen, setDemoModalOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
-  const dropdownTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const loginTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const dropdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const location = useLocation()
 
   const isActive = (path: string) => {

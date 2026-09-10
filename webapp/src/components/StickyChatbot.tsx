@@ -84,7 +84,7 @@ const websiteKnowledge = [
   {
     id: "contact",
     patterns: [/contact/i, /support/i, /email/i, /phone/i, /sales/i, /reach/i],
-    response: "You can reach MedTech Fixaters directly:\n• Phone / WhatsApp: +91 95878 67559\n• Email: contact@shahidkhan.site\n• Location: Jaipur, Rajasthan, India\n👉 Or type 'Book a demo' right here to schedule a live walkthrough!",
+    response: "You can reach MedTech Fixaters directly:\n• Phone / WhatsApp: +91 95878 67559\n• Email: contact@medtechfixaters.in\n• Location: Jaipur, Rajasthan, India\n👉 Or type 'Book a demo' right here to schedule a live walkthrough!",
   },
 ];
 
@@ -151,7 +151,7 @@ export default function StickyChatbot() {
         {
           full_name: booking.fullName.trim() || "Doctor / Administrator",
           organization: booking.organization.trim() || "Hospital / Clinic",
-          email: booking.email.trim() || "demo-lead@medtechfixaters.com",
+          email: booking.email.trim() || "demo-lead@medtechfixaters.in",
           phone: booking.phone.trim() || null,
           subject: "Live Demo Request via Floating AI Assistant",
           message: `Live Demo booked via Sticky Chatbot. Requirements: ${booking.requirements || "Full OPD & CRM Workflow"}. Preferred Timing: ${booking.preferredTime || "Next Available Slot"}. Ticket ID: ${ticketId}`,

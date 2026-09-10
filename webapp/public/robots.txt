@@ -24,4 +24,4 @@ Disallow: /a/
 Disallow: /book/
 Disallow: /display/
 
-Sitemap: https://medtechfixaters.com/sitemap.xml
+Sitemap: https://www.medtechfixaters.in/sitemap.xml

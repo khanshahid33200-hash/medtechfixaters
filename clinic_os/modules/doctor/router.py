@@ -6,7 +6,7 @@ router = APIRouter(prefix="/doctor", tags=["Doctor Profile & Admin Management"])
 
 class DoctorProfileResponse(BaseModel):
     doctor_id: str
-    firebase_uid: str
+    supabase_uid: str
     hospital_id: str
     hospital_name: str
     name: str
@@ -33,7 +33,7 @@ class UpdateDoctorStatusRequest(BaseModel):
 INITIAL_DOCTORS = [
     {
         "doctor_id": "doc-001",
-        "firebase_uid": "fb-uid-doc-001",
+        "supabase_uid": "sb-uid-doc-001",
         "hospital_id": "hosp-001",
         "hospital_name": "Metro Care General Hospital",
         "name": "Dr. Rahul Sharma",
@@ -46,7 +46,7 @@ INITIAL_DOCTORS = [
     },
     {
         "doctor_id": "doc-admin-001",
-        "firebase_uid": "fb-uid-admin-001",
+        "supabase_uid": "sb-uid-admin-001",
         "hospital_id": "hosp-001",
         "hospital_name": "Metro Care General Hospital",
         "name": "Dr. Sarah Jenkins (Admin)",
@@ -59,7 +59,7 @@ INITIAL_DOCTORS = [
     },
     {
         "doctor_id": "doc-002",
-        "firebase_uid": "fb-uid-doc-002",
+        "supabase_uid": "sb-uid-doc-002",
         "hospital_id": "hosp-001",
         "hospital_name": "Metro Care General Hospital",
         "name": "Dr. Vikram Seth",
@@ -74,19 +74,19 @@ INITIAL_DOCTORS = [
 
 doctors_db = list(INITIAL_DOCTORS)
 
-@router.get("/profile/{firebase_uid}", response_model=DoctorProfileResponse)
-async def get_doctor_by_firebase_uid(firebase_uid: str):
+@router.get("/profile/{user_id}", response_model=DoctorProfileResponse)
+async def get_doctor_by_user_id(user_id: str):
     """
-    Fetch Doctor Profile & Hospital Association in Supabase Database by Firebase Auth UID.
+    Fetch Doctor Profile & Hospital Association in Supabase Database by Auth User ID.
     """
-    found = next((d for d in doctors_db if d["firebase_uid"] == firebase_uid or d["email"] in firebase_uid), None)
+    found = next((d for d in doctors_db if d["supabase_uid"] == user_id or d["email"] in user_id), None)
     if found:
         return DoctorProfileResponse(**found)
 
-    if "admin" in firebase_uid.lower():
+    if "admin" in user_id.lower():
         return DoctorProfileResponse(
             doctor_id="doc-admin-001",
-            firebase_uid=firebase_uid,
+            supabase_uid=user_id,
             hospital_id="hosp-001",
             hospital_name="Metro Care General Hospital",
             name="Dr. Sarah Jenkins (Admin)",
@@ -99,12 +99,12 @@ async def get_doctor_by_firebase_uid(firebase_uid: str):
         )
 
     return DoctorProfileResponse(
-        doctor_id=f"doc-{firebase_uid[:8]}",
-        firebase_uid=firebase_uid,
+        doctor_id=f"doc-{user_id[:8]}",
+        supabase_uid=user_id,
         hospital_id="hosp-001",
         hospital_name="Metro Care General Hospital",
-        name=f"Dr. {firebase_uid[:6].upper()}",
-        email=f"{firebase_uid}@hospital.com",
+        name=f"Dr. {user_id[:6].upper()}",
+        email=f"{user_id}@hospital.com",
         department_id="dept-cardio-01",
         department_name="Cardiology",
         specialization="Consultant Specialist",
@@ -122,14 +122,14 @@ async def list_doctors():
 @router.post("/create", response_model=DoctorProfileResponse)
 async def create_doctor_profile(payload: CreateDoctorRequest):
     """
-    Admin Endpoint: Create new Doctor profile linked to Firebase Auth & Supabase.
+    Admin Endpoint: Create new Doctor profile linked to Supabase Auth.
     """
     new_doc_id = f"doc-00{len(doctors_db) + 1}"
-    new_fb_uid = f"fb-uid-{new_doc_id}"
+    new_sb_uid = f"sb-uid-{new_doc_id}"
 
     new_doc = {
         "doctor_id": new_doc_id,
-        "firebase_uid": new_fb_uid,
+        "supabase_uid": new_sb_uid,
         "hospital_id": payload.hospital_id,
         "hospital_name": "Metro Care General Hospital",
         "name": payload.name,

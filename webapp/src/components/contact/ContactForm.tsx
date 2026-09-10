@@ -403,7 +403,7 @@ export default function ContactForm({
               <div className="mt-5 sm:mt-6 space-y-3">
                 {/* Email */}
                 <a
-                  href="mailto:contact@shahidkhan.site"
+                  href="mailto:contact@medtechfixaters.in"
                   className="group flex items-center gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-slate-100 bg-slate-50/80 p-3 sm:p-3.5 transition-all duration-200 hover:border-blue-200 hover:bg-blue-50/50"
                 >
                   <div className="flex h-9 w-9 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-lg sm:rounded-xl bg-blue-600 text-white shadow-sm shadow-blue-500/20">
@@ -414,7 +414,7 @@ export default function ContactForm({
                       EMAIL US
                     </p>
                     <p className="truncate text-xs sm:text-sm font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
-                      contact@shahidkhan.site
+                      contact@medtechfixaters.in
                     </p>
                   </div>
                 </a>

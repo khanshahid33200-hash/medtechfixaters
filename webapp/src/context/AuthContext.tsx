@@ -232,42 +232,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      let user: any = null
-
-      // Step 1: Authenticate with Supabase Auth
+      // Step 1: Authenticate strictly with Supabase Auth
       const { data, error: authError } = await supabase.auth.signInWithPassword({
         email: resolvedEmail,
         password: cleanPass,
       })
 
-      if (data?.user) {
-        user = data.user
-      } else {
-        // Resilient Fallback: Check local verified user registry
-        const regRaw = localStorage.getItem('clinicos_user_registry')
-        const registry: any[] = regRaw ? JSON.parse(regRaw) : []
-        const regUser = registry.find(
-          u =>
-            (u.email?.toLowerCase() === resolvedEmail.toLowerCase() ||
-             (u.doctor_code && u.doctor_code.toUpperCase() === cleanId.toUpperCase())) &&
-            u.password === cleanPass
-        )
-
-        if (regUser) {
-          user = {
-            id: regUser.id,
-            email: regUser.email,
-            user_metadata: {
-              role: regUser.role,
-              full_name: regUser.name,
-              hospital_id: regUser.hospital_id,
-              doctor_code: regUser.doctor_code,
-            },
-          }
-        } else {
-          throw new Error(authError?.message || 'Invalid Doctor ID / Email or Password.')
-        }
+      if (authError || !data?.user) {
+        throw new Error(authError?.message || 'Invalid Email / Doctor ID or Password. Please check your credentials.')
       }
+
+      const user = data.user
 
       // Step 2: Fetch Profile and Hospital Node for Two-Layer Security
       let { data: profileData } = await supabase
@@ -510,7 +485,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
 
       if (verifyErr || !data.user) {
-        throw new Error(verifyErr?.message || 'Invalid or expired 6-digit OTP code.')
+        throw new Error(verifyErr?.message || 'Invalid or expired OTP code.')
       }
 
       const user = data.user

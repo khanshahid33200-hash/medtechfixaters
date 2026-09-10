@@ -227,7 +227,7 @@ const websiteKnowledge: KnowledgeItem[] = [
     keywords: ["contact", "support", "help", "email", "phone", "sales", "reach", "talk", "location"],
     patterns: [/contact/i, /support/i, /email/i, /phone/i, /sales/i, /reach/i],
     title: "Contact & Technical Support",
-    response: "Get in touch with the MedTech Fixaters team:\n• Schedule Demo: You can ask me to book a demo right here in the chat, or visit /contact\n• Sales & Inquiries: info@medtechfixaters.com\n• Support Availability: 24/7 technical assistance for registered hospital networks.",
+    response: "Get in touch with the MedTech Fixaters team:\n• Schedule Demo: You can ask me to book a demo right here in the chat, or visit /contact\n• Sales & Inquiries: info@medtechfixaters.in\n• Support Availability: 24/7 technical assistance for registered hospital networks.",
   },
 ];
 
@@ -307,7 +307,7 @@ export default function FAQSection() {
         {
           full_name: booking.fullName.trim() || "Doctor / Administrator",
           organization: booking.organization.trim() || "Hospital / Clinic",
-          email: booking.email.trim() || "demo-lead@medtechfixaters.com",
+          email: booking.email.trim() || "demo-lead@medtechfixaters.in",
           phone: booking.phone.trim() || null,
           subject: "Live Demo Request via MedTech AI Assistant",
           message: `Live Demo booked via website chatbot. Requirements: ${booking.requirements || "Full OPD & CRM Workflow"}. Preferred Timing: ${booking.preferredTime || "Next Available Slot"}. Ticket ID: ${ticketId}`,

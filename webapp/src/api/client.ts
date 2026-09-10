@@ -101,9 +101,9 @@ class ApiClient {
     return this.client.get('/appointments/stats')
   }
 
-  // Doctor Profile Endpoint (Supabase database query by Firebase UID)
-  async getDoctorProfile(firebaseUid: string) {
-    return this.client.get(`/doctor/profile/${firebaseUid}`)
+  // Doctor Profile Endpoint (Supabase database query by Doctor ID)
+  async getDoctorProfile(doctorId: string) {
+    return this.client.get(`/doctor/profile/${doctorId}`)
   }
 
   // Admin Doctor Management Endpoints

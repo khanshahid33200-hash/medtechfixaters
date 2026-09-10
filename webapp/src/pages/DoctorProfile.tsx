@@ -101,7 +101,6 @@ export default function DoctorProfile() {
     doctor_id: doctorId,
     hospital_id: doctorProfile?.hospital_id || '',
     role: 'Senior Doctor & HOD',
-    firebase_uid: 'fb-uid-auth-98742',
     account_status: 'Active',
     last_login: new Date().toLocaleString()
   })
@@ -918,9 +917,9 @@ export default function DoctorProfile() {
                 </div>
 
                 <div className="p-4 bg-slate-900 text-white rounded-2xl space-y-2 text-xs">
-                  <p className="font-bold text-blue-400">Firebase Authentication Status</p>
+                  <p className="font-bold text-blue-400">Supabase Authentication Status</p>
                   <p className="text-slate-300">Account Status: <strong className="text-emerald-400">{profile.account_status}</strong></p>
-                  <p className="text-slate-300">Firebase UID: <span className="font-mono text-blue-200">{profile.firebase_uid}</span></p>
+                  <p className="text-slate-300">Supabase Auth ID: <span className="font-mono text-blue-200">{profile.doctor_id}</span></p>
                   <p className="text-slate-400 text-[11px]">Last Sign In: {profile.last_login}</p>
                 </div>
               </CardContent>

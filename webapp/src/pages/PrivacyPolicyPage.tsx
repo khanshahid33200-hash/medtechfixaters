@@ -71,7 +71,7 @@ export default function PrivacyPolicyPage() {
               </p>
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs font-mono space-y-1">
                 <p><strong>Data Protection Officer:</strong> MedTech Fixaters Legal Team</p>
-                <p><strong>Email:</strong> privacy@medtechfixaters.com / shahidbcsm@gmail.com</p>
+                <p><strong>Email:</strong> privacy@medtechfixaters.in / shahidbcsm@gmail.com</p>
                 <p><strong>Helpline:</strong> +91 98765 43210</p>
               </div>
             </section>

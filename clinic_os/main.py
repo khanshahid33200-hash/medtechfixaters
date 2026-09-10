@@ -85,14 +85,6 @@ app.include_router(
 )
 
 
-# Firebase Status Endpoint
-@app.get("/firebase/status")
-async def firebase_status():
-    """Firebase integration status endpoint"""
-    from clinic_os.integrations.firebase_client import firebase_client
-    return firebase_client.get_status()
-
-
 # Root endpoint
 @app.get("/")
 async def root():
@@ -103,7 +95,7 @@ async def root():
         "description": settings.app_description,
         "docs": "/docs",
         "redoc": "/redoc",
-        "firebase_project": settings.firebase_project_id,
+        "supabase_project": settings.supabase_url,
     }
 
 
@@ -116,12 +108,6 @@ async def startup_event():
         await init_db()
     except Exception as e:
         logger.warning(f"Could not auto-initialize DB on startup: {e}")
-
-    try:
-        from clinic_os.integrations.firebase_client import firebase_client
-        firebase_client.initialize()
-    except Exception as e:
-        logger.warning(f"Firebase startup warning: {e}")
 
 
 @app.on_event("shutdown")

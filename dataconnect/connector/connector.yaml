@@ -1,5 +1,0 @@
-connectorId: 'default'
-generate:
-  javascriptSdk:
-    outputDir: '../webapp/src/dataconnect-generated'
-    package: '@clinic-os/dataconnect'

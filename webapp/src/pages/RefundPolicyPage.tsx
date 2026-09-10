@@ -57,7 +57,7 @@ export default function RefundPolicyPage() {
               </p>
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 text-xs font-mono space-y-1">
                 <p><strong>Billing Desk:</strong> MedTech Fixaters Billing Support</p>
-                <p><strong>Email:</strong> billing@medtechfixaters.com / shahidbcsm@gmail.com</p>
+                <p><strong>Email:</strong> billing@medtechfixaters.in / shahidbcsm@gmail.com</p>
                 <p><strong>Subject:</strong> Subscription Refund Request - [Hospital Name]</p>
               </div>
             </section>

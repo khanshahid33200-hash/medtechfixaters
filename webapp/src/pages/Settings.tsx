@@ -276,7 +276,7 @@ export default function Settings() {
               <div className="space-y-4">
                 {[
                   { name: 'Twilio SMS/WhatsApp', status: 'Connected' },
-                  { name: 'Firebase Push Notifications', status: 'Not Connected' },
+                  { name: 'Supabase Realtime Notifications', status: 'Connected' },
                   { name: 'Google Calendar Sync', status: 'Connected' },
                 ].map(integration => (
                   <div key={integration.name} className="flex items-center justify-between p-4 border border-gray-200 rounded">

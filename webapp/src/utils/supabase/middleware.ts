@@ -1,7 +1,7 @@
 import { createServerClient, type CookieOptions } from "@supabase/ssr";
 
-const supabaseUrl = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_URL) || "https://taszwtgrgvhkjvqdieqh.supabase.co";
-const supabaseKey = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY) || "sb_publishable_GgFVVkVVTSjAUzgDMfjU-w_QyA-Y0fs";
+const supabaseUrl = (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_URL) || "";
+const supabaseKey = (typeof process !== 'undefined' && (process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY)) || "";
 
 export const createClient = (request: any, responseObj?: any) => {
   let supabaseResponse = responseObj || {
@@ -12,8 +12,8 @@ export const createClient = (request: any, responseObj?: any) => {
   };
 
   const supabase = createServerClient(
-    supabaseUrl!,
-    supabaseKey!,
+    supabaseUrl || 'https://placeholder.supabase.co',
+    supabaseKey || 'placeholder-key',
     {
       cookies: {
         getAll() {

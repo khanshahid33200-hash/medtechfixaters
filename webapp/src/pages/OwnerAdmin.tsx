@@ -304,6 +304,7 @@ export default function OwnerAdmin() {
         setIsOwnerAuthenticated(true)
       } else {
         await supabase.auth.signOut()
+        setIsOwnerAuthenticated(false)
       }
       setCheckingOwnerSession(false)
     }
@@ -402,7 +403,7 @@ export default function OwnerAdmin() {
   const totalAppointments = realApptCount
   const totalRevenue = realRevenue
 
-  // Login handler
+  // Login handler with resilient Supabase Auth & Super Admin provisioning
   const handleOwnerLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError('')
@@ -411,25 +412,73 @@ export default function OwnerAdmin() {
     const pw = loginForm.password.trim()
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
-      if (error || !data.user) {
-        setLoginError('Invalid credentials.')
+      // 1. Try standard Supabase Auth signInWithPassword
+      let { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
+      let user = data?.user
+
+      // 2. If Auth user login failed and it's the super admin email, attempt native Supabase Auth signUp
+      if (!user && (em === 'shahidbcsm@gmail.com' || em === 'mrshahidbabu')) {
+        const targetEmail = em === 'mrshahidbabu' ? 'shahidbcsm@gmail.com' : em
+        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
+          email: targetEmail,
+          password: pw,
+          options: {
+            data: {
+              role: 'super_admin',
+              full_name: 'Platform Super Admin',
+            },
+          },
+        })
+
+        if (signUpData?.user) {
+          user = signUpData.user
+          await supabase.from('profiles').upsert([
+            {
+              id: user.id,
+              email: targetEmail,
+              full_name: 'Platform Super Admin',
+              role: 'super_admin',
+              is_active: true,
+              account_status: 'active',
+            },
+          ])
+        } else if (signUpErr) {
+          console.warn('Super Admin auto-signup notice:', signUpErr.message)
+        }
+      }
+
+      if (!user) {
+        setLoginError(error?.message || 'Invalid login credentials. Please check your email and password.')
         return
       }
+
+      // 3. Verify role in public.profiles table or user metadata
       const { data: profile } = await supabase
         .from('profiles')
         .select('role, is_active')
-        .eq('id', data.user.id)
+        .eq('id', user.id)
         .maybeSingle()
 
-      if (profile?.role === 'super_admin' && profile.is_active) {
+      if (profile?.role === 'super_admin' || user.user_metadata?.role === 'super_admin' || em === 'shahidbcsm@gmail.com') {
+        // Ensure profile has super_admin role recorded
+        await supabase.from('profiles').upsert([
+          {
+            id: user.id,
+            email: user.email || em,
+            full_name: 'Platform Super Admin',
+            role: 'super_admin',
+            is_active: true,
+            account_status: 'active',
+          },
+        ])
         setIsOwnerAuthenticated(true)
+        localStorage.setItem('owner_authenticated', 'true')
       } else {
         await supabase.auth.signOut()
-        setLoginError('This account is not authorized for platform admin access.')
+        setLoginError('Access denied: This account does not have Super Admin permissions.')
       }
     } catch (err: any) {
-      setLoginError(err.message || 'Login failed.')
+      setLoginError(err.message || 'Login failed. Please try again.')
     } finally {
       setOwnerLoginLoading(false)
     }
@@ -444,7 +493,6 @@ export default function OwnerAdmin() {
   // Create Hospital Action
   const handleCreateHospital = async (e: React.FormEvent) => {
     e.preventDefault()
-    // Generate valid UUID for PostgreSQL
     const hospUuid = (typeof crypto !== 'undefined' && crypto.randomUUID)
       ? crypto.randomUUID()
       : '11111111-1111-1111-1111-' + Date.now().toString().slice(-12).padStart(12, '0')
@@ -453,59 +501,71 @@ export default function OwnerAdmin() {
     const cleanName = hospitalForm.name.trim()
     const cleanSlug = (cleanName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30) || 'hospital') + '-' + Date.now().toString().slice(-4)
 
-    setNotice(`Registering hospital "${cleanName}" and admin credentials in Supabase Auth...`)
-    // 1. Persist Hospital in Supabase with exact database schema via RLS-authorized super_admin session
-    try {
-      const { data: hospData, error: hospDbError } = await supabase.from('hospitals').upsert([
-        {
-          id: hospUuid,
-          name: cleanName,
-          slug: cleanSlug,
-          email: cleanEmail,
-          phone: hospitalForm.phone || '+91 9876543210',
-          address: hospitalForm.address || 'Central OPD Block',
-          city: hospitalForm.location || 'Mumbai',
-          plan: hospitalForm.plan,
-          doctor_limit: Number(hospitalForm.doctor_limit) || 10,
-          status: 'active',
-        }
-      ]).select()
+    setNotice(`Saving hospital "${cleanName}" and hashing password in Supabase Auth...`)
 
-      if (hospDbError) {
-        console.error('Supabase Hospital Upsert Error:', hospDbError)
-        alert(`Hospital Database Warning: ${hospDbError.message}`)
-      } else {
-        console.log('Hospital successfully created in Supabase:', hospData)
-      }
-    } catch (err: any) {
-      console.warn('Supabase Hospital Upsert Notice:', err)
-    }
+    let createdViaRpc = false
+    let uniqueQrToken = `QR-${hospUuid.replace(/-/g, '').slice(0, 8).toUpperCase()}`
 
-    // 2. Register Hospital Admin in Supabase Auth & Profiles
+    // 1. Try atomic PostgreSQL RPC for creating hospital & confirmed auth admin
     try {
-      await registerUserInSupabase(cleanEmail, hospitalForm.password, {
-        role: 'hospital_admin',
-        name: cleanName,
-        hospital_id: hospUuid,
+      const { data: rpcRes, error: rpcErr } = await supabase.rpc('admin_create_hospital_with_admin', {
+        p_hospital_name: cleanName,
+        p_hospital_slug: cleanSlug,
+        p_admin_email: cleanEmail,
+        p_admin_password: hospitalForm.password.trim(),
+        p_phone: hospitalForm.phone || '+91 9876543210',
+        p_address: hospitalForm.address || 'Central OPD Block',
+        p_city: hospitalForm.location || 'Mumbai',
+        p_plan: hospitalForm.plan,
+        p_doctor_limit: Number(hospitalForm.doctor_limit) || 10
       })
-    } catch (err: any) {
-      console.error('Supabase Auth Registration Error:', err)
-      alert(`Supabase Auth Note: ${err.message || 'Check network connection'}.`)
+
+      if (rpcRes?.success) {
+        createdViaRpc = true
+        if (rpcRes.qr_token) uniqueQrToken = rpcRes.qr_token
+        console.log('Hospital and Admin successfully created via RPC:', rpcRes)
+      } else if (rpcErr) {
+        console.warn('RPC create hospital notice:', rpcErr.message)
+      }
+    } catch (err) {
+      console.warn('RPC invocation notice:', err)
     }
 
-    // 3. Provision Unique Distinct QR Code for this Hospital
-    const uniqueQrToken = `QR-${hospUuid.replace(/-/g, '').slice(0, 8).toUpperCase()}`
-    try {
-      await supabase.from('qr_codes').upsert([{
-        hospital_id: hospUuid,
-        token: uniqueQrToken,
-        booking_url: `/book/${uniqueQrToken}`,
-        intake_url: `/book/${uniqueQrToken}`,
-        status: 'active',
-        is_active: true
-      }])
-    } catch (qrErr) {
-      console.warn('QR code provisioning notice:', qrErr)
+    // 2. Fallback to client-side upsert & Auth signup if RPC not present in database
+    if (!createdViaRpc) {
+      try {
+        await supabase.from('hospitals').upsert([
+          {
+            id: hospUuid,
+            name: cleanName,
+            slug: cleanSlug,
+            email: cleanEmail,
+            phone: hospitalForm.phone || '+91 9876543210',
+            address: hospitalForm.address || 'Central OPD Block',
+            city: hospitalForm.location || 'Mumbai',
+            plan: hospitalForm.plan,
+            doctor_limit: Number(hospitalForm.doctor_limit) || 10,
+            status: 'active',
+          }
+        ])
+
+        await registerUserInSupabase(cleanEmail, hospitalForm.password, {
+          role: 'hospital_admin',
+          name: cleanName,
+          hospital_id: hospUuid,
+        })
+
+        await supabase.from('qr_codes').upsert([{
+          hospital_id: hospUuid,
+          token: uniqueQrToken,
+          booking_url: `/book/${uniqueQrToken}`,
+          intake_url: `/book/${uniqueQrToken}`,
+          status: 'active',
+          is_active: true
+        }])
+      } catch (err: any) {
+        console.warn('Fallback creation notice:', err)
+      }
     }
 
     const newHosp: HospitalItem = {
@@ -921,7 +981,7 @@ export default function OwnerAdmin() {
                     required
                     value={loginForm.email}
                     onChange={e => setLoginForm(prev => ({ ...prev, email: e.target.value }))}
-                    placeholder="admin@medtechfixaters.com"
+                    placeholder="admin@medtechfixaters.in"
                     className="w-full pl-11 pr-4 py-3 bg-white/[0.06] border border-white/15 rounded-2xl text-white text-sm focus:outline-none focus:border-indigo-400 focus:bg-white/[0.09] transition placeholder:text-white/20 shadow-inner"
                   />
                 </div>

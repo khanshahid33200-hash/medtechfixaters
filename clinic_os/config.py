@@ -50,16 +50,9 @@ class Settings(BaseSettings):
     n8n_webhook_secret: str = os.getenv("N8N_WEBHOOK_SECRET", "")
     n8n_base_url: str = os.getenv("N8N_BASE_URL", "http://localhost:5678")
 
-    # Supabase (optional)
+    # Supabase (Primary)
     supabase_url: Optional[str] = os.getenv("SUPABASE_URL")
     supabase_key: Optional[str] = os.getenv("SUPABASE_KEY")
-
-    # Firebase
-    firebase_project_id: str = os.getenv("FIREBASE_PROJECT_ID", "gen-lang-client-0247041905")
-    firebase_auth_domain: str = os.getenv("FIREBASE_AUTH_DOMAIN", "gen-lang-client-0247041905.firebaseapp.com")
-    firebase_storage_bucket: str = os.getenv("FIREBASE_STORAGE_BUCKET", "gen-lang-client-0247041905.appspot.com")
-    firebase_database_url: str = os.getenv("FIREBASE_DATABASE_URL", "https://gen-lang-client-0247041905-default-rtdb.firebaseio.com")
-    firebase_credentials_path: Optional[str] = os.getenv("FIREBASE_CREDENTIALS_PATH")
 
     # OCR
     tesseract_path: str = os.getenv("TESSERACT_PATH", "/usr/bin/tesseract")

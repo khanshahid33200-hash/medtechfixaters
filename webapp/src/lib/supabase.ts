@@ -1,18 +1,20 @@
 import { createClient } from '@supabase/supabase-js'
 
 export const SUPABASE_URL =
-  import.meta.env.VITE_SUPABASE_URL || 'https://taszwtgrgvhkjvqdieqh.supabase.co'
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_URL) ||
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_SUPABASE_URL) ||
+  ''
 
 export const SUPABASE_ANON_KEY =
-  import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
-  import.meta.env.VITE_SUPABASE_ANON_KEY ||
-  'sb_publishable_GgFVVkVVTSjAUzgDMfjU-w_QyA-Y0fs'
+  (typeof import.meta !== 'undefined' && (import.meta.env?.VITE_SUPABASE_PUBLISHABLE_KEY || import.meta.env?.VITE_SUPABASE_ANON_KEY)) ||
+  (typeof process !== 'undefined' && (process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env?.NEXT_PUBLIC_SUPABASE_ANON_KEY)) ||
+  ''
 
 export const SUPABASE_JWKS_URL =
-  import.meta.env.VITE_SUPABASE_JWKS_URL ||
-  'https://taszwtgrgvhkjvqdieqh.supabase.co/auth/v1/.well-known/jwks.json'
+  (typeof import.meta !== 'undefined' && import.meta.env?.VITE_SUPABASE_JWKS_URL) ||
+  (SUPABASE_URL ? `${SUPABASE_URL}/auth/v1/.well-known/jwks.json` : '')
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+export const supabase = createClient(SUPABASE_URL || 'https://placeholder.supabase.co', SUPABASE_ANON_KEY || 'placeholder-key')
 
 // SECURITY: the Supabase service_role (secret) key must NEVER be referenced
 // here. Any env var read in this file is inlined into the public browser

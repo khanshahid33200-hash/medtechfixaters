@@ -38,7 +38,7 @@ const contactFaqs: FAQItem[] = [
   {
     question: "How can a hospital discuss implementation?",
     answer:
-      "You can submit an inquiry through the contact form above, call our team directly at +91 95878 67559, or send an email to contact@shahidkhan.site. Our implementation specialists will schedule a 15-minute live platform walkthrough.",
+      "You can submit an inquiry through the contact form above, call our team directly at +91 95878 67559, or send an email to contact@medtechfixaters.in. Our implementation specialists will schedule a 15-minute live platform walkthrough.",
   },
 ];
 

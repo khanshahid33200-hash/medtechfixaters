@@ -127,11 +127,11 @@ export default function PublicFooter() {
             </p>
 
             <a
-              href="mailto:support@medtechfixaters.com"
+              href="mailto:support@medtechfixaters.in"
               className="mt-6 inline-flex items-center gap-2 text-sm font-medium text-slate-600 transition hover:text-blue-600"
             >
               <Mail size={16} />
-              support@medtechfixaters.com
+              support@medtechfixaters.in
             </a>
 
           </div>

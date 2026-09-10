@@ -323,7 +323,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   // Doctor OPD Profile & Settings Form State
   const [profileForm, setProfileForm] = useState({
     name: doctorName,
-    email: doctorProfile?.email || 'doctor@medtechfixaters.com',
+    email: doctorProfile?.email || 'doctor@medtechfixaters.in',
     phone: '+91 98765 43210',
     specialization: doctorSpecialty,
     qualification: 'MBBS, MD (Cardiology)',
@@ -2610,7 +2610,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
             <h3 className="font-black text-base text-slate-900">Hospital Tech Support</h3>
             <p className="text-xs text-slate-500">For hardware integration, OPD printer issues, or urgent queries:</p>
             <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1 font-bold">
-              <p className="text-indigo-600">Email: support@medtechfixaters.com</p>
+              <p className="text-indigo-600">Email: support@medtechfixaters.in</p>
               <p className="text-slate-700">Reception Desk Ext: #301</p>
             </div>
             <button

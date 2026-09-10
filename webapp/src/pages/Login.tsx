@@ -136,7 +136,7 @@ export default function Login({ lockedRole }: LoginProps) {
       setResolvedOtpEmail(res.email)
       setOtpSent(true)
       setOtpTimer(60)
-      setNotice(`✓ 6-Digit Mail OTP code sent to your registered email (${res.email})!`)
+      setNotice(`✓ Mail OTP code sent to your registered email (${res.email})!`)
     } catch (err: any) {
       setError(err.message || 'Could not send Mail OTP. Please verify your Doctor ID or Email.')
     } finally {
@@ -150,9 +150,9 @@ export default function Login({ lockedRole }: LoginProps) {
     setNotice(null)
     setLoading(true)
 
-    if (!otpCode.trim() || otpCode.trim().length < 6) {
+    if (!otpCode.trim() || otpCode.trim().length < 6 || otpCode.trim().length > 8) {
       setLoading(false)
-      setError('Please enter the 6-digit OTP code sent to your email.')
+      setError('Please enter the valid OTP code (6 to 8 digits) sent to your email.')
       return
     }
 
@@ -167,7 +167,7 @@ export default function Login({ lockedRole }: LoginProps) {
         navigate('/dashboard')
       }
     } catch (err: any) {
-      setError(err.message || 'OTP verification failed. Please check the 6-digit code.')
+      setError(err.message || 'OTP verification failed. Please check the OTP code.')
     } finally {
       setLoading(false)
     }
@@ -556,7 +556,7 @@ export default function Login({ lockedRole }: LoginProps) {
                 }`}
               >
                 <Sparkles size={14} className="text-amber-500" />
-                <span>Email 6-Digit OTP</span>
+                <span>Email Mail OTP</span>
               </button>
             </div>
 
@@ -628,7 +628,7 @@ export default function Login({ lockedRole }: LoginProps) {
                   </div>
                 </motion.div>
 
-                {/* 6-Digit OTP Field (shown after OTP sent) */}
+                {/* OTP Field (shown after OTP sent - supports 6 to 8 digits) */}
                 {otpSent && (
                   <motion.div
                     initial={{ opacity: 0, y: 15 }}
@@ -637,7 +637,7 @@ export default function Login({ lockedRole }: LoginProps) {
                   >
                     <div className="flex items-center justify-between">
                       <label className="text-sm font-medium text-[#1D1D1F]">
-                        Enter 6-Digit Mail OTP Code
+                        Enter Mail OTP Code (6-8 Digits)
                       </label>
                       <span className="text-[11px] text-[#8E8E93]">Check email inbox</span>
                     </div>
@@ -647,11 +647,11 @@ export default function Login({ lockedRole }: LoginProps) {
                       <input
                         type="text"
                         required
-                        maxLength={6}
+                        maxLength={8}
                         value={otpCode}
                         onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder="123456"
-                        className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-lg font-mono tracking-[0.3em] font-extrabold"
+                        placeholder="12345678"
+                        className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-lg font-mono tracking-[0.25em] font-extrabold"
                       />
                     </div>
 
@@ -682,7 +682,7 @@ export default function Login({ lockedRole }: LoginProps) {
                 >
                   <span className="relative z-10 flex items-center gap-2 font-bold text-sm">
                     {loading ? (
-                      <span>{otpSent ? 'Verifying OTP…' : 'Sending 6-Digit OTP…'}</span>
+                      <span>{otpSent ? 'Verifying OTP…' : 'Sending Mail OTP…'}</span>
                     ) : otpSent ? (
                       <>
                         <span>Verify & Unlock Console</span>
@@ -690,7 +690,7 @@ export default function Login({ lockedRole }: LoginProps) {
                       </>
                     ) : (
                       <>
-                        <span>Send 6-Digit Mail OTP</span>
+                        <span>Send Mail OTP</span>
                         <Sparkles className="h-5 w-5" />
                       </>
                     )}

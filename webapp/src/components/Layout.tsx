@@ -152,7 +152,7 @@ export default function Layout({ children }: LayoutProps) {
             </div>
             <p className="text-[10px] text-slate-500 leading-tight">Contact hospital admin or support team.</p>
             <a
-              href="mailto:support@medtechfixaters.com"
+              href="mailto:support@medtechfixaters.in"
               className="w-full py-1.5 bg-white hover:bg-indigo-600 hover:text-white text-indigo-600 border border-indigo-200 rounded-xl text-[11px] font-bold shadow-sm transition flex items-center justify-center gap-1.5"
             >
               <span>🎧 Get Support</span>
