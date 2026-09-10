@@ -53,6 +53,8 @@ import HospitalNotificationsPage from './pages/hospitaldashboard/HospitalNotific
 import HospitalSettingsPage from './pages/hospitaldashboard/HospitalSettingsPage'
 import HospitalUsersRolesPage from './pages/hospitaldashboard/HospitalUsersRolesPage'
 import HospitalQRManagementPage from './pages/hospitaldashboard/HospitalQRManagementPage'
+import HospitalChatPage from './pages/hospitaldashboard/HospitalChatPage'
+import HospitalLogsPage from './pages/hospitaldashboard/HospitalLogsPage'
 
 // Components
 import CookieBanner from './components/CookieBanner'
@@ -151,6 +153,8 @@ function App() {
         <Route path="/hospitaldashboard/settings/hospital-profile" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalSettingsPage /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/users-roles" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalUsersRolesPage /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/qr" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalQRManagementPage /></ProtectedRoute>} />
+        <Route path="/hospitaldashboard/chat" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalChatPage /></ProtectedRoute>} />
+        <Route path="/hospitaldashboard/logs" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalLogsPage /></ProtectedRoute>} />
 
         {/* Redirect Legacy Hospital Admin Routes to Hospital Dashboard */}
         <Route path="/hospitaladmin-dashboard" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
@@ -268,7 +272,23 @@ function App() {
           path="/qr-kiosk"
           element={
             <ProtectedRoute requiredRole="doctor">
-              <Dashboard initialTab="queue" />
+              <Dashboard initialTab="qr-kiosk" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute requiredRole="doctor">
+              <Dashboard initialTab="notifications" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/availability"
+          element={
+            <ProtectedRoute requiredRole="doctor">
+              <Dashboard initialTab="availability" />
             </ProtectedRoute>
           }
         />

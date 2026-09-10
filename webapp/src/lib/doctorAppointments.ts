@@ -19,15 +19,17 @@
 
 import { supabase } from './supabase'
 
-export type AppointmentStatus =
-  | 'waiting'
-  | 'called'
-  | 'in_consultation'
-  | 'completed'
-  | 'cancelled'
-  | 'no_show'
-  | 'pending'
-  | 'confirmed'
+// Must match the CHECK constraint on public.appointments EXACTLY
+// (supabase/01_master_setup.sql) — 'Waiting' | 'In Consultation' |
+// 'Completed' | 'Cancelled' | 'No Show'. This file previously used its own
+// lowercase/underscore status strings ('waiting', 'in_consultation',
+// 'completed', ...) that never match a real row: every appointment booked
+// via book_qr_appointment() comes back with status 'Waiting', which
+// getDoctorAppointments/getDoctorStats/the queue mapper below all failed to
+// recognize — so booked patients silently never appeared in the Live Queue
+// or Dashboard stats, and status-update writes were silently rejected by
+// the DB's CHECK constraint (the error was swallowed, returning false).
+export type AppointmentStatus = 'Waiting' | 'In Consultation' | 'Completed' | 'Cancelled' | 'No Show'
 
 export interface DoctorAppointmentPatient {
   id: string
@@ -245,7 +247,7 @@ export async function completeConsultation(params: {
 
   if (rxError) return { success: false, error: rxError.message }
 
-  const updated = await updateAppointmentStatus(params.appointmentId, 'completed')
+  const updated = await updateAppointmentStatus(params.appointmentId, 'Completed')
   if (!updated) return { success: false, error: 'Consultation saved but appointment status update failed.' }
 
   return { success: true }
@@ -266,8 +268,8 @@ export async function getDoctorStats(doctorId: string, dateStr?: string): Promis
   const today = dateStr || new Date().toISOString().split('T')[0]
   const appointments = await getDoctorAppointments(doctorId, { date: today })
 
-  const completed = appointments.filter(a => a.status === 'completed')
-  const waiting = appointments.filter(a => a.status === 'waiting' || a.status === 'pending')
+  const completed = appointments.filter(a => a.status === 'Completed')
+  const waiting = appointments.filter(a => a.status === 'Waiting')
   const revenue = completed.reduce((sum, a) => sum + (a.fee || 0), 0)
 
   return {

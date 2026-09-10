@@ -539,14 +539,28 @@ BEGIN
                 'role', 'hospital_admin',
                 'full_name', p_hospital_name || ' Admin',
                 'hospital_id', v_hosp_id
-            )
+            ),
+            -- Same NULL-token fix as the INSERT branch below, applied here
+            -- too so re-provisioning an account created before this fix
+            -- (or one that somehow still has NULLs) also gets repaired.
+            confirmation_token = COALESCE(confirmation_token, ''),
+            recovery_token = COALESCE(recovery_token, ''),
+            email_change = COALESCE(email_change, ''),
+            email_change_token_new = COALESCE(email_change_token_new, ''),
+            email_change_token_current = COALESCE(email_change_token_current, ''),
+            phone_change = COALESCE(phone_change, ''),
+            phone_change_token = COALESCE(phone_change_token, ''),
+            reauthentication_token = COALESCE(reauthentication_token, '')
         WHERE LOWER(email) = v_clean_email
         RETURNING id INTO v_user_id;
     ELSE
         INSERT INTO auth.users (
             id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
             last_sign_in_at, raw_app_meta_data, raw_user_meta_data,
-            is_super_admin, is_anonymous, created_at, updated_at
+            is_super_admin, is_anonymous, created_at, updated_at,
+            confirmation_token, recovery_token, email_change,
+            email_change_token_new, email_change_token_current,
+            phone_change, phone_change_token, reauthentication_token
         ) VALUES (
             v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
             v_clean_email, crypt(p_admin_password, gen_salt('bf')), NOW(), NOW(),
@@ -556,7 +570,13 @@ BEGIN
                 'full_name', p_hospital_name || ' Admin',
                 'hospital_id', v_hosp_id
             ),
-            false, false, NOW(), NOW()
+            false, false, NOW(), NOW(),
+            -- NOT NULL-in-practice columns: GoTrue's Go client cannot scan a
+            -- NULL into these string fields, and omitting them here (they
+            -- default to NULL) makes every login for this account fail with
+            -- "Database error querying schema" even though the password is
+            -- correct. Always set them to '' explicitly.
+            '', '', '', '', '', '', '', ''
         );
     END IF;
 
@@ -641,13 +661,19 @@ BEGIN
   INSERT INTO auth.users (
     id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
     last_sign_in_at, raw_app_meta_data, raw_user_meta_data,
-    is_super_admin, is_anonymous, created_at, updated_at
+    is_super_admin, is_anonymous, created_at, updated_at,
+    confirmation_token, recovery_token, email_change,
+    email_change_token_new, email_change_token_current,
+    phone_change, phone_change_token, reauthentication_token
   ) VALUES (
     v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
     v_email, crypt(v_password, gen_salt('bf')), NOW(), NOW(),
     '{"provider": "email", "providers": ["email"]}'::jsonb,
     '{"role": "super_admin", "full_name": "Platform Super Admin"}'::jsonb,
-    false, false, NOW(), NOW()
+    false, false, NOW(), NOW(),
+    -- See note in admin_create_hospital_with_admin above: these must be ''
+    -- not NULL, or login fails with "Database error querying schema".
+    '', '', '', '', '', '', '', ''
   );
 
   INSERT INTO public.profiles (

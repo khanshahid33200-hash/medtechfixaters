@@ -37,12 +37,16 @@ import {
 // carried alongside for writing real consultations/prescriptions rows.
 type DoctorQueueItem = QueueItem & { patient_id: string | null }
 
+// Status strings must match the DB CHECK constraint on public.appointments
+// exactly ('Waiting' | 'In Consultation' | 'Completed' | 'Cancelled' |
+// 'No Show') — comparing against lowercase/underscore values here matched
+// zero real rows, so booked patients never showed up in this queue.
 function mapAppointmentToQueueItem(appt: DoctorAppointment): DoctorQueueItem | null {
   let status: DoctorQueueItem['status']
-  if (appt.status === 'in_consultation' || appt.status === 'called') status = 'With Doctor'
-  else if (appt.status === 'completed') status = 'Completed'
-  else if (appt.status === 'waiting' || appt.status === 'pending' || appt.status === 'confirmed') status = 'Waiting'
-  else if (appt.status === 'cancelled' || appt.status === 'no_show') status = 'Skipped'
+  if (appt.status === 'In Consultation') status = 'With Doctor'
+  else if (appt.status === 'Completed') status = 'Completed'
+  else if (appt.status === 'Waiting') status = 'Waiting'
+  else if (appt.status === 'Cancelled' || appt.status === 'No Show') status = 'Skipped'
   else return null
 
   return {
@@ -125,9 +129,9 @@ export default function Queue() {
     setAnnouncedToken(nextPatient.token_number)
 
     if (activeDoctorPatient) {
-      await updateAppointmentStatus(activeDoctorPatient.id, 'completed')
+      await updateAppointmentStatus(activeDoctorPatient.id, 'Completed')
     }
-    await updateAppointmentStatus(nextPatient.id, 'in_consultation')
+    await updateAppointmentStatus(nextPatient.id, 'In Consultation')
   }
 
   // Open Prescription Editor for Patient
@@ -224,7 +228,7 @@ export default function Queue() {
 
   // Quick Actions
   const handleStartConsultation = async (id: string) => {
-    await updateAppointmentStatus(id, 'in_consultation')
+    await updateAppointmentStatus(id, 'In Consultation')
     const updated = await reloadQueue()
     const item = updated.find((q) => q.id === id)
     if (item) {
@@ -234,12 +238,12 @@ export default function Queue() {
   }
 
   const handleSkip = async (id: string) => {
-    await updateAppointmentStatus(id, 'no_show')
+    await updateAppointmentStatus(id, 'No Show')
     await reloadQueue()
   }
 
   const handleRecall = async (id: string) => {
-    await updateAppointmentStatus(id, 'waiting')
+    await updateAppointmentStatus(id, 'Waiting')
     const updated = await reloadQueue()
     const item = updated.find((q) => q.id === id)
     if (item) setAnnouncedToken(item.token_number)

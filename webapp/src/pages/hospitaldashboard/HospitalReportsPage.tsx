@@ -51,7 +51,7 @@ export default function HospitalReportsPage() {
             dept: a.doctor?.department || 'General OPD',
             doctor: a.doctor?.full_name || 'Attending Physician',
             time: a.appointment_date || 'Recent',
-            outcome: a.status === 'completed' ? 'Consultation Done' : a.status === 'cancelled' ? 'Cancelled' : 'Scheduled'
+            outcome: a.status === 'Completed' ? 'Consultation Done' : a.status === 'Cancelled' ? 'Cancelled' : 'Scheduled'
           }))
           setRecords(mapped)
         } else {

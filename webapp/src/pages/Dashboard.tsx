@@ -8,11 +8,27 @@ import {
   X, UserCheck, Stethoscope, Layers, Phone,
   Clock, Volume2, FileText, CheckCircle,
   Star, Upload, Edit3, Trash2, DollarSign, Send, Eye, ShieldCheck,
-  Check, QrCode, Download, Copy, Share2, ExternalLink
+  Check, QrCode, Download, Copy, Share2, ExternalLink, CalendarDays
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 import { supabase } from '../lib/supabase'
+import DoctorDashboardLayout from '../components/doctordashboard/DoctorDashboardLayout'
+import { useDoctorDashboardStats, resolveRange } from '../hooks/useDoctorDashboardStats'
+import type { DateRangeKey } from '../hooks/useDashboardStats'
+import { createTestRequest, createFollowUp, createDoctorRequest, createEmergencyRequest, DoctorRequestType, fetchFollowUps, updateFollowUpStatus, FollowUpRow } from '../services/consultationWorkflowService'
+import { useAppointmentsRealtime } from '../hooks/useAppointmentsRealtime'
+import { rescheduleAppointment as rescheduleAppointmentSvc } from '../services/appointmentService'
+import {
+  fetchAvailability,
+  setUnavailableDate,
+  clearUnavailableDate,
+  fetchWorkingHours,
+  saveWorkingHours,
+  AvailabilityBlock,
+  WorkingHours,
+} from '../services/doctorAvailabilityService'
+import { fetchNotifications, markNotificationRead, markAllRead, archiveNotification, NotificationRow } from '../services/notificationService'
 import {
   getDoctorAppointments,
   updateAppointmentStatus,
@@ -47,17 +63,18 @@ interface ClinicalQueuePatient {
 }
 
 // Maps a real Supabase appointment row to the JSX-facing shape this page's
-// UI is built around. This dashboard only ever writes 'waiting',
-// 'in_consultation', or 'completed' itself (see handlers below); other
-// statuses a hospital-admin or another flow may set ('cancelled',
-// 'no_show') are excluded from the active queue view entirely rather than
-// mapped into a misleading bucket.
+// UI is built around. Status strings must match the DB CHECK constraint on
+// public.appointments EXACTLY ('Waiting' | 'In Consultation' | 'Completed' |
+// 'Cancelled' | 'No Show') — this used to compare against lowercase/
+// underscore values that never matched a real row, so every appointment
+// booked via book_qr_appointment() (status 'Waiting') fell through to
+// `return null` and silently never appeared in the Live Queue or Dashboard.
 function mapAppointmentToQueuePatient(appt: DoctorAppointment): ClinicalQueuePatient | null {
   let status: ClinicalQueuePatient['status']
-  if (appt.status === 'in_consultation' || appt.status === 'called') status = 'Now Consulting'
-  else if (appt.status === 'completed') status = 'Completed'
-  else if (appt.status === 'waiting' || appt.status === 'pending' || appt.status === 'confirmed') status = 'Waiting'
-  else return null // cancelled / no_show — not part of the active queue
+  if (appt.status === 'In Consultation') status = 'Now Consulting'
+  else if (appt.status === 'Completed') status = 'Completed'
+  else if (appt.status === 'Waiting') status = 'Waiting'
+  else return null // Cancelled / No Show — not part of the active queue
 
   const createdAt = appt.created_at ? new Date(appt.created_at) : null
   const waitMins = createdAt ? Math.max(0, Math.round((Date.now() - createdAt.getTime()) / 60000)) : null
@@ -93,7 +110,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
 
   const navigate = useNavigate()
   const location = useLocation()
-  const { doctorProfile, logout } = useAuth()
+  const { doctorProfile, logout, currentUser } = useAuth()
 
   // Doctor & Hospital Identity — sourced ONLY from the authenticated session
   // (AuthContext). A localStorage fallback here is exactly the bug class
@@ -110,6 +127,13 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
 
   const selectedHospital = doctorProfile?.hospital_name || 'Hospital Facility'
   const hospitalLocation = 'Clinical OPD Wing'
+
+  // Real, doctor+hospital-scoped stats with period-over-period % change —
+  // replaces the hardcoded "↑ 12% vs yesterday" style badges below, which
+  // never reflected the database.
+  const [statsRangeKey] = useState<DateRangeKey>('today')
+  const statsRange = resolveRange(statsRangeKey)
+  const { kpis: doctorKpis } = useDoctorDashboardStats(hospitalId, doctorId, statsRange)
 
   // Registered Hospital QR Code state for Doctor Workspace
   const [hospitalQrToken, setHospitalQrToken] = useState<string>(() => {
@@ -228,14 +252,188 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     return unsubscribe
   }, [doctorId, refreshQueue])
 
-  // Upcoming Appointments State — was hardcoded to 5 fake patients that
-  // never got replaced with real data (setAppointmentsList is never called
-  // anywhere in this file), so every doctor saw the same fake appointment
-  // list permanently. Starts empty; see note below re: this list not
-  // actually being wired to the live appointments table yet.
-  const [appointmentsList, setAppointmentsList] = useState<
-    { id: string; time: string; name: string; phone: string; type: string; status: string; dept: string }[]
-  >([])
+  // Upcoming Appointments — real, live, doctor+hospital scoped (RLS
+  // additionally enforces doctor_id = auth.uid() server-side regardless of
+  // what filter is passed here). Replaces the previous hardcoded 5-fake-
+  // patient list that setAppointmentsList never actually populated.
+  const [apptDateFilter, setApptDateFilter] = useState('')
+  const [apptStatusFilter, setApptStatusFilter] = useState('')
+  const [apptBookingFilter, setApptBookingFilter] = useState<'' | 'AI' | 'Manual'>('')
+  const { appointments: liveAppointments, isLoading: apptsLoading, refresh: refreshAppts } = useAppointmentsRealtime(hospitalId, {
+    doctorId,
+    date: apptDateFilter || undefined,
+    status: apptStatusFilter || undefined,
+  })
+  const appointmentsList = (apptBookingFilter ? liveAppointments.filter(a => a.booking_method === apptBookingFilter) : liveAppointments)
+
+  const handleCheckInAppointment = async (apptId: string, name: string) => {
+    await updateAppointmentStatus(apptId, 'Waiting')
+    setNotice(`✓ Checked in ${name} to Today's Live Queue!`)
+    setTimeout(() => setNotice(null), 3500)
+  }
+  const handleRescheduleAppointment = async (apptId: string, name: string) => {
+    const newDate = prompt(`Reschedule ${name} to which date? (YYYY-MM-DD)`, new Date().toISOString().split('T')[0])
+    if (!newDate) return
+    try {
+      await rescheduleAppointmentSvc(apptId, newDate, name)
+      setNotice(`✓ Appointment for ${name} rescheduled to ${newDate}.`)
+    } catch (e: any) {
+      setNotice(`⚠ Could not reschedule: ${e.message}`)
+    }
+    setTimeout(() => setNotice(null), 3500)
+  }
+
+  // Follow-Up CRM — real rows from public.follow_ups (created via
+  // create_follow_up() during Finish Consultation), not hardcoded demo rows.
+  const [followUps, setFollowUps] = useState<FollowUpRow[]>([])
+  const [followUpsLoading, setFollowUpsLoading] = useState(true)
+  const loadFollowUps = async () => {
+    if (!hospitalId || !doctorId) return
+    setFollowUpsLoading(true)
+    setFollowUps(await fetchFollowUps(hospitalId, doctorId))
+    setFollowUpsLoading(false)
+  }
+  useEffect(() => { loadFollowUps() }, [hospitalId, doctorId])
+  useEffect(() => {
+    if (!doctorId) return
+    const channel = supabase
+      .channel(`follow-ups:${doctorId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'follow_ups', filter: `doctor_id=eq.${doctorId}` }, () => loadFollowUps())
+      .subscribe()
+    return () => { channel.unsubscribe() }
+  }, [doctorId])
+
+  const todayStr = new Date().toISOString().split('T')[0]
+  const followUpBuckets = {
+    dueToday: followUps.filter(f => f.follow_up_date === todayStr && f.status !== 'completed' && f.status !== 'cancelled'),
+    upcoming: followUps.filter(f => f.follow_up_date > todayStr && f.status !== 'completed' && f.status !== 'cancelled'),
+    overdue: followUps.filter(f => f.follow_up_date < todayStr && f.status !== 'completed' && f.status !== 'cancelled'),
+    completed: followUps.filter(f => f.status === 'completed'),
+  }
+  const [followUpTab, setFollowUpTab] = useState<'dueToday' | 'upcoming' | 'overdue' | 'completed'>('dueToday')
+
+  const handleCompleteFollowUp = async (id: string) => {
+    try {
+      await updateFollowUpStatus(id, 'completed')
+      setNotice('✓ Follow-up marked completed.')
+    } catch (e: any) {
+      setNotice(`⚠ ${e.message}`)
+    }
+    setTimeout(() => setNotice(null), 3000)
+  }
+  const handleCancelFollowUp = async (id: string) => {
+    if (!confirm('Cancel this follow-up?')) return
+    try {
+      await updateFollowUpStatus(id, 'cancelled')
+      setNotice('Follow-up cancelled.')
+    } catch (e: any) {
+      setNotice(`⚠ ${e.message}`)
+    }
+    setTimeout(() => setNotice(null), 3000)
+  }
+
+  // Security — Change Password (Supabase Auth only, never a custom table)
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+
+  // Doctor Availability
+  const [availabilityBlocks, setAvailabilityBlocks] = useState<AvailabilityBlock[]>([])
+  const [availabilityLoading, setAvailabilityLoading] = useState(true)
+  const [newAvailabilityForm, setNewAvailabilityForm] = useState<{ date: string; status: AvailabilityBlock['status']; reason: string }>({
+    date: '',
+    status: 'unavailable',
+    reason: '',
+  })
+  const [workingHoursForm, setWorkingHoursForm] = useState<Partial<WorkingHours>>({})
+
+  const loadAvailability = async () => {
+    if (!doctorId || !hospitalId) return
+    setAvailabilityLoading(true)
+    setAvailabilityBlocks(await fetchAvailability(doctorId, hospitalId))
+    setAvailabilityLoading(false)
+  }
+  useEffect(() => { loadAvailability() }, [doctorId, hospitalId])
+  useEffect(() => {
+    if (!doctorId) return
+    fetchWorkingHours(doctorId).then(wh => { if (wh) setWorkingHoursForm(wh) })
+  }, [doctorId])
+
+  const handleSaveAvailability = async () => {
+    if (!newAvailabilityForm.date || !doctorId || !hospitalId) return
+    try {
+      await setUnavailableDate({ doctorId, hospitalId, date: newAvailabilityForm.date, status: newAvailabilityForm.status, reason: newAvailabilityForm.reason })
+      setNewAvailabilityForm({ date: '', status: 'unavailable', reason: '' })
+      setNotice('✓ Availability updated. You will not be offered for booking on this date.')
+      loadAvailability()
+    } catch (e: any) {
+      setNotice(`⚠ ${e.message}`)
+    }
+    setTimeout(() => setNotice(null), 4000)
+  }
+  const handleClearAvailability = async (date: string) => {
+    if (!doctorId) return
+    try {
+      await clearUnavailableDate(doctorId, date)
+      setNotice('✓ Availability block removed.')
+      loadAvailability()
+    } catch (e: any) {
+      setNotice(`⚠ ${e.message}`)
+    }
+    setTimeout(() => setNotice(null), 3000)
+  }
+  const handleSaveWorkingHours = async () => {
+    if (!doctorId || !hospitalId) return
+    try {
+      await saveWorkingHours({
+        doctor_id: doctorId,
+        hospital_id: hospitalId,
+        morning_start: workingHoursForm.morning_start || null,
+        morning_end: workingHoursForm.morning_end || null,
+        evening_start: workingHoursForm.evening_start || null,
+        evening_end: workingHoursForm.evening_end || null,
+      })
+      setNotice('✓ Working hours saved.')
+    } catch (e: any) {
+      setNotice(`⚠ ${e.message}`)
+    }
+    setTimeout(() => setNotice(null), 3000)
+  }
+
+  // Notifications — real table (platform_all / hospital_all / specific_user)
+  const [notifications, setNotifications] = useState<NotificationRow[]>([])
+  const [notificationsLoading, setNotificationsLoading] = useState(true)
+  const loadNotifications = async () => {
+    if (!currentUser?.id) return
+    setNotificationsLoading(true)
+    setNotifications(await fetchNotifications(currentUser.id))
+    setNotificationsLoading(false)
+  }
+  useEffect(() => { loadNotifications() }, [currentUser?.id])
+  useEffect(() => {
+    const channel = supabase
+      .channel('doctor-notifications')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifications())
+      .subscribe()
+    return () => { channel.unsubscribe() }
+  }, [currentUser?.id])
+
+  const handleMarkNotificationRead = async (id: string) => {
+    if (!currentUser?.id) return
+    setNotifications(prev => prev.map(n => (n.id === id ? { ...n, is_read: true } : n)))
+    await markNotificationRead(id, currentUser.id)
+  }
+  const handleMarkAllNotificationsRead = async () => {
+    if (!currentUser?.id) return
+    const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id)
+    setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
+    await markAllRead(unreadIds, currentUser.id)
+  }
+  const handleArchiveNotification = async (id: string) => {
+    if (!currentUser?.id) return
+    setNotifications(prev => prev.filter(n => n.id !== id))
+    await archiveNotification(id, currentUser.id)
+  }
 
   // Current Patient in Consultation
   const currentPatient = queueList.find(q => q.status === 'Now Consulting') || queueList[0]
@@ -309,16 +507,44 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     labTests: '',
     advice: '',
     followUp: '',
+    followUpReason: '',
+    testRequests: [] as string[],
+    customTest: '',
   })
   const [rxForm, setRxForm] = useState(blankRxForm())
+  const [draftMedicine, setDraftMedicine] = useState({ name: '', dosage: '', duration: '', instruction: '' })
+
+  const TEST_CATALOG = ['CBC', 'Blood Sugar', 'LFT', 'KFT', 'Lipid Profile', 'Urine Routine', 'X-Ray', 'Ultrasound', 'CT Scan', 'MRI']
+  const toggleTestRequest = (test: string) => {
+    setRxForm((p) => ({
+      ...p,
+      testRequests: p.testRequests.includes(test) ? p.testRequests.filter((t) => t !== test) : [...p.testRequests, test],
+    }))
+  }
 
   // Opens the Rx modal blank for whichever patient is currently in
   // consultation — diagnosis, medicines, and advice must always be the
   // doctor's own entry for this specific patient, never carried over.
   const openRxModalForCurrentPatient = () => {
     setRxForm(blankRxForm())
+    setDraftMedicine({ name: '', dosage: '', duration: '', instruction: '' })
     setShowRxModal(true)
   }
+
+  // Raise Request / Emergency Escalation modal state
+  const [showRequestModal, setShowRequestModal] = useState(false)
+  const [requestForm, setRequestForm] = useState<{ type: DoctorRequestType; priority: 'low' | 'normal' | 'high' | 'urgent'; notes: string }>({
+    type: 'hospital_staff',
+    priority: 'normal',
+    notes: '',
+  })
+  const [showEmergencyModal, setShowEmergencyModal] = useState(false)
+  const [emergencyForm, setEmergencyForm] = useState<{ reason: string; priority: 'critical' | 'high' | 'urgent'; notes: string }>({
+    reason: '',
+    priority: 'high',
+    notes: '',
+  })
+  const [workflowBusy, setWorkflowBusy] = useState(false)
 
   // Doctor OPD Profile & Settings Form State
   const [profileForm, setProfileForm] = useState({
@@ -381,9 +607,9 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     setQueueList(updated)
 
     if (currentPatient?.id && currentPatient.id !== target.id) {
-      await updateAppointmentStatus(currentPatient.id, 'completed')
+      await updateAppointmentStatus(currentPatient.id, 'Completed')
     }
-    await updateAppointmentStatus(target.id, 'in_consultation')
+    await updateAppointmentStatus(target.id, 'In Consultation')
 
     setNotice(`📢 Calling Token CC-0${target.token_number} (${target.patient_name})`)
     setTimeout(() => setNotice(null), 4000)
@@ -417,8 +643,96 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
       return
     }
 
-    setNotice(`✓ Prescription generated & WhatsApp dispatched to ${currentPatient.patient_name} (${currentPatient.phone})!`)
-    setTimeout(() => setNotice(null), 4500)
+    // Test requests — saved as real structured rows (test_requests), not
+    // just appended into the free-text labTests field on the prescription.
+    if (rxForm.testRequests.length > 0 || rxForm.customTest.trim()) {
+      try {
+        await createTestRequest({
+          hospitalId,
+          doctorId,
+          patientId: currentPatient.patient_id,
+          appointmentId: currentPatient.id,
+          tests: rxForm.testRequests,
+          customTest: rxForm.customTest.trim() || undefined,
+        })
+      } catch (e: any) {
+        console.warn('Test request save note:', e.message)
+      }
+    }
+
+    // Follow-up — real separate queue/token via create_follow_up(), never
+    // reusing today's consultation token. Only created when a date is set.
+    let followUpNotice = ''
+    if (rxForm.followUp) {
+      try {
+        const fu = await createFollowUp({
+          parentAppointmentId: currentPatient.id,
+          followUpDate: rxForm.followUp,
+          reason: rxForm.followUpReason || undefined,
+        })
+        followUpNotice = ` Follow-up booked: ${fu.follow_up_token}.`
+      } catch (e: any) {
+        console.warn('Follow-up creation note:', e.message)
+        followUpNotice = ' (Follow-up date saved on the prescription, but the queue token could not be created — please schedule it from Follow-Up.)'
+      }
+    }
+
+    setNotice(`✓ Prescription generated & WhatsApp dispatched to ${currentPatient.patient_name} (${currentPatient.phone})!${followUpNotice}`)
+    setTimeout(() => setNotice(null), 5500)
+  }
+
+  const handleRaiseRequest = async () => {
+    if (!hospitalId || !doctorId) return
+    setWorkflowBusy(true)
+    try {
+      await createDoctorRequest({
+        hospitalId,
+        doctorId,
+        patientId: selectedPatientRecord?.patient_id || currentPatient?.patient_id || null,
+        appointmentId: selectedPatientRecord?.id || currentPatient?.id || null,
+        requestType: requestForm.type,
+        priority: requestForm.priority,
+        notes: requestForm.notes,
+      })
+      setShowRequestModal(false)
+      setRequestForm({ type: 'hospital_staff', priority: 'normal', notes: '' })
+      setNotice('✓ Request raised — hospital staff notified.')
+      setTimeout(() => setNotice(null), 4000)
+    } catch (e: any) {
+      alert(`Could not raise request: ${e.message}`)
+    } finally {
+      setWorkflowBusy(false)
+    }
+  }
+
+  const handleSendToEmergency = async () => {
+    const targetPatient = selectedPatientRecord || currentPatient
+    if (!hospitalId || !doctorId || !targetPatient) return
+    if (!emergencyForm.reason.trim()) {
+      alert('A reason is required before escalating to Emergency.')
+      return
+    }
+    setWorkflowBusy(true)
+    try {
+      await createEmergencyRequest({
+        hospitalId,
+        doctorId,
+        patientId: targetPatient.patient_id,
+        appointmentId: targetPatient.id,
+        patientName: targetPatient.patient_name,
+        reason: emergencyForm.reason,
+        priority: emergencyForm.priority,
+        notes: emergencyForm.notes,
+      })
+      setShowEmergencyModal(false)
+      setEmergencyForm({ reason: '', priority: 'high', notes: '' })
+      setNotice(`🚨 ${targetPatient.patient_name} escalated to Emergency Ward. Hospital staff notified.`)
+      setTimeout(() => setNotice(null), 5000)
+    } catch (e: any) {
+      alert(`Could not send to Emergency: ${e.message}`)
+    } finally {
+      setWorkflowBusy(false)
+    }
   }
 
   // Quick Clinical Templates
@@ -497,6 +811,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     const followUpDate = new Date()
     followUpDate.setDate(followUpDate.getDate() + 7)
     setRxForm({
+      ...blankRxForm(),
       diagnosis: tmpl.diagnosis,
       medicines: tmpl.medicines,
       labTests: 'Routine Blood Panel (CBC, LFT, KFT)',
@@ -578,100 +893,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   ]
 
   return (
-    <div className="min-h-screen bg-[#F4F6FB] text-slate-900 font-sans flex antialiased selection:bg-indigo-500 selection:text-white">
-
-      {/* ─── NEW SVELTE CLEAN WHITE SIDEBAR ─────────────────────────────────── */}
-      <aside className="w-64 bg-white border-r border-slate-200/90 flex flex-col justify-between shrink-0 fixed top-0 bottom-0 left-0 z-30 overflow-y-auto shadow-sm">
-        <div className="p-5 space-y-5">
-          {/* Brand Logo */}
-          <Link to="/" className="flex items-center gap-3 group">
-            <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="w-9 h-9 object-contain group-hover:scale-105 transition-transform" />
-            <div>
-              <h2 className="font-black text-base text-slate-900 tracking-tight leading-none">MedTech Fixaters</h2>
-              <span className="text-[11px] font-semibold text-slate-400">Doctor Dashboard</span>
-            </div>
-          </Link>
-
-          {/* Doctor Profile Mini Card */}
-          <div className="p-3.5 bg-slate-50 border border-slate-200/80 rounded-2xl flex items-center gap-3">
-            <img
-              src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=120&q=80"
-              alt={doctorName}
-              className="w-11 h-11 rounded-xl object-cover ring-2 ring-indigo-500/20"
-            />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between gap-1">
-                <h4 className="font-black text-xs text-slate-900 truncate leading-tight">{doctorName}</h4>
-              </div>
-              <span className="inline-block px-1.5 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-800 font-mono text-[9px] font-black rounded my-0.5">
-                {doctorCode}
-              </span>
-              <p className="text-[10px] font-bold text-slate-500 truncate">{doctorSpecialty}</p>
-              <div className="mt-1">
-                <button
-                  onClick={() => setDoctorStatus(doctorStatus === 'Available' ? 'In Session' : doctorStatus === 'In Session' ? 'On Break' : 'Available')}
-                  className="px-2 py-0.5 bg-emerald-100 text-emerald-800 hover:bg-emerald-200 rounded-full text-[9px] font-black uppercase tracking-wider transition"
-                >
-                  {doctorStatus}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Navigation Links — Stays in the New Design for ALL buttons */}
-          <nav className="space-y-1 text-xs">
-            {navItems.map(item => (
-              <button
-                key={item.id}
-                onClick={() => {
-                  setActiveNav(item.id)
-                  navigate(`/${item.id === 'dashboard' ? 'dashboard' : item.id}`, { replace: true })
-                }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
-                  activeNav === item.id
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </button>
-            ))}
-          </nav>
-        </div>
-
-        {/* Need Help Card & Logout */}
-        <div className="p-4 space-y-3">
-          <div className="p-3.5 bg-indigo-50/70 border border-indigo-100 rounded-2xl space-y-2">
-            <div className="flex items-center gap-1.5 text-indigo-700">
-              <AlertCircle size={14} className="shrink-0" />
-              <span className="text-xs font-black">Need Help?</span>
-            </div>
-            <p className="text-[10px] text-slate-500 leading-tight">Contact hospital admin or support team.</p>
-            <button
-              onClick={() => setShowSupportModal(true)}
-              className="w-full py-1.5 bg-white hover:bg-indigo-600 hover:text-white text-indigo-600 border border-indigo-200 rounded-xl text-[11px] font-bold shadow-sm transition flex items-center justify-center gap-1.5"
-            >
-              <span>🎧 Get Support</span>
-            </button>
-          </div>
-
-          <button
-            onClick={() => {
-              logout()
-              navigate('/login')
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-rose-600 hover:bg-rose-50 rounded-xl text-xs font-bold transition"
-          >
-            <LogOut size={15} />
-            <span>Logout</span>
-          </button>
-        </div>
-      </aside>
-
-      {/* ─── MAIN CONTENT ─────────────────────────────────── */}
-      <main className="flex-1 ml-64 min-h-screen p-6 sm:p-8 space-y-6">
-
+    <DoctorDashboardLayout pageTitle={navItems.find(n => n.id === activeNav)?.label || 'Dashboard'}>
         {/* Toast Notification */}
         {notice && (
           <div className="fixed top-5 right-5 z-50 p-4 bg-slate-900 text-white rounded-2xl shadow-2xl flex items-center gap-3 border border-white/10 animate-bounce">
@@ -680,186 +902,44 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
           </div>
         )}
 
-        {/* Top Header */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 relative z-20">
-          {/* Hospital Branch Selector */}
-          <div className="relative">
-            <button
-              onClick={() => setShowHospitalMenu(!showHospitalMenu)}
-              className="flex items-center gap-2.5 p-2 rounded-2xl bg-white border border-slate-200 shadow-sm hover:border-indigo-300 transition text-left"
-            >
-              <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-bold">
-                🏥
-              </div>
-              <div>
-                <div className="flex items-center gap-1">
-                  <span className="font-extrabold text-xs text-slate-900">{selectedHospital}</span>
-                  <ChevronDown size={13} className="text-slate-400" />
-                </div>
-                <span className="text-[10px] text-slate-400 font-semibold">{hospitalLocation}</span>
-              </div>
-            </button>
-
-            {showHospitalMenu && (
-              <div className="absolute left-0 top-14 w-60 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-xs space-y-1 z-50">
-                {[`${selectedHospital} (Main OPD)`, 'Emergency Casualty Wing', 'Specialist Clinics Wing'].map(h => (
-                  <button
-                    key={h}
-                    onClick={() => {
-                      setShowHospitalMenu(false)
-                      setNotice(`Active branch set to ${h}`)
-                      setTimeout(() => setNotice(null), 3000)
-                    }}
-                    className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 font-bold text-slate-700 block"
-                  >
-                    {h}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Right Header: Date Filter, Notifications, Doctor Profile */}
-          <div className="flex items-center gap-3">
-            {/* Live Clock Badge */}
-            <span className="hidden sm:flex items-center gap-1.5 text-xs font-bold text-slate-600 bg-white border border-slate-200 shadow-xs px-3 py-2 rounded-xl">
-              <Clock size={14} className="text-indigo-600" />
-              <span>{currentTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
-            </span>
-
-            {/* Date Selector */}
-            <div className="relative">
-              <button
-                onClick={() => setShowDatePicker(!showDatePicker)}
-                className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-2 shadow-sm hover:border-indigo-300 transition"
-              >
-                <Calendar size={14} className="text-slate-400" />
-                <span>{selectedDate}</span>
-                <ChevronDown size={12} className="text-slate-400" />
-              </button>
-
-              {showDatePicker && (
-                <div className="absolute right-0 top-11 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-xs space-y-1 z-50">
-                  {['Today', 'Yesterday', 'Past 7 Days'].map(d => (
-                    <button
-                      key={d}
-                      onClick={() => {
-                        setSelectedDate(d)
-                        setShowDatePicker(false)
-                        setNotice(`Filtered date to ${d}`)
-                        setTimeout(() => setNotice(null), 2500)
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 font-bold text-slate-700 block"
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Notification Bell */}
-            <div className="relative">
-              <button
-                onClick={() => setShowNotifications(!showNotifications)}
-                className="p-2 bg-white border border-slate-200 rounded-xl hover:border-indigo-300 transition text-slate-600 relative"
-              >
-                <Bell size={18} />
-                <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-1.5 right-1.5" />
-              </button>
-
-              {showNotifications && (
-                <div className="absolute right-0 top-12 w-72 bg-white border border-slate-200 rounded-2xl shadow-2xl p-3 text-xs space-y-2 z-50">
-                  <span className="font-extrabold text-slate-900 block pb-1 border-b border-slate-100">Live Hospital Notifications</span>
-                  <div className="p-2 bg-indigo-50/60 rounded-xl">
-                    <p className="font-bold text-indigo-900">New OPD Patient Checked In</p>
-                    <span className="text-[10px] text-indigo-600">Token CC-016 (Vikas Patel) joined queue</span>
-                  </div>
-                  <div className="p-2 bg-emerald-50/60 rounded-xl">
-                    <p className="font-bold text-emerald-900">Lab Reports Available</p>
-                    <span className="text-[10px] text-emerald-600">Ravi Kumar (Lipid Profile) uploaded</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Doctor Profile Dropdown */}
-            <div className="relative">
-              <button
-                onClick={() => setShowProfileMenu(!showProfileMenu)}
-                className="flex items-center gap-2.5 p-1.5 pl-2 bg-white border border-slate-200 rounded-2xl shadow-sm hover:border-indigo-300 transition"
-              >
-                <img
-                  src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=120&q=80"
-                  alt={doctorName}
-                  className="w-7 h-7 rounded-xl object-cover ring-1 ring-indigo-500/20"
-                />
-                <div className="text-left hidden sm:block">
-                  <p className="text-xs font-black text-slate-800 leading-none">{doctorName}</p>
-                </div>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
-
-              {showProfileMenu && (
-                <div className="absolute right-0 top-12 w-48 bg-white border border-slate-200 rounded-2xl shadow-2xl p-2 text-xs space-y-1 z-50">
-                  <button onClick={() => { setActiveNav('profile'); setShowProfileMenu(false); }} className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 font-bold text-slate-700 flex items-center gap-2">
-                    <UserCheck size={14} /> My Profile
-                  </button>
-                  <button onClick={() => { setActiveNav('settings'); setShowProfileMenu(false); }} className="w-full text-left px-3 py-2 rounded-xl hover:bg-slate-50 font-bold text-slate-700 flex items-center gap-2">
-                    <Settings size={14} /> OPD Settings
-                  </button>
-                  <div className="border-t border-slate-100 my-1" />
-                  <button onClick={() => { logout(); navigate('/login'); }} className="w-full text-left px-3 py-2 rounded-xl hover:bg-rose-50 font-bold text-rose-600 flex items-center gap-2">
-                    <LogOut size={14} /> Sign Out
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
         {/* ═══════════════════════════════════════════════════════════════════
             VIEW 1: DASHBOARD OVERVIEW (NEW DESIGN)
         ═══════════════════════════════════════════════════════════════════ */}
         {activeNav === 'dashboard' && (
           <>
-            {/* ─── TOP 4 METRIC KPI CARDS ─── */}
+            {/* ─── TOP KPI CARDS — real Supabase data, doctor+hospital scoped, with actual period-over-period % change (never a hardcoded badge) ─── */}
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {[
                 {
                   title: 'Total Patients',
-                  value: totalToday,
-                  sub: 'Today Checked-In',
-                  badge: '↑ 12% vs yesterday',
-                  badgeColor: 'text-emerald-600',
+                  value: doctorKpis.totalPatients.value,
+                  sub: 'Today',
+                  change: doctorKpis.totalPatients.change,
                   icon: <Users size={20} className="text-indigo-600" />,
                   iconBg: 'bg-indigo-50 text-indigo-600'
                 },
                 {
                   title: 'Completed',
-                  value: completedToday,
-                  sub: 'Today Consulted',
-                  badge: '↑ 14% vs yesterday',
-                  badgeColor: 'text-emerald-600',
+                  value: doctorKpis.completed.value,
+                  sub: 'Today',
+                  change: doctorKpis.completed.change,
                   icon: <Clock size={20} className="text-blue-600" />,
                   iconBg: 'bg-blue-50 text-blue-600'
                 },
                 {
-                  title: 'Avg. Consultation Time',
-                  value: '18 mins',
-                  sub: 'Per Patient',
-                  badge: '↓ 4% vs yesterday',
-                  badgeColor: 'text-rose-600',
+                  title: 'Waiting Now',
+                  value: doctorKpis.waiting.value,
+                  sub: 'In your live queue',
+                  change: doctorKpis.waiting.change,
                   icon: <Activity size={20} className="text-amber-600" />,
                   iconBg: 'bg-amber-50 text-amber-600'
                 },
                 {
-                  title: 'Patient Rating',
-                  value: '4.8 / 5',
-                  sub: 'Based on 86 reviews',
-                  badge: '↑ 0.2 vs last month',
-                  badgeColor: 'text-emerald-600',
-                  icon: <Star size={20} className="text-emerald-600 fill-emerald-600" />,
+                  title: 'Revenue',
+                  value: `₹${doctorKpis.revenue.value.toLocaleString('en-IN')}`,
+                  sub: 'From completed visits',
+                  change: doctorKpis.revenue.change,
+                  icon: <DollarSign size={20} className="text-emerald-600" />,
                   iconBg: 'bg-emerald-50 text-emerald-600'
                 },
               ].map((card, idx) => (
@@ -870,7 +950,9 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                       <span className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</span>
                       <span className="text-xs font-semibold text-slate-400">{card.sub}</span>
                     </div>
-                    <span className={`text-[10px] font-bold ${card.badgeColor} block`}>{card.badge}</span>
+                    <span className={`text-[10px] font-bold block ${card.change === null ? 'text-slate-400' : card.change >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {card.change === null ? 'No prior period data' : `${card.change >= 0 ? '↑' : '↓'} ${Math.abs(card.change).toFixed(1)}% vs yesterday`}
+                    </span>
                   </div>
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${card.iconBg}`}>
                     {card.icon}
@@ -962,21 +1044,25 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                       </div>
 
                       <div className="space-y-2 mt-3">
-                        {appointmentsList.slice(0, 5).map((apt, idx) => (
-                          <div key={idx} className="p-2 rounded-xl hover:bg-slate-50 transition flex items-center justify-between text-xs">
-                            <div className="flex items-center gap-2.5">
-                              <span className="font-black text-indigo-600 text-[11px]">{apt.time}</span>
-                              <div>
-                                <span className="font-extrabold text-slate-800 block leading-tight">{apt.name}</span>
-                                <span className="text-[10px] text-slate-400 font-medium">{apt.type}</span>
+                        {appointmentsList.length === 0 ? (
+                          <p className="text-center text-slate-400 text-[11px] py-6">No appointments yet.</p>
+                        ) : (
+                          appointmentsList.slice(0, 5).map((apt) => (
+                            <div key={apt.id} className="p-2 rounded-xl hover:bg-slate-50 transition flex items-center justify-between text-xs">
+                              <div className="flex items-center gap-2.5">
+                                <span className="font-black text-indigo-600 text-[11px]">{apt.queue_number}</span>
+                                <div>
+                                  <span className="font-extrabold text-slate-800 block leading-tight">{apt.patient_name}</span>
+                                  <span className="text-[10px] text-slate-400 font-medium">{apt.department?.name || 'General OPD'}</span>
+                                </div>
+                              </div>
+                              <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                                <span>{apt.status}</span>
+                                <ChevronRight size={10} />
                               </div>
                             </div>
-                            <div className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                              <span>Confirmed</span>
-                              <ChevronRight size={10} />
-                            </div>
-                          </div>
-                        ))}
+                          ))
+                        )}
                       </div>
                     </div>
                   </div>
@@ -1447,13 +1533,10 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                    <Clock className="text-indigo-600" size={22} /> Appointments Management
+                    <Clock className="text-indigo-600" size={22} /> All Appointments
                   </h2>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Schedule, confirm, and manage daily patient appointment bookings.
-                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">Live from Supabase — filtered to your own patients only.</p>
                 </div>
-
                 <button
                   onClick={() => setShowBookAppointmentModal(true)}
                   className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition"
@@ -1462,71 +1545,93 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 </button>
               </div>
 
-              {/* Tabs */}
-              <div className="flex items-center gap-2 border-b border-slate-100 text-xs font-bold">
-                {[
-                  { key: 'todays', label: `Today's (${appointmentsList.length})` },
-                  { key: 'upcoming', label: 'Upcoming (12)' },
-                  { key: 'completed', label: 'Completed (16)' },
-                  { key: 'cancelled', label: 'Cancelled (2)' },
-                ].map(t => (
-                  <button
-                    key={t.key}
-                    onClick={() => setAppointmentTab(t.key as any)}
-                    className={`pb-2.5 px-3 transition ${
-                      appointmentTab === t.key
-                        ? 'text-indigo-600 border-b-2 border-indigo-600'
-                        : 'text-slate-400 hover:text-slate-700'
-                    }`}
-                  >
-                    {t.label}
-                  </button>
-                ))}
+              {/* Real filters — never a fake hardcoded count */}
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="date"
+                  value={apptDateFilter}
+                  onChange={e => setApptDateFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                />
+                {apptDateFilter && (
+                  <button onClick={() => setApptDateFilter('')} className="text-[11px] font-bold text-slate-400 hover:text-slate-700">Clear date</button>
+                )}
+                <select
+                  value={apptStatusFilter}
+                  onChange={e => setApptStatusFilter(e.target.value)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                >
+                  <option value="">All Statuses</option>
+                  <option value="Waiting">Waiting</option>
+                  <option value="In Consultation">In Consultation</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="No Show">Missed</option>
+                </select>
+                <select
+                  value={apptBookingFilter}
+                  onChange={e => setApptBookingFilter(e.target.value as any)}
+                  className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700"
+                >
+                  <option value="">AI + Manual</option>
+                  <option value="AI">AI Booking</option>
+                  <option value="Manual">Manual Booking</option>
+                </select>
+                <span className="text-[11px] font-bold text-slate-400 ml-auto">{appointmentsList.length} appointment{appointmentsList.length === 1 ? '' : 's'}</span>
               </div>
             </div>
 
-            {/* Appointments Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {appointmentsList.map(apt => (
-                <div key={apt.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-mono font-black text-xs rounded-lg">
-                      {apt.time}
-                    </span>
-                    <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] rounded-full">
-                      {apt.status}
-                    </span>
+            {/* Appointments Grid — real rows only */}
+            {apptsLoading ? (
+              <p className="text-center text-slate-400 text-xs py-10">Loading appointments…</p>
+            ) : appointmentsList.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-10 text-center">
+                <p className="text-slate-500 font-bold text-sm">No appointments match these filters</p>
+                <p className="text-slate-400 text-xs mt-1">Appointments booked for you will appear here in real time.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {appointmentsList.map(apt => (
+                  <div key={apt.id} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-1 bg-indigo-50 text-indigo-700 font-mono font-black text-xs rounded-lg">
+                        {apt.queue_number}
+                      </span>
+                      <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px] rounded-full">
+                        {apt.status}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-slate-900">{apt.patient_name}</h4>
+                      <span className="text-xs text-slate-500 font-medium">{apt.patient_phone}</span>
+                      <p className="text-[11px] text-slate-400 font-semibold mt-1">
+                        {apt.appointment_date} • {apt.department?.name || 'General OPD'} • {apt.booking_method}
+                      </p>
+                    </div>
+                    <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                      {apt.status === 'Waiting' || apt.status === 'In Consultation' ? (
+                        <button
+                          onClick={() => handleCheckInAppointment(apt.id, apt.patient_name)}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition"
+                        >
+                          Check-In to Queue
+                        </button>
+                      ) : (
+                        <span className="text-slate-300 font-bold">{apt.status}</span>
+                      )}
+                      {apt.status !== 'Completed' && apt.status !== 'Cancelled' && (
+                        <button
+                          onClick={() => handleRescheduleAppointment(apt.id, apt.patient_name)}
+                          className="text-slate-400 hover:text-slate-700 font-bold"
+                        >
+                          Reschedule
+                        </button>
+                      )}
+                    </div>
                   </div>
-
-                  <div>
-                    <h4 className="font-extrabold text-sm text-slate-900">{apt.name}</h4>
-                    <span className="text-xs text-slate-500 font-medium">{apt.phone}</span>
-                    <p className="text-[11px] text-slate-400 font-semibold mt-1">Visit Type: {apt.type} • {apt.dept}</p>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
-                    <button
-                      onClick={() => {
-                        setNotice(`✓ Checked in ${apt.name} to Today's Live Queue!`)
-                        setTimeout(() => setNotice(null), 3500)
-                      }}
-                      className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition"
-                    >
-                      Check-In to Queue
-                    </button>
-                    <button
-                      onClick={() => {
-                        setNotice(`Appointment for ${apt.name} rescheduled.`)
-                        setTimeout(() => setNotice(null), 3000)
-                      }}
-                      className="text-slate-400 hover:text-slate-700 font-bold"
-                    >
-                      Reschedule
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </section>
         )}
 
@@ -1816,52 +1921,75 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
           <section className="space-y-6">
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-2">
               <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
-                <CheckCircle className="text-indigo-600" size={22} /> Scheduled Patient Follow-Ups
+                <CheckCircle className="text-indigo-600" size={22} /> Follow-Up CRM
               </h2>
-              <p className="text-xs text-slate-500">Track returning patients and dispatch automated SMS/WhatsApp return reminders.</p>
+              <p className="text-xs text-slate-500">Real follow-up appointments — each has its own F-### token, separate from today's regular queue.</p>
+            </div>
+
+            {/* Bucket counts — real, from public.follow_ups */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {([
+                { key: 'dueToday', label: 'Due Today', count: followUpBuckets.dueToday.length, tone: 'text-amber-600 bg-amber-50 border-amber-200' },
+                { key: 'upcoming', label: 'Upcoming', count: followUpBuckets.upcoming.length, tone: 'text-indigo-600 bg-indigo-50 border-indigo-200' },
+                { key: 'overdue', label: 'Overdue', count: followUpBuckets.overdue.length, tone: 'text-rose-600 bg-rose-50 border-rose-200' },
+                { key: 'completed', label: 'Completed', count: followUpBuckets.completed.length, tone: 'text-emerald-600 bg-emerald-50 border-emerald-200' },
+              ] as const).map(b => (
+                <button
+                  key={b.key}
+                  onClick={() => setFollowUpTab(b.key)}
+                  className={`p-4 rounded-2xl border text-left transition ${b.tone} ${followUpTab === b.key ? 'ring-2 ring-offset-1 ring-indigo-400' : ''}`}
+                >
+                  <span className="text-2xl font-black block">{b.count}</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wide">{b.label}</span>
+                </button>
+              ))}
             </div>
 
             <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
               <table className="w-full text-left text-xs">
                 <thead>
                   <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                    <th className="py-3 px-4">Patient Name</th>
-                    <th className="py-3 px-4">Phone</th>
-                    <th className="py-3 px-4">Follow-Up Reason</th>
-                    <th className="py-3 px-4">Due Date</th>
-                    <th className="py-3 px-4">Reminder Status</th>
+                    <th className="py-3 px-4">Patient</th>
+                    <th className="py-3 px-4">Token</th>
+                    <th className="py-3 px-4">Reason</th>
+                    <th className="py-3 px-4">Follow-Up Date</th>
+                    <th className="py-3 px-4">Status</th>
                     <th className="py-3 px-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {[
-                    { name: 'Ravi Kumar', phone: '+91 98201 44521', reason: 'BP Review & ECG Check', date: 'In 7 Days (June 7, 2025)', status: 'Pending' },
-                    { name: 'Sunita Devi', phone: '+91 94150 99281', reason: 'Palpitations Holter Check', date: 'In 14 Days (June 14, 2025)', status: 'Sent via SMS' },
-                    { name: 'Mohd. Ali', phone: '+91 98450 77319', reason: 'Hypertension Medication Titration', date: 'Tomorrow (June 1, 2025)', status: 'Due Tomorrow' },
-                  ].map((f, i) => (
-                    <tr key={i} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3.5 px-4 font-bold text-slate-900">{f.name}</td>
-                      <td className="py-3.5 px-4 text-slate-600">{f.phone}</td>
-                      <td className="py-3.5 px-4 text-slate-700 font-medium">{f.reason}</td>
-                      <td className="py-3.5 px-4 font-bold text-indigo-600">{f.date}</td>
-                      <td className="py-3.5 px-4">
-                        <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 font-bold text-[10px] rounded-full border border-emerald-200">
-                          {f.status}
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-4 text-right">
-                        <button
-                          onClick={() => {
-                            setNotice(`✓ WhatsApp follow-up reminder dispatched to ${f.name}!`)
-                            setTimeout(() => setNotice(null), 3500)
-                          }}
-                          className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl transition inline-flex items-center gap-1"
-                        >
-                          <Send size={13} /> Reminder
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                  {followUpsLoading ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400">Loading follow-ups…</td></tr>
+                  ) : followUpBuckets[followUpTab].length === 0 ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-slate-400">No follow-ups in this bucket.</td></tr>
+                  ) : (
+                    followUpBuckets[followUpTab].map((f) => (
+                      <tr key={f.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-slate-900 block">{f.patient?.name || 'Patient'}</span>
+                          <span className="text-[10px] text-slate-400">{f.patient?.phone}</span>
+                        </td>
+                        <td className="py-3.5 px-4 font-mono font-black text-indigo-600">{f.follow_up_token}</td>
+                        <td className="py-3.5 px-4 text-slate-700 font-medium">{f.reason || '—'}</td>
+                        <td className="py-3.5 px-4 font-bold text-slate-800">{f.follow_up_date}</td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 bg-slate-100 text-slate-600 font-bold text-[10px] rounded-full">{f.status.replace('_', ' ')}</span>
+                        </td>
+                        <td className="py-3.5 px-4 text-right space-x-1.5">
+                          {f.status !== 'completed' && f.status !== 'cancelled' && (
+                            <>
+                              <button onClick={() => handleCompleteFollowUp(f.id)} className="px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg transition">
+                                Complete
+                              </button>
+                              <button onClick={() => handleCancelFollowUp(f.id)} className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-lg transition">
+                                Cancel
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1931,10 +2059,31 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               </div>
 
               <form
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault()
-                  localStorage.setItem(`clinicos_doctor_profile_${doctorId}`, JSON.stringify(profileForm))
-                  setNotice('✓ Doctor profile updated successfully!')
+                  try {
+                    // Real Supabase writes — profiles for identity fields
+                    // shared across the app, doctor_details for the
+                    // consultation-specific ones. Never localStorage: a
+                    // profile update must be visible to hospital admin and
+                    // to every other device this doctor logs in from.
+                    await supabase.from('profiles').update({
+                      full_name: profileForm.name,
+                      specialization: profileForm.specialization,
+                    }).eq('id', doctorId)
+                    await supabase.from('doctor_details').update({
+                      name: profileForm.name,
+                      specialization: profileForm.specialization,
+                      qualification: profileForm.qualification,
+                      registration_number: profileForm.registration_number,
+                      room_number: profileForm.room_number,
+                      consultation_fee: profileForm.fee,
+                      daily_patient_limit: profileForm.daily_limit,
+                    }).eq('id', doctorId)
+                    setNotice('✓ Doctor profile updated successfully!')
+                  } catch (err: any) {
+                    setNotice(`⚠ Could not save profile: ${err.message}`)
+                  }
                   setTimeout(() => setNotice(null), 3500)
                 }}
                 className="space-y-4 pt-2 text-xs"
@@ -2100,6 +2249,241 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 </button>
               </div>
             </div>
+
+            {/* Security — real Supabase Auth password change, never a
+                custom plaintext table */}
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <ShieldCheck className="text-indigo-600" size={20} /> Security
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">Change your password via Supabase Auth. Never stored in plaintext anywhere in the app.</p>
+              </div>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault()
+                  if (newPassword.length < 6) {
+                    setNotice('⚠ New password must be at least 6 characters.')
+                    setTimeout(() => setNotice(null), 3000)
+                    return
+                  }
+                  if (newPassword !== confirmPassword) {
+                    setNotice('⚠ New password and confirmation do not match.')
+                    setTimeout(() => setNotice(null), 3000)
+                    return
+                  }
+                  setPasswordSaving(true)
+                  const { error } = await supabase.auth.updateUser({ password: newPassword })
+                  setPasswordSaving(false)
+                  if (error) {
+                    setNotice(`⚠ Could not change password: ${error.message}`)
+                  } else {
+                    setNewPassword('')
+                    setConfirmPassword('')
+                    setNotice('✓ Password changed successfully.')
+                  }
+                  setTimeout(() => setNotice(null), 4000)
+                }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs"
+              >
+                <input
+                  type="password"
+                  required
+                  minLength={6}
+                  placeholder="New Password"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+                <input
+                  type="password"
+                  required
+                  placeholder="Confirm New Password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+                <button
+                  type="submit"
+                  disabled={passwordSaving}
+                  className="md:col-span-2 px-6 py-2.5 bg-slate-900 hover:bg-slate-800 disabled:bg-slate-300 text-white font-bold text-xs rounded-xl shadow transition"
+                >
+                  {passwordSaving ? 'Updating…' : 'Change Password'}
+                </button>
+              </form>
+            </div>
+          </section>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            VIEW: DOCTOR AVAILABILITY
+        ═══════════════════════════════════════════════════════════════════ */}
+        {activeNav === 'availability' && (
+          <section className="space-y-6 max-w-3xl mx-auto">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-2">
+              <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                <CalendarDays className="text-indigo-600" size={22} /> Doctor Availability
+              </h2>
+              <p className="text-xs text-slate-500">
+                Dates marked unavailable exclude you from manual and AI booking recommendations. Existing appointments are never deleted automatically.
+              </p>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+              <h3 className="font-black text-sm text-slate-900">Mark a Date Unavailable</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 text-xs">
+                <input
+                  type="date"
+                  min={new Date().toISOString().split('T')[0]}
+                  value={newAvailabilityForm.date}
+                  onChange={e => setNewAvailabilityForm(p => ({ ...p, date: e.target.value }))}
+                  className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+                <select
+                  value={newAvailabilityForm.status}
+                  onChange={e => setNewAvailabilityForm(p => ({ ...p, status: e.target.value as any }))}
+                  className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                >
+                  <option value="unavailable">Unavailable</option>
+                  <option value="leave">Leave</option>
+                  <option value="holiday">Holiday</option>
+                  <option value="emergency_block">Emergency Block</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="Reason (optional)"
+                  value={newAvailabilityForm.reason}
+                  onChange={e => setNewAvailabilityForm(p => ({ ...p, reason: e.target.value }))}
+                  className="px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold sm:col-span-1"
+                />
+                <button
+                  onClick={handleSaveAvailability}
+                  disabled={!newAvailabilityForm.date}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white font-bold rounded-xl transition"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+              <table className="w-full text-left text-xs">
+                <thead>
+                  <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
+                    <th className="py-3 px-4">Date</th>
+                    <th className="py-3 px-4">Status</th>
+                    <th className="py-3 px-4">Reason</th>
+                    <th className="py-3 px-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {availabilityLoading ? (
+                    <tr><td colSpan={4} className="py-8 text-center text-slate-400">Loading…</td></tr>
+                  ) : availabilityBlocks.length === 0 ? (
+                    <tr><td colSpan={4} className="py-8 text-center text-slate-400">No unavailable dates marked. You're bookable every day.</td></tr>
+                  ) : (
+                    availabilityBlocks.map(b => (
+                      <tr key={b.id} className="hover:bg-slate-50/80 transition">
+                        <td className="py-3 px-4 font-bold text-slate-900">{b.date}</td>
+                        <td className="py-3 px-4">
+                          <span className="px-2 py-0.5 bg-rose-50 text-rose-700 font-bold text-[10px] rounded-full border border-rose-200 capitalize">
+                            {b.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="py-3 px-4 text-slate-600">{b.reason || '—'}</td>
+                        <td className="py-3 px-4 text-right">
+                          <button onClick={() => handleClearAvailability(b.date)} className="text-rose-500 hover:text-rose-700 font-bold">Remove</button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+              <h3 className="font-black text-sm text-slate-900">Working Hours</h3>
+              <div className="grid grid-cols-2 gap-4 text-xs">
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-600">Morning</label>
+                  <div className="flex items-center gap-2">
+                    <input type="time" value={workingHoursForm.morning_start || ''} onChange={e => setWorkingHoursForm(p => ({ ...p, morning_start: e.target.value }))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl" />
+                    <span className="text-slate-400">–</span>
+                    <input type="time" value={workingHoursForm.morning_end || ''} onChange={e => setWorkingHoursForm(p => ({ ...p, morning_end: e.target.value }))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl" />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="font-bold text-slate-600">Evening</label>
+                  <div className="flex items-center gap-2">
+                    <input type="time" value={workingHoursForm.evening_start || ''} onChange={e => setWorkingHoursForm(p => ({ ...p, evening_start: e.target.value }))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl" />
+                    <span className="text-slate-400">–</span>
+                    <input type="time" value={workingHoursForm.evening_end || ''} onChange={e => setWorkingHoursForm(p => ({ ...p, evening_end: e.target.value }))} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl" />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end pt-1">
+                <button onClick={handleSaveWorkingHours} className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition">
+                  Save Working Hours
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════════════════
+            VIEW: NOTIFICATIONS
+        ═══════════════════════════════════════════════════════════════════ */}
+        {activeNav === 'notifications' && (
+          <section className="space-y-6 max-w-3xl mx-auto">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">
+                  <Bell className="text-indigo-600" size={22} /> Notifications
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">From MedTech Fixaters platform admin and your hospital admin.</p>
+              </div>
+              {notifications.some(n => !n.is_read) && (
+                <button onClick={handleMarkAllNotificationsRead} className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-xs rounded-xl transition">
+                  Mark All as Read
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-2.5">
+              {notificationsLoading ? (
+                <p className="text-center text-slate-400 text-xs py-10">Loading notifications…</p>
+              ) : notifications.length === 0 ? (
+                <div className="bg-white rounded-3xl border border-dashed border-slate-200 p-10 text-center">
+                  <p className="text-slate-500 font-bold text-sm">No notifications</p>
+                  <p className="text-slate-400 text-xs mt-1">Platform and hospital announcements will appear here.</p>
+                </div>
+              ) : (
+                notifications.map(n => (
+                  <div
+                    key={n.id}
+                    className={`bg-white p-4 rounded-2xl border shadow-sm flex items-start justify-between gap-3 ${n.is_read ? 'border-slate-200' : 'border-indigo-300 bg-indigo-50/30'}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0" />}
+                        <h4 className="font-bold text-slate-900 text-sm">{n.title}</h4>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${n.priority === 'urgent' || n.priority === 'high' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {n.priority}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-600 mt-1">{n.message}</p>
+                      <p className="text-[10px] text-slate-400 mt-1.5">{new Date(n.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {n.category.replace('_', ' ')}</p>
+                    </div>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      {!n.is_read && (
+                        <button onClick={() => handleMarkNotificationRead(n.id)} className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800">Read</button>
+                      )}
+                      <button onClick={() => handleArchiveNotification(n.id)} className="text-[11px] font-bold text-slate-400 hover:text-slate-700">Archive</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
           </section>
         )}
 
@@ -2158,6 +2542,14 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 </div>
               </div>
 
+              {/* Visible Appointment Link — hospital name/ID + real booking URL */}
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Hospital</span>
+                <p className="text-xs font-bold text-slate-800">{selectedHospital}</p>
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block pt-1">Appointment Link</span>
+                <p className="text-xs font-mono text-indigo-700 break-all">{hospitalBookingUrl}</p>
+              </div>
+
               {/* Action Controls */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                 <button
@@ -2200,8 +2592,6 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
           </section>
         )}
 
-      </main>
-
       {/* ─── 30-SECOND PRESCRIPTION BUILDER MODAL ─────────── */}
       {showRxModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
@@ -2231,16 +2621,72 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               </div>
 
               <div className="space-y-2">
-                <label className="font-bold text-slate-700">Rx Medications (Formulary Auto-complete)</label>
+                <label className="font-bold text-slate-700">Rx Medications</label>
                 <div className="space-y-2">
-                  {rxForm.medicines.map((med, idx) => (
-                    <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
-                      <span className="font-black text-slate-900">{med.name}</span>
-                      <span className="text-slate-500">{med.dosage} • {med.duration}</span>
-                      <span className="text-indigo-600 font-bold">{med.instruction}</span>
-                    </div>
-                  ))}
+                  {rxForm.medicines.length === 0 ? (
+                    <p className="text-slate-400 text-[11px] italic">No medicines added yet — add one below.</p>
+                  ) : (
+                    rxForm.medicines.map((med, idx) => (
+                      <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 flex items-center justify-between gap-3">
+                        <span className="font-black text-slate-900">{med.name}</span>
+                        <span className="text-slate-500">{med.dosage} • {med.duration}</span>
+                        <span className="text-indigo-600 font-bold">{med.instruction}</span>
+                        <button
+                          type="button"
+                          onClick={() => setRxForm(p => ({ ...p, medicines: p.medicines.filter((_, i) => i !== idx) }))}
+                          className="text-rose-400 hover:text-rose-600 shrink-0"
+                          title="Remove medicine"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
+
+                {/* Add Medicine form */}
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                  <input
+                    type="text"
+                    placeholder="Medicine name"
+                    value={draftMedicine.name}
+                    onChange={e => setDraftMedicine(p => ({ ...p, name: e.target.value }))}
+                    className="col-span-2 sm:col-span-2 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Dosage (e.g. 1-0-1)"
+                    value={draftMedicine.dosage}
+                    onChange={e => setDraftMedicine(p => ({ ...p, dosage: e.target.value }))}
+                    className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Duration"
+                    value={draftMedicine.duration}
+                    onChange={e => setDraftMedicine(p => ({ ...p, duration: e.target.value }))}
+                    className="px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Instructions (e.g. After food)"
+                    value={draftMedicine.instruction}
+                    onChange={e => setDraftMedicine(p => ({ ...p, instruction: e.target.value }))}
+                    className="col-span-2 sm:col-span-1 px-2.5 py-2 bg-slate-50 border border-slate-200 rounded-lg text-[11px] font-semibold"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!draftMedicine.name.trim()) return
+                    setRxForm(p => ({ ...p, medicines: [...p.medicines, draftMedicine] }))
+                    setDraftMedicine({ name: '', dosage: '', duration: '', instruction: '' })
+                  }}
+                  disabled={!draftMedicine.name.trim()}
+                  className="w-full py-2 border border-dashed border-indigo-300 text-indigo-600 hover:bg-indigo-50 disabled:opacity-40 disabled:cursor-not-allowed rounded-xl text-[11px] font-bold transition flex items-center justify-center gap-1.5"
+                >
+                  <Plus size={13} /> Add Medicine
+                </button>
               </div>
 
               <div className="space-y-1">
@@ -2255,7 +2701,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Lab Tests / Investigations</label>
+                  <label className="font-bold text-slate-700">Lab Tests / Investigations (free text for the Rx)</label>
                   <input
                     type="text"
                     value={rxForm.labTests}
@@ -2265,7 +2711,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Follow-up Date</label>
+                  <label className="font-bold text-slate-700">Follow-Up Date (books a real F-token)</label>
                   <input
                     type="date"
                     min={new Date().toISOString().split('T')[0]}
@@ -2274,6 +2720,45 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
                   />
                 </div>
+              </div>
+
+              {rxForm.followUp && (
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Follow-Up Reason</label>
+                  <input
+                    type="text"
+                    value={rxForm.followUpReason}
+                    onChange={e => setRxForm(p => ({ ...p, followUpReason: e.target.value }))}
+                    placeholder="e.g. Review blood test results"
+                    className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+              )}
+
+              {/* Suggest Test — saved as a real structured test_requests row */}
+              <div className="space-y-2">
+                <label className="font-bold text-slate-700">Suggest Tests</label>
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-1.5">
+                  {TEST_CATALOG.map((test) => (
+                    <button
+                      type="button"
+                      key={test}
+                      onClick={() => toggleTestRequest(test)}
+                      className={`px-2 py-1.5 rounded-lg text-[10.5px] font-bold border transition ${
+                        rxForm.testRequests.includes(test) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                      }`}
+                    >
+                      {test}
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="text"
+                  value={rxForm.customTest}
+                  onChange={e => setRxForm(p => ({ ...p, customTest: e.target.value }))}
+                  placeholder="Other test (custom entry)"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
               </div>
             </div>
 
@@ -2291,6 +2776,116 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 <Check size={14} /> Finish & Dispatch via WhatsApp
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: RAISE REQUEST ─── */}
+      {showRequestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-3.5 text-xs">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-slate-900">Raise Request</h3>
+              <button onClick={() => setShowRequestModal(false)} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
+            </div>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 block">Request Type</label>
+              <select
+                value={requestForm.type}
+                onChange={(e) => setRequestForm(p => ({ ...p, type: e.target.value as DoctorRequestType }))}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              >
+                <option value="hospital_staff">Hospital Staff</option>
+                <option value="receptionist">Receptionist</option>
+                <option value="lab">Lab</option>
+                <option value="pharmacy">Pharmacy</option>
+                <option value="nursing">Nursing Staff</option>
+                <option value="assistance">Assistance</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 block">Priority</label>
+              <select
+                value={requestForm.priority}
+                onChange={(e) => setRequestForm(p => ({ ...p, priority: e.target.value as any }))}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              >
+                <option value="low">Low</option>
+                <option value="normal">Normal</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 block">Notes</label>
+              <textarea
+                rows={2}
+                value={requestForm.notes}
+                onChange={(e) => setRequestForm(p => ({ ...p, notes: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              />
+            </div>
+            <button
+              onClick={handleRaiseRequest}
+              disabled={workflowBusy}
+              className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-300 text-white font-bold rounded-xl transition"
+            >
+              {workflowBusy ? 'Sending…' : 'Send Request'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: EMERGENCY ESCALATION ─── */}
+      {showEmergencyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-rose-200 rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-3.5 text-xs">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-black text-rose-700 flex items-center gap-1.5"><AlertCircle size={16} /> Emergency Escalation</h3>
+              <button onClick={() => setShowEmergencyModal(false)} className="text-slate-400 hover:text-slate-700"><X size={18} /></button>
+            </div>
+            <p className="text-slate-500">
+              Patient: <strong className="text-slate-900">{(selectedPatientRecord || currentPatient)?.patient_name || '—'}</strong>
+            </p>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 block">Reason</label>
+              <textarea
+                rows={2}
+                value={emergencyForm.reason}
+                onChange={(e) => setEmergencyForm(p => ({ ...p, reason: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 block">Priority</label>
+              <select
+                value={emergencyForm.priority}
+                onChange={(e) => setEmergencyForm(p => ({ ...p, priority: e.target.value as any }))}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              >
+                <option value="critical">Critical</option>
+                <option value="high">High</option>
+                <option value="urgent">Urgent</option>
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="font-bold text-slate-700 block">Additional Notes</label>
+              <textarea
+                rows={2}
+                value={emergencyForm.notes}
+                onChange={(e) => setEmergencyForm(p => ({ ...p, notes: e.target.value }))}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+              />
+            </div>
+            <p className="text-[10.5px] text-slate-400">This only raises an emergency alert — it does not change this patient's medical record.</p>
+            <button
+              onClick={handleSendToEmergency}
+              disabled={workflowBusy}
+              className="w-full py-2.5 bg-rose-600 hover:bg-rose-700 disabled:bg-slate-300 text-white font-bold rounded-xl transition"
+            >
+              {workflowBusy ? 'Sending…' : 'Send to Emergency'}
+            </button>
           </div>
         </div>
       )}
@@ -2442,7 +3037,21 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-slate-100 flex justify-end shrink-0">
+            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowRequestModal(true)}
+                  className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] rounded-xl transition"
+                >
+                  Raise Request
+                </button>
+                <button
+                  onClick={() => setShowEmergencyModal(true)}
+                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-xl transition flex items-center gap-1"
+                >
+                  <AlertCircle size={13} /> Send to Emergency
+                </button>
+              </div>
               <button
                 onClick={() => setShowPatientDetailsModal(false)}
                 className="px-4 py-2 bg-slate-100 font-bold text-xs rounded-xl"
@@ -2623,6 +3232,6 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
         </div>
       )}
 
-    </div>
+    </DoctorDashboardLayout>
   )
 }

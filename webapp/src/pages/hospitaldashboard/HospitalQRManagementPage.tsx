@@ -14,6 +14,7 @@ import {
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { logActivity } from '../../services/auditLogService'
 
 export default function HospitalQRManagementPage() {
   const { doctorProfile } = useAuth()
@@ -69,20 +70,42 @@ export default function HospitalQRManagementPage() {
   }
 
   const handleRegenerate = async () => {
+    if (!currentHospId) return
+    if (!confirm('Regenerate the QR token? Every link and printed code using the current QR will stop working immediately.')) return
     const nextToken = `QR-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
-    setQrToken(nextToken)
     try {
-      await supabase
+      // UPDATE (not upsert) — qr_codes.hospital_id has no unique constraint,
+      // so an upsert with no matching primary key would just INSERT a
+      // second row per hospital instead of replacing the existing one.
+      const { error } = await supabase
         .from('qr_codes')
-        .upsert([{ hospital_id: currentHospId, token: nextToken, booking_url: `/book/${nextToken}`, status: 'active', is_active: true }])
-    } catch (e) {}
-    setNotice('✓ Secure QR token refreshed! Previous links invalidated.')
+        .update({ token: nextToken, booking_url: `/book/${nextToken}`, intake_url: `/book/${nextToken}` })
+        .eq('hospital_id', currentHospId)
+      if (error) throw error
+      setQrToken(nextToken)
+      await logActivity({ category: 'QR', action: 'QR Accessed', targetLabel: 'QR token regenerated', metadata: { new_token: nextToken } })
+      setNotice('✓ Secure QR token refreshed! Previous links invalidated.')
+    } catch (e: any) {
+      setNotice(`Could not regenerate QR: ${e.message || e}`)
+    }
     setTimeout(() => setNotice(null), 4000)
   }
 
-  const handleToggleActive = () => {
-    setQrActive(!qrActive)
-    setNotice(qrActive ? 'QR Deactivated. Public bookings paused.' : '✓ QR Activated. Accepting appointments!')
+  const handleToggleActive = async () => {
+    if (!currentHospId) return
+    const nextActive = !qrActive
+    try {
+      const { error } = await supabase
+        .from('qr_codes')
+        .update({ is_active: nextActive, status: nextActive ? 'active' : 'inactive' })
+        .eq('hospital_id', currentHospId)
+      if (error) throw error
+      setQrActive(nextActive)
+      await logActivity({ category: 'QR', action: nextActive ? 'QR Activated' : 'QR Deactivated' })
+      setNotice(nextActive ? '✓ QR Activated. Accepting appointments!' : 'QR Deactivated. Public bookings paused.')
+    } catch (e: any) {
+      setNotice(`Could not update QR status: ${e.message || e}`)
+    }
     setTimeout(() => setNotice(null), 3500)
   }
 

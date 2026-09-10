@@ -1,5 +1,6 @@
 import React, { useState, useEffect, ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'motion/react'
 import {
   LayoutDashboard,
   Calendar,
@@ -19,10 +20,11 @@ import {
   Building,
   Menu,
   X,
-  Sparkles,
   CalendarDays,
   Check,
-  KeyRound
+  KeyRound,
+  MessageSquare,
+  ScrollText
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useSEO } from '../../hooks/useSEO'
@@ -31,6 +33,23 @@ interface HospitalDashboardLayoutProps {
   children: ReactNode
   pageTitle: string
 }
+
+const navItems = [
+  { name: 'Dashboard', path: '/hospitaldashboard/dashboard', icon: LayoutDashboard },
+  { name: 'Live Queue', path: '/hospitaldashboard/live-queue', icon: Layers },
+  { name: 'Chat', path: '/hospitaldashboard/chat', icon: MessageSquare },
+  { name: 'QR Booking', path: '/hospitaldashboard/qr', icon: QrCode },
+  { name: 'Appointments', path: '/hospitaldashboard/appointments', icon: Calendar },
+  { name: 'Departments', path: '/hospitaldashboard/departments', icon: Building2 },
+  { name: 'Doctors', path: '/hospitaldashboard/doctors', icon: Stethoscope },
+  { name: 'Patients', path: '/hospitaldashboard/patients', icon: Users },
+  { name: 'Reports', path: '/hospitaldashboard/reports', icon: FileText },
+  { name: 'Analytics', path: '/hospitaldashboard/analytics', icon: BarChart3 },
+  { name: 'Notifications', path: '/hospitaldashboard/notifications', icon: Bell, badge: 'live' as const },
+  { name: 'Users & Roles', path: '/hospitaldashboard/users-roles', icon: ShieldCheck },
+  { name: 'Logs', path: '/hospitaldashboard/logs', icon: ScrollText },
+  { name: 'Settings', path: '/hospitaldashboard/settings', icon: Settings },
+]
 
 export default function HospitalDashboardLayout({ children, pageTitle }: HospitalDashboardLayoutProps) {
   useSEO({
@@ -45,28 +64,26 @@ export default function HospitalDashboardLayout({ children, pageTitle }: Hospita
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
   const [datePickerOpen, setDatePickerOpen] = useState(false)
-  const [selectedDateRange, setSelectedDateRange] = useState('May 31, 2025')
+  const [selectedDateRange, setSelectedDateRange] = useState<'Today' | 'This Week' | 'This Month' | 'This Year'>('Today')
+  const [now, setNow] = useState(() => new Date())
 
-  // Hospital identity (Dynamic from profile or demo fallback)
-  const hospitalName = doctorProfile?.hospital_name || localStorage.getItem('hospital_name') || 'City Care Hospital'
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  // Hospital identity — sourced only from the authenticated session, never a
+  // hard-coded fallback, so a different hospital admin never sees a stale
+  // brand from another tenant's browser cache.
+  const hospitalName = doctorProfile?.hospital_name || 'Hospital Facility'
   const hospitalLogo = localStorage.getItem('clinicos_hospital_logo') || ''
-  const adminName = doctorProfile?.name || currentUser?.user_metadata?.full_name || 'Dr. Amit Sharma'
-  const adminRole = doctorProfile?.role === 'hospital_admin' ? 'Admin' : doctorProfile?.role === 'super_admin' ? 'Super Admin' : 'Admin'
-
-  const navItems = [
-    { name: 'Dashboard', path: '/hospitaldashboard/dashboard', icon: LayoutDashboard },
-    { name: 'Appointments', path: '/hospitaldashboard/appointments', icon: Calendar },
-    { name: 'Live Queue', path: '/hospitaldashboard/live-queue', icon: Layers },
-    { name: 'Patients', path: '/hospitaldashboard/patients', icon: Users },
-    { name: 'Doctors', path: '/hospitaldashboard/doctors', icon: Stethoscope },
-    { name: 'Departments', path: '/hospitaldashboard/departments', icon: Building2 },
-    { name: 'Reports', path: '/hospitaldashboard/reports', icon: FileText },
-    { name: 'Analytics', path: '/hospitaldashboard/analytics', icon: BarChart3 },
-    { name: 'Notifications', path: '/hospitaldashboard/notifications', icon: Bell, badge: 12 },
-    { name: 'Settings', path: '/hospitaldashboard/settings', icon: Settings },
-    { name: 'Users & Roles', path: '/hospitaldashboard/users-roles', icon: ShieldCheck },
-    { name: 'QR Management', path: '/hospitaldashboard/qr', icon: QrCode },
-  ]
+  const adminName = doctorProfile?.name || currentUser?.user_metadata?.full_name || 'Administrator'
+  const adminRole =
+    doctorProfile?.role === 'super_admin'
+      ? 'Super Administrator'
+      : doctorProfile?.role === 'hospital_admin'
+      ? 'Hospital Administrator'
+      : 'Administrator'
 
   const isActive = (path: string) => {
     if (path === '/hospitaldashboard/dashboard') {
@@ -80,273 +97,346 @@ export default function HospitalDashboardLayout({ children, pageTitle }: Hospita
     navigate('/login')
   }
 
+  const dateLabel = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  const dayLabel = now.toLocaleDateString('en-IN', { weekday: 'long' })
+
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 flex font-sans antialiased selection:bg-blue-500 selection:text-white">
-      {/* ─── DESKTOP FIXED LEFT SIDEBAR (250px) ─── */}
-      <aside className="hidden lg:flex flex-col w-[250px] bg-white border-r border-slate-200/80 fixed inset-y-0 left-0 z-40">
-        {/* Brand Logo & Name */}
-        <div className="h-16 px-6 flex items-center gap-3 border-b border-slate-100">
-          <img src="/assets/brand-icon.png" alt="MedTech Fixaters" className="w-8 h-8 object-contain shrink-0" />
-          <div className="flex flex-col">
-            <span className="font-extrabold text-[15px] tracking-tight text-slate-900 leading-none">
-              medtech fixaters
+    <div className="min-h-screen bg-[#F7F8FC] text-slate-900 flex font-sans antialiased selection:bg-blue-500/20 relative overflow-x-hidden">
+      {/* Ambient blurred gradient wash behind everything — subtle, not loud */}
+      <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+        <div className="absolute -top-32 -left-24 w-[460px] h-[460px] rounded-full bg-blue-300/25 blur-[120px]" />
+        <div className="absolute top-1/3 -right-24 w-[420px] h-[420px] rounded-full bg-orange-200/25 blur-[120px]" />
+        <div className="absolute bottom-0 left-1/3 w-[380px] h-[380px] rounded-full bg-sky-200/20 blur-[110px]" />
+      </div>
+
+      {/* ─── DESKTOP LIQUID GLASS SIDEBAR ─── */}
+      <aside
+        className="hidden lg:flex flex-col w-[264px] fixed inset-y-0 left-0 z-40 border-r border-white/70"
+        style={{
+          background: 'rgba(255,255,255,0.45)',
+          backdropFilter: 'blur(30px) saturate(150%)',
+          WebkitBackdropFilter: 'blur(30px) saturate(150%)',
+        }}
+      >
+        {/* Hospital Identity Block */}
+        <div className="px-5 pt-6 pb-5 border-b border-white/60">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-white/70 border border-white/80 shadow-sm flex items-center justify-center shrink-0 overflow-hidden text-lg">
+              {hospitalLogo ? (
+                <img src={hospitalLogo} alt={hospitalName} className="w-full h-full object-cover" />
+              ) : (
+                <Building2 size={20} className="text-blue-600" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-[13.5px] font-extrabold text-slate-900 leading-tight truncate">
+                {hospitalName}
+              </h2>
+              <p className="text-[10.5px] text-slate-500 font-medium truncate">Hospital Operations Console</p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+            <span>Powered by</span>
+            <span className="inline-flex items-center gap-1 text-slate-500">
+              <img src="/assets/brand-icon.png" alt="" className="w-3.5 h-3.5 object-contain" />
+              MedTech Fixaters
             </span>
           </div>
         </div>
 
-        {/* Navigation Items */}
-        <nav className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1 scrollbar-thin">
+        {/* Navigation */}
+        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {navItems.map((item) => {
             const active = isActive(item.path)
             const Icon = item.icon
             return (
-              <Link
-                key={item.name}
-                to={item.path}
-                className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all duration-200 ${
-                  active
-                    ? 'bg-blue-50/80 text-blue-600 shadow-sm font-bold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center gap-3">
-                  <Icon
-                    size={17}
-                    className={`transition-colors ${active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'}`}
-                  />
-                  <span>{item.name}</span>
-                </div>
-                {item.badge && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                      active ? 'bg-blue-600 text-white' : 'bg-blue-100 text-blue-600'
-                    }`}
-                  >
-                    {item.badge}
+              <Link key={item.name} to={item.path} className="block relative group">
+                <motion.div
+                  whileHover={{ x: 2, y: -1 }}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 28 }}
+                  className={`relative flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-[12.5px] font-semibold transition-colors duration-200 ${
+                    active ? 'text-blue-700' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {active && (
+                    <motion.span
+                      layoutId="hospital-nav-active"
+                      transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+                      className="absolute inset-0 rounded-2xl bg-blue-500/10 border border-blue-400/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_4px_16px_rgba(59,130,246,0.12)]"
+                    />
+                  )}
+                  {!active && (
+                    <span className="absolute inset-0 rounded-2xl bg-white/0 group-hover:bg-white/60 transition-colors duration-200" />
+                  )}
+                  <span className="relative flex items-center gap-3">
+                    <Icon size={16.5} className={active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'} />
+                    <span>{item.name}</span>
                   </span>
-                )}
+                  {item.badge && (
+                    <span className="relative w-1.5 h-1.5 rounded-full bg-orange-500 shadow-[0_0_0_3px_rgba(249,115,22,0.15)]" />
+                  )}
+                </motion.div>
               </Link>
             )
           })}
         </nav>
 
-        {/* Bottom Hospital Profile Card (Matching reference image) */}
-        <div className="p-3 border-t border-slate-100">
-          <Link
-            to="/hospitaldashboard/settings/hospital-profile"
-            className="flex items-center gap-3 p-2.5 rounded-2xl border border-slate-200/80 bg-white hover:bg-slate-50/80 transition shadow-sm group"
+        {/* Account footer */}
+        <div className="p-3 border-t border-white/60">
+          <button
+            onClick={handleLogout}
+            className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl text-[12px] font-semibold text-rose-600 hover:bg-rose-50/70 transition-colors"
           >
-            <div className="w-10 h-10 rounded-xl bg-slate-100 border border-slate-200/60 flex items-center justify-center shrink-0 overflow-hidden text-xl">
-              {hospitalLogo ? (
-                <img src={hospitalLogo} alt="Hospital Logo" className="w-full h-full object-cover" />
-              ) : (
-                <span role="img" aria-label="Hospital Building">🏥</span>
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <h4 className="text-xs font-bold text-slate-900 truncate group-hover:text-blue-600 transition-colors">
-                {hospitalName}
-              </h4>
-              <p className="text-[10px] font-medium text-slate-400 truncate">
-                Super Admin
-              </p>
-            </div>
-          </Link>
+            <LogOut size={16} />
+            <span>Sign Out</span>
+          </button>
         </div>
       </aside>
 
-      {/* ─── MOBILE / TABLET DRAWER ─── */}
-      {mobileNavOpen && (
-        <div className="fixed inset-0 z-50 lg:hidden flex">
-          <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setMobileNavOpen(false)} />
-          <div className="relative w-[260px] bg-white h-full flex flex-col z-10 shadow-2xl">
-            <div className="h-16 px-6 flex items-center justify-between border-b border-slate-100">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white">
-                  <div className="w-4 h-4 relative flex items-center justify-center">
-                    <span className="w-4 h-1.5 bg-white rounded-full absolute" />
-                    <span className="h-4 w-1.5 bg-white rounded-full absolute" />
+      {/* ─── MOBILE DRAWER ─── */}
+      <AnimatePresence>
+        {mobileNavOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden flex">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileNavOpen(false)}
+              className="fixed inset-0 backdrop-blur-sm"
+              style={{ background: 'rgba(15,23,42,0.12)' }}
+            />
+            <motion.div
+              initial={{ x: '-100%' }}
+              animate={{ x: '0%' }}
+              exit={{ x: '-100%' }}
+              transition={{ type: 'spring', stiffness: 320, damping: 34 }}
+              className="relative w-[280px] h-full flex flex-col z-10 shadow-2xl border-r border-white/70"
+              style={{ background: 'rgba(255,255,255,0.85)', backdropFilter: 'blur(24px) saturate(150%)' }}
+            >
+              <div className="px-5 pt-6 pb-4 flex items-start justify-between border-b border-white/60">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-9 h-9 rounded-xl bg-white/70 border border-white/80 flex items-center justify-center overflow-hidden">
+                    {hospitalLogo ? (
+                      <img src={hospitalLogo} alt={hospitalName} className="w-full h-full object-cover" />
+                    ) : (
+                      <Building2 size={16} className="text-blue-600" />
+                    )}
+                  </div>
+                  <div>
+                    <span className="font-extrabold text-[13px] text-slate-900 block leading-tight">{hospitalName}</span>
+                    <span className="text-[9.5px] text-slate-400 font-semibold">Powered by MedTech Fixaters</span>
                   </div>
                 </div>
-                <span className="font-extrabold text-sm text-slate-900">medtech fixaters</span>
+                <button onClick={() => setMobileNavOpen(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg">
+                  <X size={18} />
+                </button>
               </div>
-              <button
-                onClick={() => setMobileNavOpen(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg"
-              >
-                <X size={18} />
-              </button>
-            </div>
 
-            <nav className="flex-1 overflow-y-auto px-3.5 py-4 space-y-1">
-              {navItems.map((item) => {
-                const active = isActive(item.path)
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.path}
-                    onClick={() => setMobileNavOpen(false)}
-                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold ${
-                      active ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <Icon size={17} className={active ? 'text-blue-600' : 'text-slate-400'} />
-                      <span>{item.name}</span>
-                    </div>
-                    {item.badge && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-600">
-                        {item.badge}
+              <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+                {navItems.map((item) => {
+                  const active = isActive(item.path)
+                  const Icon = item.icon
+                  return (
+                    <Link
+                      key={item.name}
+                      to={item.path}
+                      onClick={() => setMobileNavOpen(false)}
+                      className={`flex items-center justify-between px-3.5 py-2.5 rounded-2xl text-[12.5px] font-semibold transition-colors ${
+                        active ? 'bg-blue-500/10 text-blue-700 border border-blue-400/30' : 'text-slate-500 hover:bg-white/70'
+                      }`}
+                    >
+                      <span className="flex items-center gap-3">
+                        <Icon size={16.5} className={active ? 'text-blue-600' : 'text-slate-400'} />
+                        <span>{item.name}</span>
                       </span>
-                    )}
-                  </Link>
-                )
-              })}
-            </nav>
-          </div>
-        </div>
-      )}
+                      {item.badge && <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />}
+                    </Link>
+                  )
+                })}
+              </nav>
 
-      {/* ─── MAIN CONTENT CONTAINER (Offset 250px on desktop) ─── */}
-      <div className="flex-1 lg:pl-[250px] flex flex-col min-w-0 min-h-screen">
-        {/* ─── TOP HEADER ─── */}
-        <header className="h-16 bg-white/95 backdrop-blur-md border-b border-slate-200/80 sticky top-0 z-30 px-4 sm:px-8 flex items-center justify-between">
-          {/* Left: Mobile trigger & Page Title */}
+              <div className="p-3 border-t border-white/60">
+                <button
+                  onClick={handleLogout}
+                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl text-[12px] font-semibold text-rose-600 hover:bg-rose-50/70 transition-colors"
+                >
+                  <LogOut size={16} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ─── MAIN CONTENT ─── */}
+      <div className="flex-1 lg:pl-[264px] flex flex-col min-w-0 min-h-screen relative z-10">
+        {/* ─── LIQUID GLASS HEADER ─── */}
+        <header
+          className="h-[68px] sticky top-0 z-30 px-4 sm:px-8 flex items-center justify-between border-b border-white/60"
+          style={{
+            background: 'rgba(247,248,252,0.72)',
+            backdropFilter: 'blur(22px) saturate(160%)',
+            WebkitBackdropFilter: 'blur(22px) saturate(160%)',
+          }}
+        >
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMobileNavOpen(true)}
-              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-slate-100"
+              className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-white/70 transition"
               aria-label="Open menu"
             >
               <Menu size={20} />
             </button>
-            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight">
+            <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">
               {pageTitle}
             </h1>
           </div>
 
-          {/* Right Controls: Date Range, Notifications & Profile Dropdown */}
-          <div className="flex items-center gap-3 sm:gap-4">
-            {/* Interactive Date Selector (Exact match to reference image) */}
+          <div className="flex items-center gap-2.5 sm:gap-3.5">
+            {/* Date pill */}
             <div className="relative">
-              <button
+              <motion.button
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.97 }}
                 onClick={() => setDatePickerOpen(!datePickerOpen)}
-                className="flex items-center gap-2 px-3.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700 transition"
+                className="flex items-center gap-2 px-3.5 py-2 rounded-2xl text-[11.5px] font-semibold text-slate-700 border border-white/80 shadow-[0_6px_20px_rgba(30,60,120,0.06)]"
+                style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(18px) saturate(150%)' }}
               >
-                <CalendarDays size={15} className="text-slate-500" />
-                <span className="hidden sm:inline">{selectedDateRange}</span>
-                <span className="sm:hidden">Today</span>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
+                <CalendarDays size={14} className="text-slate-500" />
+                <span className="hidden sm:inline">{dateLabel} · {dayLabel}</span>
+                <span className="sm:hidden">{selectedDateRange}</span>
+                <ChevronDown size={13} className="text-slate-400" />
+              </motion.button>
 
-              {datePickerOpen && (
-                <div className="absolute right-0 mt-2 w-48 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-1.5 z-50 text-xs font-medium animate-in fade-in zoom-in-95">
-                  <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                    Select Filter Date
-                  </div>
-                  {['May 31, 2025', 'Today (Live)', 'This Week', 'This Month', 'Last Month'].map((range) => (
-                    <button
-                      key={range}
-                      onClick={() => {
-                        setSelectedDateRange(range)
-                        setDatePickerOpen(false)
-                      }}
-                      className="w-full text-left px-3.5 py-2 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between"
-                    >
-                      <span>{range}</span>
-                      {selectedDateRange === range && <Check size={14} className="text-blue-600" />}
-                    </button>
-                  ))}
-                </div>
-              )}
+              <AnimatePresence>
+                {datePickerOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-2 w-48 rounded-2xl border border-white/80 shadow-xl py-1.5 z-50 text-xs font-medium"
+                    style={{ background: 'rgba(255,255,255,0.9)', backdropFilter: 'blur(24px) saturate(160%)' }}
+                  >
+                    <div className="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      Select Range
+                    </div>
+                    {(['Today', 'This Week', 'This Month', 'This Year'] as const).map((range) => (
+                      <button
+                        key={range}
+                        onClick={() => {
+                          setSelectedDateRange(range)
+                          setDatePickerOpen(false)
+                        }}
+                        className="w-full text-left px-3.5 py-2 hover:bg-blue-50/80 hover:text-blue-600 flex items-center justify-between transition-colors"
+                      >
+                        <span>{range}</span>
+                        {selectedDateRange === range && <Check size={14} className="text-blue-600" />}
+                      </button>
+                    ))}
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
 
-            {/* Notification Bell with red counter '8' (Matching reference image) */}
-            <Link
-              to="/hospitaldashboard/notifications"
-              className="w-10 h-10 rounded-full border border-slate-200/80 flex items-center justify-center text-slate-600 hover:bg-slate-50 relative transition"
-              title="Notifications"
-            >
-              <Bell size={17} />
-              <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center shadow-sm">
-                8
-              </span>
+            {/* Notification bell */}
+            <Link to="/hospitaldashboard/notifications" title="Notifications">
+              <motion.div
+                whileHover={{ y: -1, scale: 1.03 }}
+                whileTap={{ scale: 0.95 }}
+                className="w-10 h-10 rounded-full flex items-center justify-center text-slate-600 relative border border-white/80 shadow-[0_6px_20px_rgba(30,60,120,0.06)]"
+                style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(18px) saturate(150%)' }}
+              >
+                <Bell size={16.5} />
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-orange-500 rounded-full shadow-[0_0_0_2px_rgba(247,248,252,1)]" />
+              </motion.div>
             </Link>
 
-            {/* Administrator Profile Pill with Avatar & Dropdown (Matching reference image) */}
+            {/* Profile dropdown */}
             <div className="relative">
-              <button
+              <motion.button
+                whileHover={{ y: -1 }}
+                whileTap={{ scale: 0.98 }}
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-                className="flex items-center gap-2.5 pl-1.5 pr-2 py-1 rounded-full hover:bg-slate-100 transition"
+                className="flex items-center gap-2.5 pl-1.5 pr-2.5 py-1.5 rounded-full border border-white/80 shadow-[0_6px_20px_rgba(30,60,120,0.06)]"
+                style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(18px) saturate(150%)' }}
               >
-                <div className="w-8 h-8 rounded-full overflow-hidden bg-slate-200 border border-slate-300/80 shrink-0">
-                  <img
-                    src="https://images.unsplash.com/photo-1622253692010-333f2da6031d?w=100&auto=format&fit=crop&q=80"
-                    alt="Administrator"
-                    className="w-full h-full object-cover"
-                  />
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-orange-400 text-white flex items-center justify-center text-[11px] font-bold shrink-0">
+                  {adminName?.[0]?.toUpperCase() || 'A'}
                 </div>
                 <div className="text-left hidden sm:block">
-                  <span className="text-xs font-bold text-slate-800 block leading-tight">
-                    {adminName}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block leading-none">
-                    {adminRole}
-                  </span>
+                  <span className="text-[11.5px] font-bold text-slate-800 block leading-tight">{adminName}</span>
+                  <span className="text-[10px] text-slate-400 block leading-none">{adminRole}</span>
                 </div>
-                <ChevronDown size={14} className="text-slate-400" />
-              </button>
+                <ChevronDown size={13} className="text-slate-400" />
+              </motion.button>
 
-              {/* Working Profile Actions Dropdown */}
-              {profileDropdownOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-2 z-50 text-xs text-slate-700 animate-in fade-in zoom-in-95">
-                  <div className="px-4 py-2 border-b border-slate-100 mb-1">
-                    <p className="font-bold text-slate-900">{adminName}</p>
-                    <p className="text-[11px] text-slate-400 truncate">{currentUser?.email || 'admin@citycare.com'}</p>
-                  </div>
-                  <Link
-                    to="/hospitaldashboard/settings/hospital-profile"
-                    onClick={() => setProfileDropdownOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50 hover:text-blue-600 transition"
+              <AnimatePresence>
+                {profileDropdownOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.96, y: -6 }}
+                    animate={{ opacity: 1, scale: 1, y: 0 }}
+                    exit={{ opacity: 0, scale: 0.96, y: -6 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 mt-2 w-60 rounded-2xl border border-white/80 shadow-xl py-2 z-50 text-xs text-slate-700"
+                    style={{ background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(24px) saturate(160%)' }}
                   >
-                    <Building size={15} />
-                    <span>Hospital Profile</span>
-                  </Link>
-                  <Link
-                    to="/hospitaldashboard/settings"
-                    onClick={() => setProfileDropdownOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50 hover:text-blue-600 transition"
-                  >
-                    <Settings size={15} />
-                    <span>Account Settings</span>
-                  </Link>
-                  <Link
-                    to="/hospitaldashboard/settings?tab=security"
-                    onClick={() => setProfileDropdownOpen(false)}
-                    className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50 hover:text-blue-600 transition"
-                  >
-                    <KeyRound size={15} />
-                    <span>Change Password</span>
-                  </Link>
-                  <div className="border-t border-slate-100 my-1" />
-                  <button
-                    onClick={handleLogout}
-                    className="w-full text-left flex items-center gap-2.5 px-4 py-2 text-rose-600 hover:bg-rose-50 transition"
-                  >
-                    <LogOut size={15} />
-                    <span>Sign Out</span>
-                  </button>
-                </div>
-              )}
+                    <div className="px-4 py-2 border-b border-slate-100 mb-1">
+                      <p className="font-bold text-slate-900">{adminName}</p>
+                      <p className="text-[11px] text-slate-400 truncate">{currentUser?.email}</p>
+                    </div>
+                    <Link
+                      to="/hospitaldashboard/settings/hospital-profile"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition"
+                    >
+                      <Building size={15} />
+                      <span>Hospital Profile</span>
+                    </Link>
+                    <Link
+                      to="/hospitaldashboard/settings"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition"
+                    >
+                      <User size={15} />
+                      <span>Account Settings</span>
+                    </Link>
+                    <Link
+                      to="/hospitaldashboard/settings?tab=security"
+                      onClick={() => setProfileDropdownOpen(false)}
+                      className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition"
+                    >
+                      <KeyRound size={15} />
+                      <span>Security</span>
+                    </Link>
+                    <div className="border-t border-slate-100 my-1" />
+                    <button
+                      onClick={handleLogout}
+                      className="w-full text-left flex items-center gap-2.5 px-4 py-2 text-rose-600 hover:bg-rose-50/80 transition"
+                    >
+                      <LogOut size={15} />
+                      <span>Sign Out</span>
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         </header>
 
         {/* ─── MAIN BODY ─── */}
-        <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto">
+        <motion.main
+          key={location.pathname}
+          initial={{ opacity: 0, y: 12, filter: 'blur(6px)' }}
+          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+          transition={{ type: 'spring', stiffness: 220, damping: 26 }}
+          className="flex-1 p-4 sm:p-6 lg:p-8 max-w-[1600px] w-full mx-auto"
+        >
           {children}
-        </main>
+        </motion.main>
       </div>
     </div>
   )

@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { motion } from 'motion/react'
 import {
   Calendar,
   Users,
@@ -8,9 +9,8 @@ import {
   XCircle,
   TrendingUp,
   TrendingDown,
-  ArrowUpRight,
+  Minus,
   Shield,
-  Clock,
   Plus,
   UserPlus,
   Stethoscope,
@@ -18,22 +18,79 @@ import {
   FileText,
   BarChart3,
   ChevronDown,
-  Sparkles,
+  IndianRupee,
   Check,
-  X,
-  Eye
+  X
 } from 'lucide-react'
+import {
+  ResponsiveContainer,
+  AreaChart,
+  Area,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+} from 'recharts'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { useDashboardStats, resolveRange, APPT_STATUS, DateRangeKey } from '../../hooks/useDashboardStats'
+import { logActivity } from '../../services/auditLogService'
+
+const revealProps = {
+  initial: { opacity: 0, y: 20, filter: 'blur(8px)' as const },
+  whileInView: { opacity: 1, y: 0, filter: 'blur(0px)' as const },
+  viewport: { once: true, amount: 0.15 },
+  transition: { type: 'spring' as const, stiffness: 220, damping: 24 },
+}
+
+function TrendBadge({ change }: { change: number | null }) {
+  if (change === null) {
+    return (
+      <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-400">
+        <Minus size={12} /> No prior data
+      </span>
+    )
+  }
+  const positive = change >= 0
+  return (
+    <span className={`flex items-center gap-1 text-[11px] font-semibold ${positive ? 'text-emerald-600' : 'text-rose-500'}`}>
+      {positive ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
+      {positive ? '+' : ''}
+      {change.toFixed(1)}% <span className="text-slate-400 font-medium">vs previous period</span>
+    </span>
+  )
+}
 
 export default function HospitalDashboardHome() {
   const navigate = useNavigate()
   const { doctorProfile, registerUserInSupabase } = useAuth()
 
-  // State for time filters
-  const [overviewRange, setOverviewRange] = useState<'This Week' | 'This Month' | 'Last Month'>('This Week')
+  // Date filter driving both the KPI cards and the charts below
+  const [rangeKey, setRangeKey] = useState<DateRangeKey>('month')
+  const [customStart, setCustomStart] = useState<string>('')
+  const [customEnd, setCustomEnd] = useState<string>('')
+  const [rangeMenuOpen, setRangeMenuOpen] = useState(false)
   const [deptRange, setDeptRange] = useState<'This Week' | 'This Month'>('This Week')
+
+  const activeRange = useMemo(() => {
+    if (rangeKey === 'custom' && customStart && customEnd) {
+      return resolveRange('custom', { start: new Date(customStart), end: new Date(customEnd) })
+    }
+    return resolveRange(rangeKey === 'custom' ? 'month' : rangeKey)
+  }, [rangeKey, customStart, customEnd])
+
+  const rangeLabels: Record<DateRangeKey, string> = {
+    today: 'Today',
+    week: 'This Week',
+    month: 'This Month',
+    year: 'This Year',
+    custom: 'Custom Range',
+  }
 
   // Modals for Quick Actions
   const [showAddApptModal, setShowAddApptModal] = useState(false)
@@ -72,6 +129,8 @@ export default function HospitalDashboardHome() {
   // value here was one of the root causes of hospital data leakage.
   const currentHospName = doctorProfile?.hospital_name || 'Hospital Dashboard'
   const currentHospId = doctorProfile?.hospital_id || ''
+
+  const { kpis, chartData, isLoading: statsLoading, hasAnyRecords } = useDashboardStats(currentHospId, activeRange)
 
   const [registeredDoctors, setRegisteredDoctors] = useState<{ id: string; name: string; dept: string }[]>([])
   const [stats, setStats] = useState({
@@ -125,11 +184,15 @@ export default function HospitalDashboardHome() {
 
         const allAppts = appts || []
         const todayAppts = allAppts.filter(a => a.appointment_date === todayStr)
-        const waitingAppts = allAppts.filter(a => a.status === 'pending' || a.status === 'waiting')
-        const completedAppts = todayAppts.filter(a => a.status === 'completed')
-        const cancelledAppts = allAppts.filter(a => a.status === 'cancelled')
-        const noShowsAppts = allAppts.filter(a => a.status === 'no_show')
-        const scheduledAppts = allAppts.filter(a => a.status === 'pending' || a.status === 'waiting' || a.status === 'confirmed')
+        // Status strings must match the CHECK constraint on public.appointments
+        // exactly ('Waiting', 'In Consultation', 'Completed', 'Cancelled',
+        // 'No Show') — comparing against lowercase/underscore values here
+        // silently matched zero rows against the real database.
+        const waitingAppts = allAppts.filter(a => a.status === APPT_STATUS.WAITING || a.status === APPT_STATUS.IN_CONSULTATION)
+        const completedAppts = todayAppts.filter(a => a.status === APPT_STATUS.COMPLETED)
+        const cancelledAppts = allAppts.filter(a => a.status === APPT_STATUS.CANCELLED)
+        const noShowsAppts = allAppts.filter(a => a.status === APPT_STATUS.NO_SHOW)
+        const scheduledAppts = allAppts.filter(a => a.status === APPT_STATUS.WAITING)
 
         setStats({
           totalDoctors: doctorList.length,
@@ -147,8 +210,8 @@ export default function HospitalDashboardHome() {
         const mappedToday = todayAppts.slice(0, 5).map((a: any) => ({
           time: 'Today',
           name: a.patient?.name || 'Patient',
-          status: a.status === 'completed' ? 'Done' : a.status === 'waiting' ? 'Waiting' : 'Upcoming',
-          color: a.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+          status: a.status === APPT_STATUS.COMPLETED ? 'Done' : a.status === APPT_STATUS.WAITING ? 'Waiting' : a.status,
+          color: a.status === APPT_STATUS.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
         }))
         setTodayAppointments(mappedToday)
 
@@ -158,12 +221,13 @@ export default function HospitalDashboardHome() {
           avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=60&auto=format&fit=crop&q=80',
           dept: a.doctor?.department || 'General OPD',
           time: a.appointment_date || 'Today',
-          status: a.status === 'completed' ? 'Done' : a.status === 'waiting' ? 'Waiting' : 'Upcoming',
-          color: a.status === 'completed' ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
+          status: a.status === APPT_STATUS.COMPLETED ? 'Done' : a.status === APPT_STATUS.WAITING ? 'Waiting' : a.status,
+          color: a.status === APPT_STATUS.COMPLETED ? 'bg-emerald-100 text-emerald-700' : 'bg-blue-100 text-blue-700'
         }))
         setRecentAppointments(mappedRecent)
 
-        // Queues (empty if 0 waiting appointments)
+        // Queues (empty if 0 waiting appointments) — kept strictly per-doctor;
+        // never merge two doctors' tokens into one shared count.
         if (waitingAppts.length > 0) {
           const queueGroup: any = {}
           waitingAppts.forEach((a: any) => {
@@ -191,10 +255,10 @@ export default function HospitalDashboardHome() {
             const deptAppts = allAppts.filter((a: any) => a.doctor?.department === d.name)
             return {
               name: d.name,
-              scheduled: deptAppts.filter((a: any) => a.status === 'pending' || a.status === 'waiting').length,
-              completed: deptAppts.filter((a: any) => a.status === 'completed').length,
-              waiting: deptAppts.filter((a: any) => a.status === 'waiting').length,
-              cancelled: deptAppts.filter((a: any) => a.status === 'cancelled').length
+              scheduled: deptAppts.filter((a: any) => a.status === APPT_STATUS.WAITING).length,
+              completed: deptAppts.filter((a: any) => a.status === APPT_STATUS.COMPLETED).length,
+              waiting: deptAppts.filter((a: any) => a.status === APPT_STATUS.WAITING).length,
+              cancelled: deptAppts.filter((a: any) => a.status === APPT_STATUS.CANCELLED).length
             }
           })
           setDeptBreakdown(deptMap)
@@ -245,6 +309,13 @@ export default function HospitalDashboardHome() {
         fee: Number(newDoctorForm.fee) || 500,
         limit: Number(newDoctorForm.limit) || 25,
       })
+      logActivity({
+        category: 'Doctors',
+        action: 'Doctor Added',
+        targetType: 'profile',
+        targetLabel: newDoctorForm.name,
+        metadata: { department: newDoctorForm.dept, email: newDoctorForm.email },
+      })
       setFeedbackNotice(`✓ Doctor "${newDoctorForm.name}" created and onboarded!`)
       setShowAddDoctorModal(false)
       setNewDoctorForm({ name: '', email: '', password: 'Password123!', dept: 'Cardiology', specialization: 'Consultant Specialist', fee: 500, limit: 25 })
@@ -265,228 +336,181 @@ export default function HospitalDashboardHome() {
       )}
 
       <div className="space-y-6">
-        {/* ─── 1. TOP STATISTICS CARDS (5 KPIs matching reference image) ─── */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          {/* KPI 1: Total Appointments */}
-          <Link
-            to="/hospitaldashboard/appointments"
-            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition duration-200 flex flex-col justify-between group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-3">
-              <Calendar size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Total Appointments</p>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                {stats.totalAppointments}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-blue-600 mt-2">
-              <TrendingUp size={13} />
-              <span>Real-time database count</span>
-            </div>
-          </Link>
-
-          {/* KPI 2: Patients Today */}
-          <Link
-            to="/hospitaldashboard/patients"
-            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition duration-200 flex flex-col justify-between group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-              <Users size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Patients Today</p>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                {stats.appointmentsToday}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-emerald-600 mt-2">
-              <TrendingUp size={13} />
-              <span>Appointments for today</span>
-            </div>
-          </Link>
-
-          {/* KPI 3: Patients Waiting */}
-          <Link
-            to="/hospitaldashboard/live-queue"
-            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition duration-200 flex flex-col justify-between group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-3">
-              <Hourglass size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Patients Waiting</p>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                {stats.patientsWaiting}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-purple-600 mt-2">
-              <TrendingUp size={13} />
-              <span>Active waiting queue</span>
-            </div>
-          </Link>
-
-          {/* KPI 4: Completed Today */}
-          <Link
-            to="/hospitaldashboard/appointments?status=completed"
-            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition duration-200 flex flex-col justify-between group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center mb-3">
-              <CheckCircle size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">Completed Today</p>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                {stats.completedToday}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-amber-600 mt-2">
-              <TrendingUp size={13} />
-              <span>Consultations done</span>
-            </div>
-          </Link>
-
-          {/* KPI 5: No Shows */}
-          <Link
-            to="/hospitaldashboard/appointments?status=no-show"
-            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition duration-200 flex flex-col justify-between group"
-          >
-            <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mb-3">
-              <XCircle size={20} />
-            </div>
-            <div>
-              <p className="text-xs font-medium text-slate-500">No Shows</p>
-              <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight mt-0.5">
-                {stats.noShowsToday}
-              </h3>
-            </div>
-            <div className="flex items-center gap-1 text-[11px] font-semibold text-rose-500 mt-2">
-              <TrendingDown size={13} />
-              <span>Missed appointments</span>
-            </div>
-          </Link>
-        </div>
-
-        {/* ─── 2. MIDDLE SECTION: Charts & Queues ─── */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-          {/* Card A: Appointments Overview (lg: 5 cols) */}
-          <div className="lg:col-span-5 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
-            <div>
-              {/* Header with Title & Date selector */}
-              <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm">Appointments Overview</h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">Total Appointments</p>
-                </div>
-                <div className="relative">
+        {/* ─── 1. DATE FILTER ─── */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h2 className="text-base font-extrabold text-slate-900">Hospital Operations</h2>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              Showing <strong className="text-slate-600">{rangeLabels[rangeKey]}</strong> · {activeRange.start.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} – {activeRange.end.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+            </p>
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setRangeMenuOpen(!rangeMenuOpen)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs font-semibold text-slate-700 border border-white/80 bg-white/70 backdrop-blur-md shadow-sm hover:bg-white transition"
+            >
+              <Calendar size={14} className="text-slate-500" />
+              <span>{rangeLabels[rangeKey]}</span>
+              <ChevronDown size={13} className="text-slate-400" />
+            </button>
+            {rangeMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200/90 py-1.5 z-40 text-xs font-medium">
+                {(['today', 'week', 'month', 'year'] as DateRangeKey[]).map((k) => (
                   <button
-                    onClick={() => setOverviewRange(overviewRange === 'This Week' ? 'This Month' : 'This Week')}
-                    className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 hover:bg-slate-100 border border-slate-200/80 rounded-xl text-xs font-semibold text-slate-700"
+                    key={k}
+                    onClick={() => { setRangeKey(k); setRangeMenuOpen(false) }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-blue-50 hover:text-blue-600 flex items-center justify-between"
                   >
-                    <span>{overviewRange}</span>
-                    <ChevronDown size={13} className="text-slate-400" />
+                    <span>{rangeLabels[k]}</span>
+                    {rangeKey === k && <Check size={14} className="text-blue-600" />}
+                  </button>
+                ))}
+                <div className="border-t border-slate-100 my-1.5 px-3.5 pt-2">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">Custom Range</p>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px]" />
+                    <input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} className="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-[11px]" />
+                  </div>
+                  <button
+                    disabled={!customStart || !customEnd}
+                    onClick={() => { setRangeKey('custom'); setRangeMenuOpen(false) }}
+                    className="w-full py-1.5 bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg font-bold text-[11px]"
+                  >
+                    Apply
                   </button>
                 </div>
               </div>
+            )}
+          </div>
+        </div>
 
-              {/* Metric Callout */}
-              <div className="flex items-baseline gap-2 mt-2">
-                <span className="text-3xl font-black text-slate-900 tracking-tight">{stats.totalAppointments}</span>
-                <span className="text-xs font-semibold text-emerald-600 flex items-center gap-0.5">
-                  <TrendingUp size={13} /> {stats.totalAppointments > 0 ? 'Active database records' : 'No records yet'}
-                </span>
-              </div>
-
-              {/* SVG Line Chart or Zero Empty State */}
-              {stats.totalAppointments === 0 ? (
-                <div className="h-48 w-full flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center p-4 mt-6">
-                  <BarChart3 size={28} className="text-slate-300 mb-1" />
-                  <p className="text-xs font-bold text-slate-600">No data available for this period</p>
-                  <p className="text-[10px] text-slate-400">Appointment trends will appear here as bookings are recorded.</p>
+        {/* ─── 2. TOP STATISTICS CARDS — real, date-filtered, hospital_id-scoped ─── */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {[
+            { label: 'Total Appointments', icon: Calendar, tone: 'blue', data: kpis.totalAppointments, to: '/hospitaldashboard/appointments' },
+            { label: 'Total Patients', icon: Users, tone: 'emerald', data: kpis.totalPatients, to: '/hospitaldashboard/patients' },
+            { label: 'Waiting Queue', icon: Hourglass, tone: 'purple', data: kpis.waiting, to: '/hospitaldashboard/live-queue' },
+            { label: 'Completed', icon: CheckCircle, tone: 'amber', data: kpis.completed, to: '/hospitaldashboard/appointments?status=completed' },
+            { label: 'Missed Appointments', icon: XCircle, tone: 'rose', data: kpis.missed, to: '/hospitaldashboard/appointments?status=no-show' },
+            { label: 'Revenue', icon: IndianRupee, tone: 'orange', data: kpis.revenue, to: '/hospitaldashboard/analytics', isCurrency: true },
+          ].map((kpi, idx) => (
+            <motion.div key={kpi.label} {...revealProps} transition={{ ...revealProps.transition, delay: idx * 0.04 }}>
+              <Link
+                to={kpi.to}
+                className="bg-white/70 backdrop-blur-md p-5 rounded-3xl border border-white/80 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition duration-200 flex flex-col justify-between group h-full"
+              >
+                <div className={`w-10 h-10 rounded-xl bg-${kpi.tone}-50 text-${kpi.tone}-600 flex items-center justify-center mb-3`}>
+                  <kpi.icon size={20} />
                 </div>
-              ) : (
-                <div className="mt-6 relative h-48 w-full">
-                  <svg className="w-full h-full overflow-visible" viewBox="0 0 450 180">
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-500">{kpi.label}</p>
+                  <h3 className="text-2xl font-extrabold text-slate-900 tracking-tight mt-0.5">
+                    {statsLoading ? (
+                      <span className="inline-block w-16 h-6 bg-slate-100 rounded animate-pulse" />
+                    ) : kpi.isCurrency ? (
+                      `₹${kpi.data.value.toLocaleString('en-IN')}`
+                    ) : (
+                      kpi.data.value
+                    )}
+                  </h3>
+                </div>
+                <div className="mt-2">{statsLoading ? null : <TrendBadge change={kpi.data.change} />}</div>
+              </Link>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* ─── 3. CHARTS ─── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+          <motion.div {...revealProps} className="lg:col-span-7 bg-white/70 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/80 shadow-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm">Appointment Trends</h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">Bookings across {rangeLabels[rangeKey].toLowerCase()}</p>
+              </div>
+            </div>
+            {!hasAnyRecords ? (
+              <div className="h-56 w-full flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center p-4 mt-4">
+                <BarChart3 size={28} className="text-slate-300 mb-1" />
+                <p className="text-xs font-bold text-slate-600">No data available</p>
+                <p className="text-[10px] text-slate-400">Appointment trends will appear as bookings are recorded.</p>
+              </div>
+            ) : chartData.length === 0 ? (
+              <div className="h-56 w-full flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center p-4 mt-4">
+                <p className="text-xs font-bold text-slate-600">No data for this period</p>
+                <p className="text-[10px] text-slate-400">Try a wider date range.</p>
+              </div>
+            ) : (
+              <div className="h-56 w-full mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
                     <defs>
-                      <linearGradient id="chartGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.18" />
-                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.0" />
+                      <linearGradient id="apptGradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#007AFF" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#007AFF" stopOpacity={0} />
                       </linearGradient>
                     </defs>
-
-                    {[30, 70, 110, 150].map((y, idx) => (
-                      <line
-                        key={idx}
-                        x1="30"
-                        y1={y}
-                        x2="430"
-                        y2={y}
-                        stroke="#f1f5f9"
-                        strokeWidth="1"
-                        strokeDasharray="4 4"
-                      />
-                    ))}
-
-                    <text x="5" y="34" fill="#94a3b8" fontSize="10" fontWeight="500">100</text>
-                    <text x="10" y="74" fill="#94a3b8" fontSize="10" fontWeight="500">80</text>
-                    <text x="10" y="114" fill="#94a3b8" fontSize="10" fontWeight="500">40</text>
-                    <text x="10" y="154" fill="#94a3b8" fontSize="10" fontWeight="500">20</text>
-                    <text x="15" y="178" fill="#94a3b8" fontSize="10" fontWeight="500">0</text>
-
-                    <path
-                      d="M 50 150 C 90 140, 130 115, 170 95 C 210 75, 250 85, 290 60 C 330 35, 370 70, 410 100 L 410 170 L 50 170 Z"
-                      fill="url(#chartGradient)"
-                    />
-                    <path
-                      d="M 50 150 C 90 140, 130 115, 170 95 C 210 75, 250 85, 290 60 C 330 35, 370 70, 410 100"
-                      fill="none"
-                      stroke="#3b82f6"
-                      strokeWidth="2.5"
-                      strokeLinecap="round"
-                    />
-
-                    {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day, idx) => (
-                      <text
-                        key={day}
-                        x={50 + idx * 60}
-                        y="175"
-                        textAnchor="middle"
-                        fill="#94a3b8"
-                        fontSize="10"
-                        fontWeight="500"
-                      >
-                        {day}
-                      </text>
-                    ))}
-                  </svg>
-                </div>
-              )}
-            </div>
-
-            {/* Bottom 4 Summary Metrics (Live database counts) */}
-            <div className="grid grid-cols-4 gap-2 mt-4 pt-4 border-t border-slate-100">
-              <div className="p-2.5 rounded-2xl bg-blue-50/70 text-left">
-                <span className="text-[10px] font-bold text-blue-600 block">Scheduled</span>
-                <span className="text-base font-black text-slate-900 block mt-0.5">{stats.scheduledToday}</span>
+                    <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 14, border: '1px solid #e2e8f0', fontSize: 11 }} />
+                    <Area type="monotone" dataKey="appointments" stroke="#007AFF" strokeWidth={2.5} fill="url(#apptGradient)" name="Appointments" />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
-              <div className="p-2.5 rounded-2xl bg-emerald-50/70 text-left">
-                <span className="text-[10px] font-bold text-emerald-600 block">Completed</span>
-                <span className="text-base font-black text-slate-900 block mt-0.5">{stats.completedToday}</span>
-              </div>
-              <div className="p-2.5 rounded-2xl bg-orange-50/70 text-left">
-                <span className="text-[10px] font-bold text-orange-600 block">Cancelled</span>
-                <span className="text-base font-black text-slate-900 block mt-0.5">{stats.cancelledToday}</span>
-              </div>
-              <div className="p-2.5 rounded-2xl bg-rose-50/70 text-left">
-                <span className="text-[10px] font-bold text-rose-600 block">No Shows</span>
-                <span className="text-base font-black text-slate-900 block mt-0.5">{stats.noShowsToday}</span>
-              </div>
-            </div>
-          </div>
+            )}
+          </motion.div>
 
+          <motion.div {...revealProps} className="lg:col-span-5 bg-white/70 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/80 shadow-sm">
+            <h3 className="font-bold text-slate-900 text-sm mb-1">Completed vs Missed</h3>
+            <p className="text-[11px] text-slate-400 mb-2">Consultation outcomes</p>
+            {!hasAnyRecords || chartData.length === 0 ? (
+              <div className="h-56 w-full flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center p-4 mt-2">
+                <p className="text-xs font-bold text-slate-600">No data available</p>
+              </div>
+            ) : (
+              <div className="h-56 w-full mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                    <Tooltip contentStyle={{ borderRadius: 14, border: '1px solid #e2e8f0', fontSize: 11 }} />
+                    <Bar dataKey="completed" fill="#22c55e" radius={[6, 6, 0, 0]} name="Completed" />
+                    <Bar dataKey="missed" fill="#f43f5e" radius={[6, 6, 0, 0]} name="Missed" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </motion.div>
+
+          <motion.div {...revealProps} className="lg:col-span-12 bg-white/70 backdrop-blur-md p-5 sm:p-6 rounded-3xl border border-white/80 shadow-sm">
+            <h3 className="font-bold text-slate-900 text-sm mb-1">Revenue Trend</h3>
+            <p className="text-[11px] text-slate-400 mb-2">From completed consultations only</p>
+            {!hasAnyRecords || chartData.length === 0 ? (
+              <div className="h-44 w-full flex flex-col items-center justify-center bg-slate-50/50 rounded-2xl border border-dashed border-slate-200 text-center p-4 mt-2">
+                <p className="text-xs font-bold text-slate-600">No revenue recorded yet</p>
+              </div>
+            ) : (
+              <div className="h-44 w-full mt-2">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={chartData} margin={{ top: 8, right: 8, left: -18, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="#f1f5f9" vertical={false} />
+                    <XAxis dataKey="label" tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 10, fill: '#94a3b8' }} axisLine={false} tickLine={false} tickFormatter={(v) => `₹${v}`} />
+                    <Tooltip contentStyle={{ borderRadius: 14, border: '1px solid #e2e8f0', fontSize: 11 }} formatter={(v: any) => [`₹${Number(v).toLocaleString('en-IN')}`, 'Revenue']} />
+                    <Line type="monotone" dataKey="revenue" stroke="#FF9500" strokeWidth={2.5} dot={{ r: 3, fill: '#FF9500' }} name="Revenue" />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </motion.div>
+        </div>
+
+        {/* ─── 4. QUEUES & TODAY'S SCHEDULE ─── */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           {/* Card B: Live Queue Overview (lg: 4 cols) */}
-          <div className="lg:col-span-4 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
+          <div className="lg:col-span-5 bg-white p-5 sm:p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between">
             <div>
               {/* Header */}
               <div className="flex items-center justify-between mb-4">

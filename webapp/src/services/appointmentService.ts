@@ -1,6 +1,13 @@
 import { supabase } from "../lib/supabase";
 import { AppointmentPayload, AppointmentResult } from "../types/appointment";
 import { getHospitalDoctors } from "./doctorService";
+import { logActivity } from "./auditLogService";
+import { APPT_STATUS } from "../hooks/useDashboardStats";
+
+// ============================================================================
+// PUBLIC SELF-SERVICE BOOKING (QR / website intake flow) — pre-existing,
+// unchanged by Phase 4. Left exactly as it was.
+// ============================================================================
 
 export async function createAppointment(
   payload: AppointmentPayload
@@ -175,4 +182,132 @@ export async function createAppointment(
     created_at: new Date().toISOString(),
     ai_intake_summary: aiIntakeSummary,
   };
+}
+
+// ============================================================================
+// HOSPITAL ADMIN DASHBOARD — Appointments module (Phase 4). Operates on the
+// real public.appointments columns (queue_number, token_number, status enum)
+// rather than the ad-hoc fields the public booking flow above writes under
+// its own local-storage-backed path.
+// ============================================================================
+
+export type AppointmentStatus = (typeof APPT_STATUS)[keyof typeof APPT_STATUS];
+
+export interface AppointmentRow {
+  id: string;
+  hospital_id: string;
+  doctor_id: string;
+  department_id: string | null;
+  patient_id: string | null;
+  patient_name: string;
+  patient_phone: string;
+  patient_age: number | null;
+  patient_gender: string | null;
+  appointment_date: string;
+  queue_number: string;
+  token_number: number | null;
+  status: string;
+  booking_method: "AI" | "Manual";
+  symptoms: string | null;
+  is_emergency: boolean;
+  created_at: string;
+  doctor?: { id: string; full_name: string; department: string | null };
+  department?: { id: string; name: string } | null;
+}
+
+export interface AppointmentFilters {
+  date?: string;
+  doctorId?: string;
+  departmentId?: string;
+  status?: string;
+  search?: string;
+}
+
+export async function fetchAppointments(hospitalId: string, filters: AppointmentFilters = {}): Promise<AppointmentRow[]> {
+  let query = supabase
+    .from("appointments")
+    .select("*, doctor:profiles!appointments_doctor_id_fkey(id, full_name, department), department:departments(id, name)")
+    .eq("hospital_id", hospitalId)
+    .order("created_at", { ascending: false });
+
+  if (filters.date) query = query.eq("appointment_date", filters.date);
+  if (filters.doctorId) query = query.eq("doctor_id", filters.doctorId);
+  if (filters.departmentId) query = query.eq("department_id", filters.departmentId);
+  if (filters.status) query = query.eq("status", filters.status);
+
+  const { data, error } = await query.limit(500);
+  if (error) {
+    console.warn("fetchAppointments error:", error.message);
+    return [];
+  }
+  let rows = (data || []) as AppointmentRow[];
+  if (filters.search) {
+    const q = filters.search.toLowerCase();
+    rows = rows.filter(
+      (r) => r.patient_name?.toLowerCase().includes(q) || r.patient_phone?.includes(q) || r.queue_number?.toLowerCase().includes(q)
+    );
+  }
+  return rows;
+}
+
+export async function createManualAppointment(params: {
+  doctorId: string;
+  patientName: string;
+  patientPhone: string;
+  patientAge?: number;
+  patientGender?: string;
+  departmentId?: string;
+  symptoms?: string;
+  isEmergency?: boolean;
+  appointmentDate?: string;
+}) {
+  const { data, error } = await supabase.rpc("create_manual_appointment", {
+    p_doctor_id: params.doctorId,
+    p_patient_name: params.patientName,
+    p_patient_phone: params.patientPhone,
+    p_patient_age: params.patientAge ?? null,
+    p_patient_gender: params.patientGender ?? null,
+    p_department_id: params.departmentId ?? null,
+    p_symptoms: params.symptoms ?? null,
+    p_is_emergency: params.isEmergency ?? false,
+    p_appointment_date: params.appointmentDate ?? new Date().toISOString().split("T")[0],
+  });
+  if (error) throw new Error(error.message);
+  const result = data as { success: boolean; error?: string; queue_number?: string; appointment_id?: string };
+  if (!result.success) throw new Error(result.error || "Could not create appointment.");
+  return result;
+}
+
+const STATUS_LOG_LABEL: Record<string, string> = {
+  [APPT_STATUS.WAITING]: "Appointment Set to Waiting",
+  [APPT_STATUS.IN_CONSULTATION]: "Appointment Called In",
+  [APPT_STATUS.COMPLETED]: "Appointment Completed",
+  [APPT_STATUS.CANCELLED]: "Appointment Cancelled",
+  [APPT_STATUS.NO_SHOW]: "Appointment Marked Missed",
+};
+
+export async function updateAppointmentStatus(appointmentId: string, status: string, patientLabel: string) {
+  const { error } = await supabase.from("appointments").update({ status }).eq("id", appointmentId);
+  if (error) throw new Error(error.message);
+  await logActivity({
+    category: "Appointments",
+    action: STATUS_LOG_LABEL[status] || `Status changed to ${status}`,
+    targetType: "appointment",
+    targetId: appointmentId,
+    targetLabel: patientLabel,
+    metadata: { new_status: status },
+  });
+}
+
+export async function rescheduleAppointment(appointmentId: string, newDate: string, patientLabel: string) {
+  const { error } = await supabase.from("appointments").update({ appointment_date: newDate }).eq("id", appointmentId);
+  if (error) throw new Error(error.message);
+  await logActivity({
+    category: "Appointments",
+    action: "Appointment Rescheduled",
+    targetType: "appointment",
+    targetId: appointmentId,
+    targetLabel: patientLabel,
+    metadata: { new_date: newDate },
+  });
 }

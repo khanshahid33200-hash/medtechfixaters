@@ -50,8 +50,9 @@ export default function HospitalAnalyticsPage() {
         }
 
         const total = appts.length
-        const completed = appts.filter(a => a.status === 'completed').length
-        const noShows = appts.filter(a => a.status === 'no_show').length
+        // Must match the DB CHECK constraint on public.appointments exactly.
+        const completed = appts.filter(a => a.status === 'Completed').length
+        const noShows = appts.filter(a => a.status === 'No Show').length
 
         // Department breakdown
         const countsByDept: Record<string, number> = {}

@@ -52,8 +52,10 @@ export default function Reports() {
     )
   }, [doctorId])
 
-  const completedCount = queueList.filter((q) => q.status === 'completed').length
-  const waitingCount = queueList.filter((q) => q.status === 'waiting' || q.status === 'pending').length
+  // status is passed through raw from public.appointments — must match its
+  // CHECK constraint exactly ('Completed' / 'Waiting'), not a lowercase guess.
+  const completedCount = queueList.filter((q) => q.status === 'Completed').length
+  const waitingCount = queueList.filter((q) => q.status === 'Waiting').length
   const totalCheckins = queueList.length
 
   const handlePrint = () => {

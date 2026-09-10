@@ -1,207 +1,234 @@
-import React, { useState, useEffect } from 'react'
-import {
-  Layers,
-  Shield,
-  Clock,
-  Users,
-  ChevronRight,
-  Sparkles,
-  RefreshCw,
-  PhoneCall,
-  CheckCircle,
-  AlertCircle
-} from 'lucide-react'
+import React, { useEffect, useMemo, useState } from 'react'
+import { motion } from 'motion/react'
+import { Layers, Shield, ChevronRight, PhoneCall, CheckCircle } from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { useAppointmentsRealtime } from '../../hooks/useAppointmentsRealtime'
+import { updateAppointmentStatus } from '../../services/appointmentService'
+import { APPT_STATUS } from '../../hooks/useDashboardStats'
 
-interface QueueItem {
-  id: string
+interface DoctorQueue {
+  doctorId: string
   department: string
   doctor: string
   room: string
-  currentToken: string
-  currentPatient: string
-  nextPatient: string
-  waitingCount: number
-  avgWaitMins: number
-  status: 'active' | 'break' | 'completed'
-  queueList: { token: string; patient: string; waitTime: string; status: 'serving' | 'next' | 'waiting' }[]
+  serving: { id: string; token: string; patient: string }[]
+  waiting: { id: string; token: string; patient: string; waitTime: string }[]
+  completedToday: number
 }
+
+const todayStr = () => new Date().toISOString().split('T')[0]
 
 export default function HospitalLiveQueuePage() {
   const { doctorProfile } = useAuth()
-  const currentHospId = doctorProfile?.hospital_id || localStorage.getItem('hospital_id') || ''
+  const currentHospId = doctorProfile?.hospital_id || ''
 
-  const [refreshing, setRefreshing] = useState(false)
-  const [selectedQueue, setSelectedQueue] = useState<QueueItem | null>(null)
-  const [queues, setQueues] = useState<QueueItem[]>([])
+  const [selectedDoctorId, setSelectedDoctorId] = useState<string | null>(null)
+  const [busyId, setBusyId] = useState<string | null>(null)
+  const [departmentFilter, setDepartmentFilter] = useState('')
+  const [rooms, setRooms] = useState<Record<string, string>>({})
+
+  // Today's appointments only, realtime — this IS the live queue.
+  const { appointments, isLoading, refresh } = useAppointmentsRealtime(currentHospId, { date: todayStr() })
 
   useEffect(() => {
-    async function loadQueues() {
-      if (!currentHospId) return
-      try {
-        // Query doctors for this hospital
-        const { data: docs } = await supabase
-          .from('profiles')
-          .select('id, full_name, department')
-          .eq('hospital_id', currentHospId)
-          .eq('role', 'doctor')
-          .eq('is_active', true)
-
-        if (!docs || docs.length === 0) {
-          setQueues([])
-          return
-        }
-
-        // Query waiting appointments for this hospital
-        const { data: appts } = await supabase
-          .from('appointments')
-          .select('id, doctor_id, token_number, status, patient:patients(name)')
-          .eq('hospital_id', currentHospId)
-          .in('status', ['pending', 'waiting'])
-          .order('token_number', { ascending: true })
-
-        const waitingList = appts || []
-        if (waitingList.length === 0) {
-          // Zero active queues as per Rule 7
-          setQueues([])
-          return
-        }
-
-        // Group appointments by doctor
-        const activeDocQueues: QueueItem[] = []
-        docs.forEach((d, i) => {
-          const docAppts = waitingList.filter(a => a.doctor_id === d.id)
-          if (docAppts.length > 0) {
-            const current = docAppts[0]
-            const next = docAppts[1]
-            activeDocQueues.push({
-              id: `q-${d.id}`,
-              department: d.department || 'General OPD',
-              doctor: d.full_name,
-              room: `OPD Room ${101 + i}`,
-              currentToken: `T-${String(current.token_number || 1).padStart(3, '0')}`,
-              currentPatient: (current as any).patient?.name || 'Patient',
-              nextPatient: next ? `${(next as any).patient?.name || 'Patient'} (T-${String(next.token_number).padStart(3, '0')})` : 'None',
-              waitingCount: docAppts.length,
-              avgWaitMins: docAppts.length * 10,
-              status: 'active',
-              queueList: docAppts.map((a: any, idx: number) => ({
-                token: `T-${String(a.token_number).padStart(3, '0')}`,
-                patient: a.patient?.name || 'Patient',
-                waitTime: `${idx * 10} min`,
-                status: idx === 0 ? 'serving' : idx === 1 ? 'next' : 'waiting'
-              }))
-            })
-          }
-        })
-        setQueues(activeDocQueues)
-      } catch (e) {
-        setQueues([])
-      }
-    }
-    loadQueues()
+    if (!currentHospId) return
+    supabase
+      .from('doctor_details')
+      .select('id, room_number')
+      .eq('hospital_id', currentHospId)
+      .then(({ data }) => {
+        const map: Record<string, string> = {}
+        ;(data || []).forEach((d) => { map[d.id] = d.room_number || 'OPD Room' })
+        setRooms(map)
+      })
   }, [currentHospId])
 
-  const handleRefresh = () => {
-    setRefreshing(true)
-    setTimeout(() => setRefreshing(false), 600)
+  const queues: DoctorQueue[] = useMemo(() => {
+    const byDoctor = new Map<string, DoctorQueue>()
+    appointments.forEach((a) => {
+      if (!byDoctor.has(a.doctor_id)) {
+        byDoctor.set(a.doctor_id, {
+          doctorId: a.doctor_id,
+          department: a.department?.name || a.doctor?.department || 'General OPD',
+          doctor: a.doctor?.full_name || 'Doctor',
+          room: rooms[a.doctor_id] || 'OPD Room',
+          serving: [],
+          waiting: [],
+          completedToday: 0,
+        })
+      }
+      const q = byDoctor.get(a.doctor_id)!
+      if (a.status === APPT_STATUS.IN_CONSULTATION) {
+        q.serving.push({ id: a.id, token: a.queue_number, patient: a.patient_name })
+      } else if (a.status === APPT_STATUS.WAITING) {
+        q.waiting.push({ id: a.id, token: a.queue_number, patient: a.patient_name, waitTime: `${(a.token_number || 1) * 8} min` })
+      } else if (a.status === APPT_STATUS.COMPLETED) {
+        q.completedToday += 1
+      }
+    })
+    // Only doctors with at least one active (serving/waiting) item — a
+    // fully-idle doctor doesn't clutter the live queue view.
+    return Array.from(byDoctor.values())
+      .filter((q) => q.serving.length > 0 || q.waiting.length > 0)
+      .filter((q) => !departmentFilter || q.department === departmentFilter)
+      .sort((a, b) => b.waiting.length - a.waiting.length)
+  }, [appointments, rooms, departmentFilter])
+
+  const departments = useMemo(() => Array.from(new Set(appointments.map((a) => a.department?.name || a.doctor?.department || 'General OPD'))), [appointments])
+
+  const selectedQueue = queues.find((q) => q.doctorId === selectedDoctorId) || null
+
+  const handleCallNext = async (q: DoctorQueue) => {
+    const next = q.waiting[0]
+    if (!next) return
+    setBusyId(next.id)
+    try {
+      // Whoever is currently "In Consultation" for this doctor is done being
+      // called in — move them along to Completed before calling the next
+      // token, so a doctor never has two patients marked "serving" at once.
+      for (const s of q.serving) {
+        await updateAppointmentStatus(s.id, APPT_STATUS.COMPLETED, s.patient)
+      }
+      await updateAppointmentStatus(next.id, APPT_STATUS.IN_CONSULTATION, next.patient)
+    } catch (e: any) {
+      alert(`Could not call next patient: ${e.message}`)
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  const handleCompleteServing = async (item: { id: string; patient: string }) => {
+    setBusyId(item.id)
+    try {
+      await updateAppointmentStatus(item.id, APPT_STATUS.COMPLETED, item.patient)
+    } catch (e: any) {
+      alert(`Could not complete: ${e.message}`)
+    } finally {
+      setBusyId(null)
+    }
   }
 
   return (
     <HospitalDashboardLayout pageTitle="Live Queue">
       <div className="space-y-6">
-        {/* Top Header Controls */}
-        <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+        <div className="bg-white/70 backdrop-blur-md p-5 rounded-3xl border border-white/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
             <div>
               <h3 className="font-bold text-slate-900 text-sm">Real-Time Hospital Token Engine</h3>
-              <p className="text-xs text-slate-400">Synchronized live across consultation rooms & reception monitors</p>
+              <p className="text-xs text-slate-400">Every doctor's queue is separate and updates live via Supabase Realtime</p>
             </div>
           </div>
-          <button
-            onClick={handleRefresh}
-            className="flex items-center gap-2 px-3.5 py-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition"
+          <select
+            value={departmentFilter}
+            onChange={(e) => setDepartmentFilter(e.target.value)}
+            className="px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-700"
           >
-            <RefreshCw size={14} className={refreshing ? 'animate-spin text-blue-600' : ''} />
-            <span>Refresh Queues</span>
-          </button>
+            <option value="">All Departments</option>
+            {departments.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
         </div>
 
-        {/* Queues Grid */}
-        {queues.length === 0 ? (
+        {isLoading ? (
+          <div className="p-12 text-center text-slate-400 text-xs">Loading queues…</div>
+        ) : queues.length === 0 ? (
           <div className="p-12 text-center bg-white rounded-3xl border border-slate-200 shadow-sm space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center mx-auto">
               <Layers size={24} />
             </div>
             <h4 className="font-bold text-slate-800 text-sm">No Active Live Queues</h4>
-            <p className="text-xs text-slate-500">There are currently no active patient queues running for this hospital.</p>
+            <p className="text-xs text-slate-500">Queues appear here once a doctor has a Waiting or In Consultation appointment today.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {queues.map((q) => (
-              <div
-                key={q.id}
-                className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between"
-              >
-                <div>
-                  {/* Department Header */}
-                  <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                        <Shield size={18} />
+            {queues.map((q) => {
+              const serving = q.serving[0]
+              const nextUp = q.waiting[0]
+              return (
+                <motion.div
+                  key={q.doctorId}
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ type: 'spring', stiffness: 220, damping: 24 }}
+                  className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm hover:shadow-md transition flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                          <Shield size={18} />
+                        </div>
+                        <div>
+                          <h4 className="font-bold text-slate-900 text-sm">{q.department}</h4>
+                          <p className="text-xs text-slate-400">{q.doctor} • {q.room}</p>
+                        </div>
                       </div>
+                      <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">Live</span>
+                    </div>
+
+                    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 mb-4 flex items-center justify-between">
                       <div>
-                        <h4 className="font-bold text-slate-900 text-sm">{q.department}</h4>
-                        <p className="text-xs text-slate-400">{q.doctor} • {q.room}</p>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Now Serving</span>
+                        {serving ? (
+                          <>
+                            <span className="text-3xl font-black text-slate-900 tracking-tight">{serving.token}</span>
+                            <span className="text-xs text-slate-600 font-semibold block mt-0.5">{serving.patient}</span>
+                          </>
+                        ) : (
+                          <span className="text-sm text-slate-400 font-semibold">No one in consultation</span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Waiting</span>
+                        <span className="text-lg font-bold text-blue-600">{q.waiting.length}</span>
+                        <span className="text-xs text-slate-400 block">Completed today: {q.completedToday}</span>
                       </div>
                     </div>
-                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">
-                      Live Active
-                    </span>
-                  </div>
 
-                  {/* Token Counter Spotlight */}
-                  <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/70 mb-4 flex items-center justify-between">
-                    <div>
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Now Serving Token</span>
-                      <span className="text-3xl font-black text-slate-900 tracking-tight">{q.currentToken}</span>
-                      <span className="text-xs text-slate-600 font-semibold block mt-0.5">{q.currentPatient}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Est. Wait Time</span>
-                      <span className="text-lg font-bold text-blue-600">{q.avgWaitMins} mins</span>
-                      <span className="text-xs text-slate-400 block">{q.waitingCount} in line</span>
+                    <div className="flex items-center justify-between text-xs text-slate-600 py-1.5 px-2 bg-slate-100/60 rounded-xl">
+                      <span>Next:</span>
+                      <span className="font-bold text-slate-900">{nextUp ? `${nextUp.patient} (${nextUp.token})` : 'None'}</span>
                     </div>
                   </div>
 
-                  {/* Next In Line */}
-                  <div className="flex items-center justify-between text-xs text-slate-600 py-1.5 px-2 bg-slate-100/60 rounded-xl">
-                    <span>Next Patient:</span>
-                    <span className="font-bold text-slate-900">{q.nextPatient}</span>
+                  <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between gap-2">
+                    <button
+                      onClick={() => setSelectedDoctorId(q.doctorId)}
+                      className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700"
+                    >
+                      <span>View Lineup</span>
+                      <ChevronRight size={14} />
+                    </button>
+                    <div className="flex items-center gap-1.5">
+                      {serving && (
+                        <button
+                          disabled={busyId === serving.id}
+                          onClick={() => handleCompleteServing(serving)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-600 hover:bg-emerald-100 text-[11px] font-bold disabled:opacity-40"
+                        >
+                          <CheckCircle size={12} /> Complete
+                        </button>
+                      )}
+                      {nextUp && (
+                        <button
+                          disabled={busyId === nextUp.id}
+                          onClick={() => handleCallNext(q)}
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold disabled:opacity-40"
+                        >
+                          <PhoneCall size={12} /> Call Next
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-
-                {/* Action Button */}
-                <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <span className="text-xs font-semibold text-slate-400">Total in queue: {q.queueList.length}</span>
-                  <button
-                    onClick={() => setSelectedQueue(q)}
-                    className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700"
-                  >
-                    <span>View Live Lineup</span>
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
-              </div>
-            ))}
+                </motion.div>
+              )
+            })}
           </div>
         )}
       </div>
 
-      {/* Queue Lineup Modal */}
       {selectedQueue && (
         <div className="fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 text-xs">
@@ -210,50 +237,40 @@ export default function HospitalLiveQueuePage() {
                 <h3 className="font-bold text-slate-900 text-base">{selectedQueue.department} Queue</h3>
                 <p className="text-slate-400">{selectedQueue.doctor} • {selectedQueue.room}</p>
               </div>
-              <button onClick={() => setSelectedQueue(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+              <button onClick={() => setSelectedDoctorId(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
 
-            <div className="space-y-2.5 my-4">
-              {selectedQueue.queueList.map((item, idx) => (
+            <div className="space-y-2.5 my-4 max-h-96 overflow-y-auto">
+              {selectedQueue.serving.map((item) => (
+                <div key={item.id} className="p-3 rounded-2xl border flex items-center justify-between bg-emerald-50/80 border-emerald-200">
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-extrabold text-slate-900 shadow-sm">{item.token}</span>
+                    <p className="font-bold text-slate-900">{item.patient}</p>
+                  </div>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white">SERVING</span>
+                </div>
+              ))}
+              {selectedQueue.waiting.map((item, idx) => (
                 <div
-                  key={idx}
-                  className={`p-3 rounded-2xl border flex items-center justify-between ${
-                    item.status === 'serving'
-                      ? 'bg-emerald-50/80 border-emerald-200'
-                      : item.status === 'next'
-                      ? 'bg-blue-50/80 border-blue-200'
-                      : 'bg-slate-50 border-slate-200'
-                  }`}
+                  key={item.id}
+                  className={`p-3 rounded-2xl border flex items-center justify-between ${idx === 0 ? 'bg-blue-50/80 border-blue-200' : 'bg-slate-50 border-slate-200'}`}
                 >
                   <div className="flex items-center gap-3">
-                    <span className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-extrabold text-slate-900 shadow-sm">
-                      {item.token}
-                    </span>
+                    <span className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center font-extrabold text-slate-900 shadow-sm">{item.token}</span>
                     <div>
                       <p className="font-bold text-slate-900">{item.patient}</p>
-                      <p className="text-[10px] text-slate-400">Wait: {item.waitTime}</p>
+                      <p className="text-[10px] text-slate-400">Est. wait: {item.waitTime}</p>
                     </div>
                   </div>
-                  <span
-                    className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
-                      item.status === 'serving'
-                        ? 'bg-emerald-600 text-white'
-                        : item.status === 'next'
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {item.status.toUpperCase()}
+                  <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${idx === 0 ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700'}`}>
+                    {idx === 0 ? 'NEXT' : 'WAITING'}
                   </span>
                 </div>
               ))}
             </div>
 
             <div className="mt-5 pt-3 border-t border-slate-100 flex justify-end">
-              <button
-                onClick={() => setSelectedQueue(null)}
-                className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800"
-              >
+              <button onClick={() => setSelectedDoctorId(null)} className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800">
                 Close View
               </button>
             </div>

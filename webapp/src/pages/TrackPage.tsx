@@ -20,7 +20,7 @@ interface QueueStatus {
   live_position: number
   patients_ahead: number
   estimated_wait_mins: number
-  status: 'waiting' | 'called' | 'in_consultation' | 'completed' | 'cancelled' | 'no_show'
+  status: 'Waiting' | 'In Consultation' | 'Completed' | 'Cancelled' | 'No Show'
   created_at: string
 }
 
@@ -121,36 +121,30 @@ export default function TrackPage() {
 
   // Get status color & badge
   const getStatusBadge = (status: string) => {
+    // Must match the DB CHECK constraint on public.appointments exactly.
     switch (status) {
-      case 'called':
-        return {
-          label: 'Called — Proceed to Room',
-          bg: 'bg-amber-100 text-amber-900 border-amber-300',
-          dot: 'bg-amber-500 animate-ping',
-          desc: 'Your token has been called by the doctor. Please proceed immediately to the consultation room.'
-        }
-      case 'in_consultation':
+      case 'In Consultation':
         return {
           label: 'In Consultation',
           bg: 'bg-blue-100 text-blue-900 border-blue-300',
           dot: 'bg-blue-600 animate-pulse',
           desc: 'Consultation currently in progress with doctor.'
         }
-      case 'completed':
+      case 'Completed':
         return {
           label: 'Consultation Completed',
           bg: 'bg-emerald-100 text-emerald-900 border-emerald-300',
           dot: 'bg-emerald-600',
           desc: 'Consultation finished. Your WhatsApp e-prescription has been dispatched.'
         }
-      case 'no_show':
+      case 'No Show':
         return {
           label: 'Marked No-Show',
           bg: 'bg-slate-100 text-slate-700 border-slate-300',
           dot: 'bg-slate-500',
           desc: 'Patient was not present when token was called.'
         }
-      case 'cancelled':
+      case 'Cancelled':
         return {
           label: 'Appointment Cancelled',
           bg: 'bg-rose-100 text-rose-800 border-rose-200',
