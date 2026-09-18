@@ -1,4 +1,4 @@
-export type BookingMethod = "AI" | "MANUAL";
+export type BookingMethod = "AI" | "MANUAL" | "Manual" | "QR" | "Online" | "Walk-in";
 
 export type BookingMode = "choice" | "ai" | "manual" | "recommendation" | "confirmation" | "success";
 

@@ -141,8 +141,13 @@ export default function Checkin() {
                 <div className="bg-white p-6 rounded-2xl border border-emerald-100 shadow-md space-y-3">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Your Live Queue Token</p>
                   <div className="inline-flex items-center gap-2 px-6 py-2 bg-blue-50 text-blue-700 font-black text-4xl rounded-2xl border border-blue-200 shadow-inner">
-                    <Ticket size={32} /> {response.tokenNumber}
+                    <Ticket size={32} /> #{response.tokenNumber}
                   </div>
+                  {response.patientNumber && (
+                    <p className="text-xs font-mono font-bold text-emerald-800 bg-emerald-50 py-1 px-3 rounded-full border border-emerald-200 inline-block">
+                      Patient ID: {response.patientNumber}
+                    </p>
+                  )}
                   {response.trackingToken && (
                     <p className="text-xs font-mono text-slate-500">Tracking Ref: {response.trackingToken}</p>
                   )}

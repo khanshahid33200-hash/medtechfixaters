@@ -8,10 +8,10 @@ export async function getHospitalDoctors(
   if (!hospitalId) return [];
 
   try {
-    // Primary DB query: strictly scoped by hospital_id
+    // Primary DB query: strictly scoped by hospital_id and active status
     const { data: dbProfiles, error } = await supabase
       .from("profiles")
-      .select("*")
+      .select("id, hospital_id, doctor_code, full_name, department_id, department, specialization, is_active, account_status")
       .eq("hospital_id", hospitalId)
       .eq("role", "doctor")
       .eq("is_active", true);
@@ -22,14 +22,13 @@ export async function getHospitalDoctors(
         hospital_id: p.hospital_id || hospitalId,
         doctor_code: p.doctor_code || `DOC-${p.id.slice(0, 4).toUpperCase()}`,
         name: p.full_name || "Doctor Specialist",
-        department_id: p.department || "General",
+        department_id: p.department_id || p.department || "",
         department: p.department || "General Medicine",
         specialty: p.specialization || p.department || "Consultant Practitioner",
-        fee: p.fee || 500,
-        room_number: p.room_number || "Room 101",
+        fee: 500,
+        room_number: "Room 101",
         active: p.is_active !== false && p.account_status !== "blocked",
         accepting_appointments: true,
-        todayConsults: p.today_consults || 0,
       }));
 
       let filtered = mapped.filter((d) => d.active);
@@ -38,43 +37,12 @@ export async function getHospitalDoctors(
         const target = departmentIdOrName.toLowerCase().trim();
         filtered = filtered.filter(
           (d) =>
-            d.department?.toLowerCase().includes(target) ||
-            d.specialty.toLowerCase().includes(target) ||
-            d.department_id?.toLowerCase() === target
+            d.department_id?.toLowerCase() === target ||
+            d.department?.toLowerCase() === target ||
+            d.specialty.toLowerCase() === target
         );
       }
 
-      return filtered;
-    }
-
-    // Fallback query in hospital local storage doctors (multi-tenant key)
-    const localKey = `clinicos_hospital_${hospitalId}_doctors`;
-    const savedLocal = localStorage.getItem(localKey);
-    if (savedLocal) {
-      const parsed: any[] = JSON.parse(savedLocal);
-      const mapped: DoctorItem[] = parsed.map((d) => ({
-        id: d.id,
-        hospital_id: hospitalId,
-        doctor_code: d.doctor_code || `DOC-${d.id.slice(0, 4)}`,
-        name: d.name,
-        department_id: d.dept || "General",
-        department: d.dept || "General Medicine",
-        specialty: d.specialization || "Consultant",
-        fee: d.fee || 500,
-        room_number: d.room_number || "OPD Room 1",
-        active: d.status === "active",
-        accepting_appointments: d.status === "active",
-      }));
-
-      let filtered = mapped.filter((d) => d.active);
-      if (departmentIdOrName && departmentIdOrName.trim()) {
-        const target = departmentIdOrName.toLowerCase().trim();
-        filtered = filtered.filter(
-          (d) =>
-            d.department?.toLowerCase().includes(target) ||
-            d.specialty.toLowerCase().includes(target)
-        );
-      }
       return filtered;
     }
   } catch (err) {
@@ -90,66 +58,28 @@ export async function getHospitalDepartments(
   if (!hospitalId) return [];
 
   try {
-    // Query Supabase departments scoped by hospital_id
-    const { data: dbDepts } = await supabase
+    // Query Supabase departments scoped by hospital_id and active status
+    const { data: dbDepts, error } = await supabase
       .from("departments")
-      .select("*")
-      .eq("hospital_id", hospitalId);
+      .select("id, hospital_id, name, description, avg_wait_mins, is_active")
+      .eq("hospital_id", hospitalId)
+      .eq("is_active", true)
+      .order("name", { ascending: true });
 
-    if (dbDepts && dbDepts.length > 0) {
+    if (!error && dbDepts && dbDepts.length > 0) {
       return dbDepts.map((d) => ({
         id: d.id,
-        hospital_id: hospitalId,
+        hospital_id: d.hospital_id || hospitalId,
         name: d.name,
-        description: d.description || `OPD Consult Department`,
-        is_opd: d.is_opd !== false,
-        head_doctor: d.head_doctor,
+        description: d.description || "Clinical Outpatient Department",
+        is_opd: true,
         avg_wait_mins: d.avg_wait_mins || 15,
-      }));
-    }
-
-    // Local fallback for hospital departments
-    const localKey = `clinicos_hospital_${hospitalId}_departments`;
-    const savedLocal = localStorage.getItem(localKey);
-    if (savedLocal) {
-      const parsed: any[] = JSON.parse(savedLocal);
-      return parsed.map((d) => ({
-        id: d.id || d.name,
-        hospital_id: hospitalId,
-        name: d.name,
-        description: `OPD Consult Department`,
-        is_opd: true,
-        avg_wait_mins: d.avgWaitMins || 15,
-      }));
-    }
-
-    // Extract departments from hospital active doctors list
-    const docs = await getHospitalDoctors(hospitalId);
-    const deptNames = Array.from(new Set(docs.map((d) => d.department || "General Medicine")));
-    
-    if (deptNames.length > 0) {
-      return deptNames.map((name, i) => ({
-        id: `dept-${i + 1}`,
-        hospital_id: hospitalId,
-        name,
-        description: `${name} OPD Consult Department`,
-        is_opd: true,
-        avg_wait_mins: 15,
       }));
     }
   } catch (err) {
     console.warn("Department service fetch error:", err);
   }
 
-  // Minimum standard department if hospital has no custom setup yet
-  return [
-    {
-      id: "dept-gen",
-      hospital_id: hospitalId,
-      name: "General Medicine",
-      description: "General OPD, primary care, fever, cough & health checkup",
-      is_opd: true,
-      avg_wait_mins: 15,
-    },
-  ];
+  // Strictly return empty array if no departments are configured in Supabase (no demo/mock departments)
+  return [];
 }

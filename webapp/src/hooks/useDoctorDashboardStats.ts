@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { APPT_STATUS, DateRange, resolveRange } from './useDashboardStats'
 
@@ -37,85 +37,135 @@ function previousPeriod(range: DateRange): DateRange {
 }
 
 /**
- * Doctor-scoped dashboard KPIs — every query filters by BOTH hospital_id and
- * doctor_id (never hospital_id alone), so this doctor never sees another
- * doctor's appointment counts or revenue even within the same hospital.
+ * Doctor-scoped dashboard KPIs — queried live from Supabase.
+ * Scoped by both hospital_id and doctor_id.
+ * Subscribes to Supabase Realtime to automatically refetch on changes.
  */
-export function useDoctorDashboardStats(hospitalId: string | null | undefined, doctorId: string | null | undefined, range: DateRange) {
+export function useDoctorDashboardStats(
+  hospitalId: string | null | undefined,
+  doctorId: string | null | undefined,
+  range: DateRange
+) {
   const [kpis, setKpis] = useState<DoctorKpis>(empty)
   const [isLoading, setIsLoading] = useState(true)
 
-  useEffect(() => {
-    let cancelled = false
+  const run = useCallback(async () => {
     if (!hospitalId || !doctorId) {
       setIsLoading(false)
       return
     }
 
     const prevRange = previousPeriod(range)
+    setIsLoading(true)
 
-    async function run() {
-      setIsLoading(true)
-      try {
-        const [{ data: cur }, { data: prev }] = await Promise.all([
-          supabase
-            .from('appointments')
-            .select('id, status, fee, patient_id')
-            .eq('hospital_id', hospitalId)
-            .eq('doctor_id', doctorId)
-            .gte('appointment_date', toISODate(range.start))
-            .lte('appointment_date', toISODate(range.end)),
-          supabase
-            .from('appointments')
-            .select('id, status, fee, patient_id')
-            .eq('hospital_id', hospitalId)
-            .eq('doctor_id', doctorId)
-            .gte('appointment_date', toISODate(prevRange.start))
-            .lte('appointment_date', toISODate(prevRange.end)),
-        ])
+    try {
+      const [{ data: cur, error: curError }, { data: prev, error: prevError }] = await Promise.all([
+        supabase
+          .from('appointments')
+          .select('id, status, consultation_fee, patient_id')
+          .eq('hospital_id', hospitalId)
+          .eq('doctor_id', doctorId)
+          .gte('appointment_date', toISODate(range.start))
+          .lte('appointment_date', toISODate(range.end)),
+        supabase
+          .from('appointments')
+          .select('id, status, consultation_fee, patient_id')
+          .eq('hospital_id', hospitalId)
+          .eq('doctor_id', doctorId)
+          .gte('appointment_date', toISODate(prevRange.start))
+          .lte('appointment_date', toISODate(prevRange.end)),
+      ])
 
-        if (cancelled) return
+      if (curError) throw curError
+      if (prevError) throw prevError
 
-        const curRows = cur || []
-        const prevRows = prev || []
+      const curRows = cur || []
+      const prevRows = prev || []
 
-        const count = (rows: typeof curRows, status: string) => rows.filter((r) => r.status === status).length
-        const revenue = (rows: typeof curRows) =>
-          rows.filter((r) => r.status === APPT_STATUS.COMPLETED).reduce((s, r) => s + (Number(r.fee) || 0), 0)
-        const uniquePatients = (rows: typeof curRows) => new Set(rows.map((r) => r.patient_id).filter(Boolean)).size
+      const countStatus = (rows: typeof curRows, statuses: string[]) =>
+        rows.filter((r) => statuses.map((s) => s.toLowerCase()).includes((r.status || '').toLowerCase())).length
 
-        const curWaiting = count(curRows, APPT_STATUS.WAITING) + count(curRows, APPT_STATUS.IN_CONSULTATION)
-        const prevWaiting = count(prevRows, APPT_STATUS.WAITING) + count(prevRows, APPT_STATUS.IN_CONSULTATION)
+      const revenue = (rows: typeof curRows) =>
+        rows
+          .filter((r) => (r.status || '').toLowerCase() === 'completed')
+          .reduce((s, r) => s + (Number(r.consultation_fee) || 0), 0)
 
-        setKpis({
-          totalAppointments: { value: curRows.length, change: pctChange(curRows.length, prevRows.length) },
-          totalPatients: { value: uniquePatients(curRows), change: pctChange(uniquePatients(curRows), uniquePatients(prevRows)) },
-          waiting: { value: curWaiting, change: pctChange(curWaiting, prevWaiting) },
-          completed: {
-            value: count(curRows, APPT_STATUS.COMPLETED),
-            change: pctChange(count(curRows, APPT_STATUS.COMPLETED), count(prevRows, APPT_STATUS.COMPLETED)),
-          },
-          missed: {
-            value: count(curRows, APPT_STATUS.NO_SHOW),
-            change: pctChange(count(curRows, APPT_STATUS.NO_SHOW), count(prevRows, APPT_STATUS.NO_SHOW)),
-          },
-          revenue: { value: revenue(curRows), change: pctChange(revenue(curRows), revenue(prevRows)) },
-        })
-      } catch (e) {
-        console.warn('useDoctorDashboardStats fetch note:', e)
-        if (!cancelled) setKpis(empty)
-      } finally {
-        if (!cancelled) setIsLoading(false)
-      }
-    }
+      const uniquePatients = (rows: typeof curRows) =>
+        new Set(rows.map((r) => r.patient_id).filter(Boolean)).size
 
-    run()
-    return () => {
-      cancelled = true
+      const curWaiting = countStatus(curRows, ['Waiting', 'In Consultation'])
+      const prevWaiting = countStatus(prevRows, ['Waiting', 'In Consultation'])
+
+      const curCompleted = countStatus(curRows, ['Completed'])
+      const prevCompleted = countStatus(prevRows, ['Completed'])
+
+      const curMissed = countStatus(curRows, ['Cancelled', 'No Show', 'Missed'])
+      const prevMissed = countStatus(prevRows, ['Cancelled', 'No Show', 'Missed'])
+
+      setKpis({
+        totalAppointments: {
+          value: curRows.length,
+          change: pctChange(curRows.length, prevRows.length),
+        },
+        totalPatients: {
+          value: uniquePatients(curRows),
+          change: pctChange(uniquePatients(curRows), uniquePatients(prevRows)),
+        },
+        waiting: {
+          value: curWaiting,
+          change: pctChange(curWaiting, prevWaiting),
+        },
+        completed: {
+          value: curCompleted,
+          change: pctChange(curCompleted, prevCompleted),
+        },
+        missed: {
+          value: curMissed,
+          change: pctChange(curMissed, prevMissed),
+        },
+        revenue: {
+          value: revenue(curRows),
+          change: pctChange(revenue(curRows), revenue(prevRows)),
+        },
+      })
+    } catch (e) {
+      console.warn('useDoctorDashboardStats error:', e)
+      setKpis(empty)
+    } finally {
+      setIsLoading(false)
     }
   }, [hospitalId, doctorId, range.key, range.start.getTime(), range.end.getTime()])
 
-  return { kpis, isLoading }
+  useEffect(() => {
+    run()
+  }, [run])
+
+  // Realtime subscription for instant dashboard stats synchronization
+  useEffect(() => {
+    if (!hospitalId || !doctorId) return
+
+    const channel = supabase
+      .channel(`doctor-kpis-${hospitalId}-${doctorId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'appointments',
+          filter: `doctor_id=eq.${doctorId}`,
+        },
+        () => {
+          run()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      channel.unsubscribe()
+    }
+  }, [hospitalId, doctorId, run])
+
+  return { kpis, isLoading, refetch: run }
 }
 
 export { resolveRange }

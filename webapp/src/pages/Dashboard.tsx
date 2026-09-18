@@ -47,7 +47,9 @@ import {
 interface ClinicalQueuePatient {
   id: string
   patient_id: string | null
+  patient_number: string | null
   token_number: number
+  queue_number: string
   patient_name: string
   phone: string
   age: number
@@ -63,12 +65,7 @@ interface ClinicalQueuePatient {
 }
 
 // Maps a real Supabase appointment row to the JSX-facing shape this page's
-// UI is built around. Status strings must match the DB CHECK constraint on
-// public.appointments EXACTLY ('Waiting' | 'In Consultation' | 'Completed' |
-// 'Cancelled' | 'No Show') — this used to compare against lowercase/
-// underscore values that never matched a real row, so every appointment
-// booked via book_qr_appointment() (status 'Waiting') fell through to
-// `return null` and silently never appeared in the Live Queue or Dashboard.
+// UI is built around. Status strings match DB CHECK constraint exactly.
 function mapAppointmentToQueuePatient(appt: DoctorAppointment): ClinicalQueuePatient | null {
   let status: ClinicalQueuePatient['status']
   if (appt.status === 'In Consultation') status = 'Now Consulting'
@@ -82,7 +79,9 @@ function mapAppointmentToQueuePatient(appt: DoctorAppointment): ClinicalQueuePat
   return {
     id: appt.id,
     patient_id: appt.patient?.id || null,
+    patient_number: appt.patient?.patient_number || null,
     token_number: appt.token_number ?? 0,
+    queue_number: appt.queue_number || (appt.token_number ? `OPD-${String(appt.token_number).padStart(3, '0')}` : '—'),
     patient_name: appt.patient?.name || 'Unnamed Patient',
     phone: appt.patient?.phone || '',
     age: appt.patient?.age ?? 0,
@@ -91,7 +90,7 @@ function mapAppointmentToQueuePatient(appt: DoctorAppointment): ClinicalQueuePat
     status,
     wait_time: status === 'Completed' ? '—' : waitMins != null ? `${waitMins} min` : '—',
     time: createdAt ? createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—',
-    doctor_id: '', // filled by caller if needed; not required for display
+    doctor_id: '',
     vitals: { bp: '', pulse: '', temp: '', spo2: '' },
     allergies: appt.patient?.allergies || 'None',
     lastVisit: '—',
@@ -611,7 +610,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     }
     await updateAppointmentStatus(target.id, 'In Consultation')
 
-    setNotice(`📢 Calling Token CC-0${target.token_number} (${target.patient_name})`)
+    setNotice(`📢 Calling Token #${target.token_number} (${target.patient_name})`)
     setTimeout(() => setNotice(null), 4000)
   }
 
@@ -998,8 +997,13 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                             {queueList.map((item, idx) => (
                               <tr key={item.id} className="hover:bg-slate-50 transition-colors">
                                 <td className="py-2.5 font-bold text-slate-400">{idx + 1}</td>
-                                <td className="py-2.5 font-black text-indigo-600">CC-0{item.token_number}</td>
-                                <td className="py-2.5 font-extrabold text-slate-800">{item.patient_name}</td>
+                                <td className="py-2.5 font-black text-indigo-600">{item.queue_number || `Token #${item.token_number}`}</td>
+                                <td className="py-2.5">
+                                  <span className="font-extrabold text-slate-800 block">{item.patient_name}</span>
+                                  {item.patient_number && (
+                                    <span className="text-[10px] font-medium text-slate-400 block">ID: {item.patient_number}</span>
+                                  )}
+                                </td>
                                 <td className="py-2.5 text-slate-500">{item.age} / {item.gender}</td>
                                 <td className="py-2.5">
                                   <span className={`px-2 py-0.5 text-[9px] font-black rounded-full capitalize ${
@@ -1022,7 +1026,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
 
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 font-bold">
                       <span className="flex items-center gap-1.5">
-                        <Users size={14} className="text-indigo-600" /> Total Waiting: {waitingToday} Patients
+                        <Users size={14} className="text-indigo-600" /> Total Waiting: {doctorKpis.waiting.value} Patients
                       </span>
                       <button
                         onClick={() => setShowAddWalkinModal(true)}
@@ -1152,7 +1156,10 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     {currentPatient ? (
                       <div>
                         <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider block">Now Consulting</span>
-                        <span className="text-3xl font-black text-slate-900 tracking-tight block">CC-0{currentPatient.token_number}</span>
+                        <span className="text-3xl font-black text-slate-900 tracking-tight block">{currentPatient.queue_number || `Token #${currentPatient.token_number}`}</span>
+                        {currentPatient.patient_number && (
+                          <span className="text-[11px] font-bold text-indigo-600 block mt-0.5">Patient ID: {currentPatient.patient_number}</span>
+                        )}
                         <h4 className="font-extrabold text-base text-slate-800 mt-1">{currentPatient.patient_name}</h4>
                         <p className="text-xs text-slate-500 font-semibold">{currentPatient.age} Yrs, {currentPatient.gender} • {currentPatient.chief_complaint}</p>
                       </div>
@@ -1175,7 +1182,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                       {nextPatient ? (
                         <>
                           <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">Next Patient</span>
-                          <span className="text-lg font-black text-slate-800 block">CC-0{nextPatient.token_number}</span>
+                          <span className="text-lg font-black text-slate-800 block">{nextPatient.queue_number || `Token #${nextPatient.token_number}`}</span>
                           <p className="text-xs font-extrabold text-slate-700">{nextPatient.patient_name}</p>
                           <p className="text-[11px] text-slate-400 font-medium">{nextPatient.age} Yrs, {nextPatient.gender} • {nextPatient.chief_complaint}</p>
                         </>
@@ -1217,7 +1224,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     <div>
                       <h4 className="font-black text-sm text-slate-900 leading-tight">{currentPatient.patient_name}</h4>
                       <p className="text-xs text-slate-500">{currentPatient.age} Yrs, {currentPatient.gender}</p>
-                      <span className="text-[10px] font-black text-indigo-600"># CC-0{currentPatient.token_number}</span>
+                      <span className="text-[10px] font-black text-indigo-600">{currentPatient.queue_number || `Token #${currentPatient.token_number}`}</span>
                     </div>
                   </div>
 
@@ -1471,7 +1478,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     {filteredQueue.map(q => (
                       <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
                         <td className="py-3.5 px-4 font-mono font-black text-indigo-600 text-sm">
-                          CC-0{q.token_number}
+                          #{q.token_number}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">
                           {q.patient_name}
@@ -1679,7 +1686,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     <tr key={p.id} className="hover:bg-slate-50/80 transition">
                       <td className="py-3.5 px-4 font-bold text-slate-900">
                         {p.patient_name}
-                        <span className="block text-[10px] text-indigo-600 font-semibold">Token CC-0{p.token_number}</span>
+                        <span className="block text-[10px] text-indigo-600 font-semibold">Token #{p.token_number}</span>
                       </td>
                       <td className="py-3.5 px-4 text-slate-600 font-medium">{p.phone}</td>
                       <td className="py-3.5 px-4 text-slate-600">{p.age} Yrs • {p.gender}</td>
@@ -1725,7 +1732,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               <div className="p-4 bg-indigo-50/60 border border-indigo-100 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white font-black text-lg flex items-center justify-center">
-                    CC-0{currentPatient?.token_number ?? '—'}
+                    {currentPatient?.token_number ? `#${currentPatient.token_number}` : '—'}
                   </div>
                   <div>
                     <h3 className="font-black text-base text-slate-900 leading-tight">{currentPatient?.patient_name || 'No patient selected'}</h3>
@@ -2601,7 +2608,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 <FileText size={20} className="text-indigo-600" />
                 <div>
                   <h3 className="text-lg font-black text-slate-900">Digital Consultation & Rx</h3>
-                  <span className="text-xs font-semibold text-slate-500">Patient: <strong>{currentPatient?.patient_name}</strong> (CC-0{currentPatient?.token_number})</span>
+                  <span className="text-xs font-semibold text-slate-500">Patient: <strong>{currentPatient?.patient_name}</strong> (#{currentPatient?.token_number})</span>
                 </div>
               </div>
               <button onClick={() => setShowRxModal(false)} className="text-slate-400 hover:text-slate-700">
@@ -2914,7 +2921,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     <div className="flex items-center justify-between">
                       <h4 className="font-black text-xs text-slate-800 uppercase tracking-wider">Profile & Details</h4>
                       <span className="text-[10px] font-bold text-indigo-600">
-                        CC-0{selectedPatientRecord?.token_number ?? currentPatient?.token_number ?? '—'}
+                        {selectedPatientRecord?.token_number || currentPatient?.token_number ? `#${selectedPatientRecord?.token_number ?? currentPatient?.token_number}` : '—'}
                       </span>
                     </div>
                     <div className="grid grid-cols-2 gap-3">

@@ -284,7 +284,7 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
                 </div>
                 <div className="text-left hidden sm:block">
                   <span className="text-[11.5px] font-bold text-slate-800 block leading-tight">{doctorName}</span>
-                  <span className="text-[10px] text-slate-400 block leading-none">{doctorCode || doctorDept}</span>
+                  <span className="text-[10px] text-blue-600 font-semibold block leading-none mt-0.5">{doctorDept} {doctorCode ? `· ${doctorCode}` : ''}</span>
                 </div>
                 <ChevronDown size={13} className="text-slate-400" />
               </motion.button>

@@ -34,6 +34,7 @@ interface AuthContextType {
       name: string
       doctor_code?: string
       hospital_id?: string
+      department_id?: string
       dept?: string
       fee?: number
       limit?: number
@@ -117,7 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           hospital_status: hospStatus,
           name: profileData.full_name || user.user_metadata?.full_name || user.email?.split('@')[0] || 'Doctor',
           email: user.email || '',
-          department_id: profileData.department || 'General',
+          department_id: profileData.department_id || profileData.department || '',
           department_name: profileData.department || 'General Medicine',
           specialization: profileData.specialization || 'Consultant Specialist',
           role: role,
@@ -372,7 +373,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         hospital_status: hospStatus,
         name: profileData?.full_name || user.user_metadata?.full_name || resolvedEmail.split('@')[0],
         email: resolvedEmail,
-        department_id: profileData?.department || 'General',
+        department_id: profileData?.department_id || profileData?.department || '',
         department_name: profileData?.department || 'General Medicine',
         specialization: profileData?.specialization || 'Consultant Specialist',
         role: role as any,
@@ -465,38 +466,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { email: resolvedEmail }
     } catch (err: any) {
       setIsLoading(false)
-      setError(err.message || 'Sending Mail OTP failed.')
+      setError(err.message || 'Could not send OTP code.')
       throw err
     }
   }
 
-  // 2.2 VERIFY SUPABASE MAIL OTP (6-DIGIT CODE)
+  // 2.2 VERIFY SUPABASE MAIL OTP
   const verifySupabaseOtp = async (email: string, otpToken: string, expectedRole?: 'hospital_admin' | 'doctor') => {
     setIsLoading(true)
     setError(null)
-    const cleanEmail = email.trim().toLowerCase()
-    const cleanToken = otpToken.trim()
-
     try {
-      const { data, error: verifyErr } = await supabase.auth.verifyOtp({
-        email: cleanEmail,
-        token: cleanToken,
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim().toLowerCase(),
+        token: otpToken.trim(),
         type: 'email',
       })
 
-      if (verifyErr || !data.user) {
-        throw new Error(verifyErr?.message || 'Invalid or expired OTP code.')
+      if (error || !data?.user) {
+        throw new Error(error?.message || 'Invalid or expired 6-digit OTP code.')
       }
 
       const user = data.user
 
-      // Perform security checks
-      const isValid = await validateUserProfile(user)
-      if (!isValid) {
-        throw new Error('Access Restricted: Your account or hospital profile is not active.')
-      }
-
-      // Check expected role portal restriction
+      // Check role gate
       let { data: profileData } = await supabase
         .from('profiles')
         .select('role')
@@ -529,6 +521,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       name: string
       doctor_code?: string
       hospital_id?: string
+      department_id?: string
       dept?: string
       fee?: number
       limit?: number
@@ -542,7 +535,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Validate UUID format so PostgreSQL trigger (hospital_id)::uuid never fails
     const isUUID = (str?: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '')
-    const validHospitalId = isUUID(metadata.hospital_id) ? metadata.hospital_id : null
+    
+    let rawHospId = metadata.hospital_id || doctorProfile?.hospital_id || localStorage.getItem('hospital_id') || ''
+    
+    // If still not a valid UUID, attempt resolution from current session profile
+    if (!isUUID(rawHospId) && currentUser?.id) {
+      try {
+        const { data: cp } = await supabase.from('profiles').select('hospital_id').eq('id', currentUser.id).maybeSingle()
+        if (cp?.hospital_id && isUUID(cp.hospital_id)) {
+          rawHospId = cp.hospital_id
+        }
+      } catch {}
+    }
+
+    const validHospitalId = isUUID(rawHospId) ? rawHospId : null
+    if (!validHospitalId && metadata.role !== 'super_admin') {
+      throw new Error('No active Hospital ID found. Please make sure you are logged into an active Hospital Administrator session.')
+    }
 
     let createdUserId: string | null = null
     // Collected so the real failure reason can reach the caller instead of
@@ -569,6 +578,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               role: metadata.role,
               doctor_code: docCode,
               hospital_id: validHospitalId,
+              department_id: metadata.department_id,
               department: metadata.dept || 'General',
               specialization: metadata.specialization,
               room: metadata.room,
@@ -628,7 +638,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // edge function's create_doctor_auth_user action — nothing left to
       // do here now that the client-side fallback path is gone.
 
-      // Step D: Always synchronize to Local Registry for guaranteed instant offline/resilient sign-in
+      // Step C: Auto-save credentials to Supabase user_credentials_vault for admin reference
+      try {
+        await supabase.from('user_credentials_vault').insert([
+          {
+            hospital_id: validHospitalId,
+            user_id: finalUserId,
+            doctor_code: docCode,
+            role: metadata.role,
+            full_name: metadata.name,
+            email: cleanEmail,
+            initial_password: cleanPass,
+            department: metadata.dept || 'General',
+          },
+        ])
+      } catch (vaultErr) {
+        console.warn('user_credentials_vault notice:', vaultErr)
+      }
+
+      // Step D: Synchronize to Local Registry for instant offline/resilient sign-in
       try {
         const regRaw = localStorage.getItem('clinicos_user_registry')
         const registry: any[] = regRaw ? JSON.parse(regRaw) : []

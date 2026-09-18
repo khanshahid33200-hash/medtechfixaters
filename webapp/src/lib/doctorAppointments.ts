@@ -33,6 +33,7 @@ export type AppointmentStatus = 'Waiting' | 'In Consultation' | 'Completed' | 'C
 
 export interface DoctorAppointmentPatient {
   id: string
+  patient_number?: string | null
   name: string
   phone: string
   age: number | null
@@ -44,29 +45,48 @@ export interface DoctorAppointmentPatient {
 export interface DoctorAppointment {
   id: string
   token_number: number | null
+  queue_number?: string | null
+  tracking_token?: string | null
   status: AppointmentStatus
   appointment_date: string
+  appointment_time?: string | null
   created_at: string
   symptoms: string | null
   fee: number | null
+  booking_method?: string | null
   patient: DoctorAppointmentPatient | null
 }
 
 const APPOINTMENT_SELECT = `
-  id, token_number, status, appointment_date, created_at, symptoms, fee,
-  patient:patients(id, name, phone, age, gender, allergies, known_diseases)
+  id, token_number, queue_number, tracking_token, status, appointment_date, appointment_time, created_at, symptoms, consultation_fee, booking_method,
+  patient_name, patient_phone, patient_age, patient_gender,
+  patient:patients(id, patient_number, name, phone, age, gender, allergies, known_diseases)
 `
 
 function normalizeAppointment(row: any): DoctorAppointment {
+  const p = Array.isArray(row.patient) ? row.patient[0] : row.patient
   return {
     id: row.id,
     token_number: row.token_number ?? null,
+    queue_number: row.queue_number || (row.token_number ? `OPD-${String(row.token_number).padStart(3, '0')}` : null),
+    tracking_token: row.tracking_token || row.queue_number || row.id,
     status: row.status,
     appointment_date: row.appointment_date,
+    appointment_time: row.appointment_time || '09:00 AM',
     created_at: row.created_at,
     symptoms: row.symptoms ?? null,
-    fee: row.fee != null ? Number(row.fee) : null,
-    patient: Array.isArray(row.patient) ? row.patient[0] ?? null : row.patient ?? null,
+    fee: row.consultation_fee != null ? Number(row.consultation_fee) : 500,
+    booking_method: row.booking_method || 'QR',
+    patient: {
+      id: p?.id || row.patient_id || row.id,
+      patient_number: p?.patient_number || null,
+      name: p?.name || row.patient_name || 'Patient',
+      phone: p?.phone || row.patient_phone || '',
+      age: p?.age ?? row.patient_age ?? 30,
+      gender: p?.gender || row.patient_gender || 'Other',
+      allergies: p?.allergies || null,
+      known_diseases: p?.known_diseases || null,
+    },
   }
 }
 
@@ -93,7 +113,18 @@ export async function getDoctorAppointments(
   const { data, error } = await query
   if (error) {
     console.warn('getDoctorAppointments error:', error.message)
-    return []
+    // Fallback: select without patient join in case foreign key relationship differs
+    const { data: fallbackData, error: fallbackError } = await supabase
+      .from('appointments')
+      .select('id, token_number, queue_number, tracking_token, status, appointment_date, appointment_time, created_at, symptoms, consultation_fee, booking_method, patient_name, patient_phone, patient_age, patient_gender')
+      .eq('doctor_id', doctorId)
+      .order('token_number', { ascending: true })
+
+    if (fallbackError) {
+      console.warn('getDoctorAppointments fallback error:', fallbackError.message)
+      return []
+    }
+    return (fallbackData || []).map(normalizeAppointment)
   }
   return (data || []).map(normalizeAppointment)
 }
@@ -119,6 +150,8 @@ export interface WalkInBookingResult {
   error?: string
   appointmentId?: string
   tokenNumber?: number
+  queueNumber?: string
+  patientNumber?: string | null
   trackingToken?: string
   doctorName?: string
 }
@@ -158,6 +191,7 @@ export async function addWalkInAppointment(params: {
     p_known_diseases: params.knownDiseases || null,
     p_previous_medicine: params.previousMedicine || null,
     p_previous_doctor_id: null,
+    p_booking_method: 'Walk-in',
   })
 
   if (error) return { success: false, error: error.message }
@@ -167,6 +201,8 @@ export async function addWalkInAppointment(params: {
     success: true,
     appointmentId: data?.appointment_id,
     tokenNumber: data?.token_number,
+    queueNumber: data?.queue_number,
+    patientNumber: data?.patient_number,
     trackingToken: data?.tracking_token,
     doctorName: data?.doctor_name,
   }
@@ -213,37 +249,87 @@ export async function completeConsultation(params: {
   advice?: string
   followUp?: string
 }): Promise<{ success: boolean; error?: string }> {
-  const { data: consultation, error: consultError } = await supabase
+  const bp = params.vitals?.bp || null
+  const pulse = params.vitals?.pulse || null
+  const temp = params.vitals?.temp || null
+  const spo2 = params.vitals?.spo2 || null
+  const weight = params.vitals?.weight || null
+
+  const consultPayload: Record<string, any> = {
+    hospital_id: params.hospitalId,
+    appointment_id: params.appointmentId,
+    doctor_id: params.doctorId,
+    patient_id: params.patientId,
+    diagnosis: params.diagnosis || null,
+    clinical_notes: params.clinicalNotes || null,
+    vitals: params.vitals || {},
+    bp,
+    pulse,
+    temp,
+    spo2,
+    weight,
+    status: 'completed',
+  }
+
+  let { data: consultation, error: consultError } = await supabase
     .from('consultations')
-    .insert([
-      {
-        hospital_id: params.hospitalId,
-        appointment_id: params.appointmentId,
-        doctor_id: params.doctorId,
-        patient_id: params.patientId,
-        diagnosis: params.diagnosis || null,
-        clinical_notes: params.clinicalNotes || null,
-        vitals: params.vitals || {},
-      },
-    ])
+    .insert([consultPayload])
     .select('id')
     .single()
 
-  if (consultError) return { success: false, error: consultError.message }
+  // Fallback if schema cache in postgREST has not reloaded vitals JSON column yet
+  if (consultError && consultError.message?.includes('vitals')) {
+    delete consultPayload.vitals
+    const retry = await supabase
+      .from('consultations')
+      .insert([consultPayload])
+      .select('id')
+      .single()
+    consultation = retry.data
+    consultError = retry.error
+  }
 
-  const { error: rxError } = await supabase.from('prescriptions').insert([
-    {
+  if (consultError || !consultation) return { success: false, error: consultError?.message || 'Failed to save consultation.' }
+
+  // Ensure lab_tests is an array or valid JSON, never null
+  const parsedLabTests = params.labTests
+    ? (Array.isArray(params.labTests)
+        ? params.labTests
+        : typeof params.labTests === 'string'
+        ? params.labTests.split(',').map(s => s.trim()).filter(Boolean)
+        : [String(params.labTests)])
+    : []
+
+  const rxPayload: Record<string, any> = {
+    hospital_id: params.hospitalId,
+    consultation_id: consultation.id,
+    appointment_id: params.appointmentId,
+    doctor_id: params.doctorId,
+    patient_id: params.patientId,
+    medicines: params.medicines || [],
+    medications: params.medicines || [],
+    lab_tests: parsedLabTests,
+    advice: params.advice || null,
+    follow_up: params.followUp || null,
+  }
+
+  let { error: rxError } = await supabase.from('prescriptions').insert([rxPayload])
+
+  if (rxError && (rxError.message?.includes('medicines') || rxError.message?.includes('medications') || rxError.message?.includes('follow_up') || rxError.message?.includes('lab_tests'))) {
+    // If only one naming variant exists in DB
+    const fallbackRx = {
       hospital_id: params.hospitalId,
       consultation_id: consultation.id,
       appointment_id: params.appointmentId,
       doctor_id: params.doctorId,
       patient_id: params.patientId,
-      medicines: params.medicines || [],
-      lab_tests: params.labTests || null,
+      medications: params.medicines || [],
+      lab_tests: parsedLabTests,
       advice: params.advice || null,
-      follow_up: params.followUp || null,
-    },
-  ])
+    }
+    const retryRx = await supabase.from('prescriptions').insert([fallbackRx])
+    rxError = retryRx.error
+  }
 
   if (rxError) return { success: false, error: rxError.message }
 
@@ -358,6 +444,7 @@ export function subscribeToDoctorAppointments(doctorId: string, onChange: () => 
 
 export interface PatientProfile {
   id: string
+  patient_number?: string | null
   name: string
   phone: string
   age: number | null
@@ -377,7 +464,7 @@ export async function getPatientProfile(patientId: string): Promise<PatientProfi
   if (!patientId) return null
   const { data, error } = await supabase
     .from('patients')
-    .select('id, name, phone, age, gender, allergies, known_diseases, address')
+    .select('id, patient_number, name, phone, age, gender, allergies, known_diseases, address')
     .eq('id', patientId)
     .maybeSingle()
 

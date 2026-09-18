@@ -25,10 +25,7 @@ export const DoctorSelection: React.FC<DoctorSelectionProps> = ({
       )
     : doctors.filter((d) => d.active && d.accepting_appointments);
 
-  const displayDoctors =
-    filteredDoctors.length > 0
-      ? filteredDoctors
-      : doctors.filter((d) => d.active);
+  const displayDoctors = filteredDoctors;
 
   return (
     <div className="space-y-4 w-full">

@@ -100,11 +100,13 @@ export default function HospitalUsersRolesPage() {
     }
     setInviting(true)
     try {
+      const docCode = newInvite.role === 'doctor' ? `DOC-${Date.now().toString().slice(-3)}` : undefined
       await registerUserInSupabase(newInvite.email, newInvite.password, {
         role: newInvite.role,
         name: newInvite.name,
         hospital_id: currentHospId,
         dept: newInvite.department,
+        doctor_code: docCode,
       })
       flash(`✓ ${newInvite.role === 'doctor' ? 'Doctor' : 'Staff member'} "${newInvite.name}" added.`)
       setShowInviteModal(false)

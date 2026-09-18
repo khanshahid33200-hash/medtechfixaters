@@ -1,94 +1,58 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { Plus, X, Calendar, Clock, Ticket, Receipt, CheckCircle, XCircle } from 'lucide-react'
 import Layout from '../components/Layout'
 import { Card, CardContent } from '../components/Card'
 import Button from '../components/Button'
 import { useAuth } from '../context/AuthContext'
-import { getAppointmentsForDoctor, saveAppointmentsForDoctor, AppointmentItem } from '../utils/doctorStore'
+import {
+  getDoctorAppointments,
+  subscribeToDoctorAppointments,
+  addWalkInAppointment,
+  updateAppointmentStatus,
+  type DoctorAppointment
+} from '../lib/doctorAppointments'
 
 export default function Appointments() {
   const { doctorProfile } = useAuth()
   const doctorId = doctorProfile?.doctor_id || ''
-  const doctorName = doctorProfile?.name || 'Dr. Authorized Doctor'
+  const doctorName = doctorProfile?.name || 'Authorized Doctor'
+  const hospitalId = doctorProfile?.hospital_id || ''
 
   const [filterTab, setFilterTab] = useState<'todays' | 'upcoming' | 'completed' | 'cancelled'>('todays')
   const [showBookingModal, setShowBookingModal] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
   const [bookingForm, setBookingForm] = useState({
     patient_name: '',
     phone: '',
-    appointment_date: '',
-    department: doctorProfile?.department_name || 'Cardiology',
-    reason_for_visit: '',
+    age: 30,
+    gender: 'Male',
+    appointment_date: new Date().toISOString().split('T')[0],
+    department: doctorProfile?.department_name || 'General Medicine',
+    symptoms: '',
   })
 
-  const [appointmentsList, setAppointmentsList] = useState<AppointmentItem[]>([])
+  const [appointmentsList, setAppointmentsList] = useState<DoctorAppointment[]>([])
 
-  const reloadAppointments = () => {
-    const userRole = localStorage.getItem('user_role')
-    const currentHospId = doctorProfile?.hospital_id || ''
-
-    const storeAppointments = getAppointmentsForDoctor(doctorId)
-    const savedAptsRaw = localStorage.getItem('clinicos_appointments')
-    const globalApts: any[] = savedAptsRaw ? JSON.parse(savedAptsRaw) : []
-
-    let filtered: AppointmentItem[] = []
-
-    if (userRole === 'hospital_admin') {
-      // Hospital Admin sees all appointments for their hospital
-      const matchedGlobal = globalApts.filter((a) => a.hospital_id === currentHospId && currentHospId)
-      filtered = [...matchedGlobal, ...storeAppointments]
-    } else {
-      // Doctor D1 sees ONLY appointments explicitly assigned to doctor_id === D1.id
-      const matchedGlobal = globalApts.filter((a) => a.doctor_id === doctorId && doctorId && a.hospital_id === currentHospId)
-      filtered = [...matchedGlobal, ...storeAppointments]
-    }
-
-    // Deduplicate by ID
-    const unique = Array.from(new Map(filtered.map((item) => [item.id, item])).values())
-    setAppointmentsList(unique)
-  }
+  const reloadAppointments = useCallback(async () => {
+    if (!doctorId) return
+    const appointments = await getDoctorAppointments(doctorId)
+    setAppointmentsList(appointments)
+  }, [doctorId])
 
   useEffect(() => {
     reloadAppointments()
+    if (!doctorId) return
+    const unsubscribe = subscribeToDoctorAppointments(doctorId, reloadAppointments)
+    return unsubscribe
+  }, [doctorId, reloadAppointments])
 
-    // 1. BroadcastChannel Listener
-    let channel: BroadcastChannel | null = null
-    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
-      try {
-        channel = new BroadcastChannel('clinic_os_queue_channel')
-        channel.onmessage = (event) => {
-          if (event.data?.type === 'QUEUE_UPDATED') {
-            reloadAppointments()
-          }
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    // 2. Custom Window Event Listener
-    const handleCustomUpdate = () => reloadAppointments()
-    window.addEventListener('clinic_os_queue_updated', handleCustomUpdate)
-    window.addEventListener('storage', handleCustomUpdate)
-
-    // 3. 2-Second Polling
-    const pollInterval = setInterval(() => {
-      reloadAppointments()
-    }, 2000)
-
-    return () => {
-      if (channel) channel.close()
-      window.removeEventListener('clinic_os_queue_updated', handleCustomUpdate)
-      window.removeEventListener('storage', handleCustomUpdate)
-      clearInterval(pollInterval)
-    }
-  }, [doctorId])
+  const todayStr = new Date().toISOString().split('T')[0]
 
   const filteredAppointments = appointmentsList.filter((apt) => {
-    if (filterTab === 'todays') return apt.status === 'Scheduled'
-    if (filterTab === 'upcoming') return apt.status === 'Scheduled'
+    if (filterTab === 'todays') return apt.appointment_date === todayStr && (apt.status === 'Waiting' || apt.status === 'In Consultation')
+    if (filterTab === 'upcoming') return apt.appointment_date > todayStr && apt.status === 'Waiting'
     if (filterTab === 'completed') return apt.status === 'Completed'
-    if (filterTab === 'cancelled') return apt.status === 'Cancelled'
+    if (filterTab === 'cancelled') return apt.status === 'Cancelled' || apt.status === 'No Show'
     return true
   })
 
@@ -100,35 +64,45 @@ export default function Appointments() {
     }))
   }
 
-  const handleSubmitBooking = (e: React.FormEvent) => {
+  const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault()
-    const nextTokenNum = `Token ${String(appointmentsList.length + 1).padStart(3, '0')}`
-    const nextReceiptNum = `RCP-${Date.now().toString().substring(5)}`
-
-    const newApt: AppointmentItem = {
-      id: `apt-${Date.now()}`,
-      doctor_id: doctorId,
-      token_number: nextTokenNum,
-      receipt_number: nextReceiptNum,
-      patient_name: bookingForm.patient_name,
-      phone: bookingForm.phone,
-      appointment_date: bookingForm.appointment_date || 'Today',
-      appointment_time: '11:00 AM',
-      department: bookingForm.department,
-      status: 'Scheduled',
+    if (!bookingForm.patient_name.trim() || !bookingForm.phone.trim()) {
+      alert('Patient name and valid phone number are required.')
+      return
     }
 
-    const updated = [newApt, ...appointmentsList]
-    setAppointmentsList(updated)
-    saveAppointmentsForDoctor(doctorId, updated)
-    setShowBookingModal(false)
-    setBookingForm({
-      patient_name: '',
-      phone: '',
-      appointment_date: '',
-      department: doctorProfile?.department_name || 'Cardiology',
-      reason_for_visit: '',
-    })
+    setIsSubmitting(true)
+    try {
+      const res = await addWalkInAppointment({
+        hospitalId,
+        doctorId,
+        patientName: bookingForm.patient_name.trim(),
+        patientPhone: bookingForm.phone.trim(),
+        patientAge: Number(bookingForm.age) || 30,
+        patientGender: bookingForm.gender,
+        symptoms: bookingForm.symptoms.trim() || 'General consultation',
+      })
+
+      if (!res.success) {
+        throw new Error(res.error || 'Failed to book appointment.')
+      }
+
+      await reloadAppointments()
+      setShowBookingModal(false)
+      setBookingForm({
+        patient_name: '',
+        phone: '',
+        age: 30,
+        gender: 'Male',
+        appointment_date: todayStr,
+        department: doctorProfile?.department_name || 'General Medicine',
+        symptoms: '',
+      })
+    } catch (err: any) {
+      alert(err.message || 'Error creating appointment.')
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -139,22 +113,22 @@ export default function Appointments() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Appointments Management for {doctorName}</h1>
             <p className="text-gray-600 text-sm mt-1">
-              View and filter patient appointments by Token Number, Receipt Reference, and Status
+              Live queue from Supabase with instant token assignment
             </p>
           </div>
           <Button variant="primary" size="lg" onClick={() => setShowBookingModal(true)} className="shadow-lg shadow-blue-600/20">
             <Plus size={20} />
-            New Appointment
+            New Walk-in Appointment
           </Button>
         </div>
 
         {/* 4 Tabs: Today's, Upcoming, Completed, Cancelled */}
         <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-3">
           {[
-            { id: 'todays', label: "Today's Appointments", count: appointmentsList.filter(a => a.status === 'Scheduled').length },
-            { id: 'upcoming', label: 'Upcoming', count: appointmentsList.filter(a => a.status === 'Scheduled').length },
+            { id: 'todays', label: "Today's Appointments", count: appointmentsList.filter(a => a.appointment_date === todayStr && (a.status === 'Waiting' || a.status === 'In Consultation')).length },
+            { id: 'upcoming', label: 'Upcoming', count: appointmentsList.filter(a => a.appointment_date > todayStr && a.status === 'Waiting').length },
             { id: 'completed', label: 'Completed', count: appointmentsList.filter(a => a.status === 'Completed').length },
-            { id: 'cancelled', label: 'Cancelled', count: appointmentsList.filter(a => a.status === 'Cancelled').length },
+            { id: 'cancelled', label: 'Cancelled', count: appointmentsList.filter(a => a.status === 'Cancelled' || a.status === 'No Show').length },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -184,55 +158,66 @@ export default function Appointments() {
               </CardContent>
             </Card>
           ) : (
-            filteredAppointments.map((apt) => (
-              <Card key={apt.id} className="hover:shadow-md transition border border-gray-200">
-                <div className="px-6 py-4">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    {/* Patient Info & Token / Receipt */}
-                    <div className="flex items-start gap-4">
-                      <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-lg border border-blue-100 flex-shrink-0">
-                        {apt.patient_name.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-gray-900 text-base">{apt.patient_name}</h3>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg border border-blue-200">
-                            <Ticket size={12} /> {apt.token_number}
-                          </span>
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-gray-100 text-gray-700 font-mono text-xs rounded-lg border border-gray-200">
-                            <Receipt size={12} /> {apt.receipt_number}
-                          </span>
+            filteredAppointments.map((apt) => {
+              const patientName = apt.patient?.name || 'Unnamed Patient'
+              const patientPhone = apt.patient?.phone || ''
+              return (
+                <Card key={apt.id} className="hover:shadow-md transition border border-gray-200">
+                  <div className="px-6 py-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                      {/* Patient Info & Token / Receipt */}
+                      <div className="flex items-start gap-4">
+                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-lg border border-blue-100 flex-shrink-0">
+                          {patientName.charAt(0)}
                         </div>
-                        <p className="text-xs text-gray-500 mt-1 flex items-center gap-3">
-                          <span>Phone: {apt.phone}</span>
-                          <span>•</span>
-                          <span className="flex items-center gap-1"><Clock size={13} /> {apt.appointment_date} ({apt.appointment_time})</span>
-                        </p>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-bold text-gray-900 text-base">{patientName}</h3>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg border border-blue-200">
+                              <Ticket size={12} /> {apt.queue_number || (apt.token_number ? `Token #${apt.token_number}` : 'Token')}
+                            </span>
+                            {apt.tracking_token && (
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-gray-100 text-gray-700 font-mono text-xs rounded-lg border border-gray-200">
+                                <Receipt size={12} /> {apt.tracking_token}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1 flex items-center gap-3">
+                            {patientPhone && <span>Phone: {patientPhone}</span>}
+                            {patientPhone && <span>•</span>}
+                            <span className="flex items-center gap-1"><Clock size={13} /> {apt.appointment_date} {apt.appointment_time ? `(${apt.appointment_time})` : ''}</span>
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    {/* Status Badges */}
-                    <div className="flex items-center gap-3">
-                      {apt.status === 'Scheduled' && (
-                        <span className="px-3 py-1 bg-blue-50 text-blue-700 font-semibold text-xs rounded-full border border-blue-200 flex items-center gap-1">
-                          <Clock size={13} /> Scheduled
-                        </span>
-                      )}
-                      {apt.status === 'Completed' && (
-                        <span className="px-3 py-1 bg-green-50 text-green-700 font-semibold text-xs rounded-full border border-green-200 flex items-center gap-1">
-                          <CheckCircle size={13} /> Completed
-                        </span>
-                      )}
-                      {apt.status === 'Cancelled' && (
-                        <span className="px-3 py-1 bg-red-50 text-red-700 font-semibold text-xs rounded-full border border-red-200 flex items-center gap-1">
-                          <XCircle size={13} /> Cancelled
-                        </span>
-                      )}
+                      {/* Status Badges */}
+                      <div className="flex items-center gap-3">
+                        {apt.status === 'Waiting' && (
+                          <span className="px-3 py-1 bg-amber-50 text-amber-700 font-semibold text-xs rounded-full border border-amber-200 flex items-center gap-1">
+                            <Clock size={13} /> Waiting
+                          </span>
+                        )}
+                        {apt.status === 'In Consultation' && (
+                          <span className="px-3 py-1 bg-blue-50 text-blue-700 font-semibold text-xs rounded-full border border-blue-200 flex items-center gap-1">
+                            <Clock size={13} /> In Consultation
+                          </span>
+                        )}
+                        {apt.status === 'Completed' && (
+                          <span className="px-3 py-1 bg-green-50 text-green-700 font-semibold text-xs rounded-full border border-green-200 flex items-center gap-1">
+                            <CheckCircle size={13} /> Completed
+                          </span>
+                        )}
+                        {(apt.status === 'Cancelled' || apt.status === 'No Show') && (
+                          <span className="px-3 py-1 bg-red-50 text-red-700 font-semibold text-xs rounded-full border border-red-200 flex items-center gap-1">
+                            <XCircle size={13} /> {apt.status}
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
-              </Card>
-            ))
+                </Card>
+              )
+            })
           )}
         </div>
 

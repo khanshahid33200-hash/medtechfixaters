@@ -3,7 +3,8 @@ import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
   Clock, CheckCircle2, MapPin, Stethoscope, ShieldAlert,
   Building2, User, Calendar, Search, ArrowRight, ArrowLeft,
-  AlertCircle, FileText, Phone, Activity, Sparkles, Check
+  AlertCircle, FileText, Phone, Activity, Sparkles, Check,
+  Printer, Copy
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSEO } from '../hooks/useSEO'
@@ -90,7 +91,9 @@ export default function IntakePage() {
   })
 
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submittingStep, setSubmittingStep] = useState('Creating appointment...')
   const [confirmedBooking, setConfirmedBooking] = useState<any | null>(null)
+  const [copiedId, setCopiedId] = useState(false)
 
   // Quick Date Selectors (Today, Tomorrow, Day After)
   const todayObj = new Date()
@@ -228,9 +231,11 @@ export default function IntakePage() {
     }
 
     setIsSubmitting(true)
+    setSubmittingStep('Validating registration & checking patient record...')
     setError(null)
 
     try {
+      setSubmittingStep('Generating permanent Patient ID & live queue token...')
       const { data, error: bookErr } = await supabase.rpc('book_qr_appointment', {
         p_qr_token: tokenQuery.trim(),
         p_doctor_id: selectedDoctor.id,
@@ -260,6 +265,7 @@ export default function IntakePage() {
       setError(err.message || 'Unable to book appointment. Please try again.')
     } finally {
       setIsSubmitting(false)
+      setSubmittingStep('Creating appointment...')
     }
   }
 
@@ -764,91 +770,179 @@ export default function IntakePage() {
           </div>
         )}
 
-        {/* ─── STEP 4: CONFIRMED APPOINTMENT & LIVE QUEUE TOKEN ──── */}
+        {/* ─── LOADING OVERLAY DURING REGISTRATION ──── */}
+        {isSubmitting && (
+          <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-md flex flex-col items-center justify-center p-6 text-white text-center animate-fade-in">
+            <div className="w-16 h-16 rounded-3xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center animate-spin mb-4 shadow-xl shadow-emerald-500/10">
+              <Activity size={32} />
+            </div>
+            <h3 className="text-lg font-black tracking-tight">{submittingStep}</h3>
+            <p className="text-xs text-slate-300 mt-1 max-w-xs">
+              Synchronizing transaction with PostgreSQL OPD node and generating live queue tokens.
+            </p>
+          </div>
+        )}
+
+        {/* ─── STEP 4: CONFIRMED APPOINTMENT & LIVE QUEUE TOKEN (LIQUID GLASS UI) ──── */}
         {step === 4 && confirmedBooking && (
-          <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-2xl shadow-slate-200/60 space-y-6 text-center">
-            {/* Success Animation Badge */}
-            <div className="w-16 h-16 rounded-3xl bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center mx-auto shadow-inner">
+          <div className="bg-white/95 backdrop-blur-xl rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-2xl shadow-emerald-950/10 space-y-6 text-center animate-fade-in">
+            {/* Top Success Badge */}
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/30">
               <CheckCircle2 size={36} />
             </div>
 
             <div className="space-y-1">
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-wider rounded-full">
-                Appointment Confirmed
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-black uppercase tracking-wider rounded-full">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                ✓ Appointment Confirmed
               </span>
-              <h2 className="text-2xl font-black text-slate-900 tracking-tight">
+              <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
                 {confirmedBooking.hospital_name}
               </h2>
               <p className="text-xs text-slate-500">
-                Your queue spot has been assigned directly to {confirmedBooking.doctor_name}'s live room.
+                Assigned directly to <strong className="text-slate-800">{confirmedBooking.doctor_name}</strong>'s live consultation queue.
               </p>
             </div>
 
-            {/* Permanent Token & Live Position Display Box */}
-            <div className="p-6 bg-gradient-to-b from-slate-50 to-white border border-slate-200 rounded-3xl grid grid-cols-2 gap-4 text-center shadow-sm">
-              <div className="border-r border-slate-200 pr-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-                  Original Token #
-                </span>
-                <span className="text-4xl sm:text-5xl font-black text-emerald-600 font-mono block mt-1">
-                  #{confirmedBooking.token_number}
-                </span>
-                <span className="text-[10px] font-bold text-slate-500 mt-1 block">Permanent Token</span>
+            {/* PRIMARY GLASS BOXES: PATIENT ID & QUEUE NUMBER */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Permanent Patient ID Box */}
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-emerald-50/80 to-teal-50/40 border border-emerald-200/80 shadow-sm text-left flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                      Permanent Patient ID
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirmedBooking.patient_number) {
+                          navigator.clipboard.writeText(confirmedBooking.patient_number)
+                          setCopiedId(true)
+                          setTimeout(() => setCopiedId(false), 2500)
+                        }
+                      }}
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-white text-emerald-700 hover:text-emerald-900 rounded-md border border-emerald-200 text-[10px] font-bold shadow-xs transition"
+                    >
+                      {copiedId ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
+                      <span>{copiedId ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                  <div className="mt-2 text-2xl sm:text-3xl font-black text-emerald-950 font-mono tracking-tight">
+                    {confirmedBooking.patient_number || '—'}
+                  </div>
+                </div>
+                <p className="text-[10px] text-emerald-700/80 mt-2 font-medium">
+                  Permanent record ID for this hospital. Retained across all visits.
+                </p>
               </div>
 
-              <div className="pl-2">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider block">
-                  Current Live Position
-                </span>
-                <span className="text-4xl sm:text-5xl font-black text-slate-900 font-mono block mt-1">
-                  {confirmedBooking.live_position}
-                </span>
-                <span className="text-[10px] font-bold text-emerald-700 mt-1 block">
-                  {confirmedBooking.patients_ahead} Patients Ahead
-                </span>
+              {/* Live Queue & Token Box */}
+              <div className="p-5 rounded-2xl bg-gradient-to-b from-slate-900 to-slate-800 text-white shadow-md text-left flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400">
+                      Queue & Token Number
+                    </span>
+                    <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded text-[10px] font-bold">
+                      Token #{confirmedBooking.token_number}
+                    </span>
+                  </div>
+                  <div className="mt-2 text-3xl sm:text-4xl font-black text-white font-mono tracking-tight flex items-baseline gap-2">
+                    <span>{confirmedBooking.queue_number || `OPD-#${confirmedBooking.token_number}`}</span>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-[10px] text-slate-300 mt-2 pt-2 border-t border-slate-700">
+                  <span>Status: <strong className="text-emerald-400 font-bold">{confirmedBooking.status || 'Waiting'}</strong></span>
+                  <span><strong>{confirmedBooking.patients_ahead ?? 0}</strong> ahead</span>
+                </div>
               </div>
             </div>
 
-            {/* Consultation Details Card */}
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl text-left space-y-2 text-xs">
+            {/* DETAILED APPOINTMENT SUMMARY CARD */}
+            <div className="p-5 bg-slate-50/80 border border-slate-200 rounded-2xl text-left space-y-2.5 text-xs">
+              <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-400 mb-1">
+                Consultation Summary
+              </h4>
+
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200/70">
+                <span className="text-slate-500 font-medium">Patient Name:</span>
+                <span className="font-black text-slate-900">{confirmedBooking.patient_name}</span>
+              </div>
+
               <div className="flex justify-between items-center pb-2 border-b border-slate-200/70">
                 <span className="text-slate-500 font-medium">Assigned Doctor:</span>
                 <span className="font-black text-slate-900">{confirmedBooking.doctor_name} ({confirmedBooking.doctor_code})</span>
               </div>
+
               <div className="flex justify-between items-center pb-2 border-b border-slate-200/70">
                 <span className="text-slate-500 font-medium">Department:</span>
-                <span className="font-bold text-slate-800">{confirmedBooking.department}</span>
+                <span className="font-bold text-slate-800">{confirmedBooking.department || confirmedBooking.department_name}</span>
               </div>
+
               <div className="flex justify-between items-center pb-2 border-b border-slate-200/70">
-                <span className="text-slate-500 font-medium">Date:</span>
+                <span className="text-slate-500 font-medium">Appointment Date:</span>
                 <span className="font-bold text-slate-800">{confirmedBooking.appointment_date}</span>
               </div>
+
+              <div className="flex justify-between items-center pb-2 border-b border-slate-200/70">
+                <span className="text-slate-500 font-medium">Consultation Fee:</span>
+                <span className="font-bold text-emerald-700">₹{confirmedBooking.fee || 500}</span>
+              </div>
+
               <div className="flex justify-between items-center">
-                <span className="text-slate-500 font-medium">Tracking Token:</span>
-                <span className="font-mono text-emerald-800 font-bold">{confirmedBooking.tracking_token}</span>
+                <span className="text-slate-500 font-medium">Appointment ID:</span>
+                <span className="font-mono text-slate-600 text-[11px]">{confirmedBooking.appointment_id}</span>
               </div>
             </div>
 
-            {/* Action Buttons */}
-            <div className="space-y-2.5 pt-2">
+            {/* ACTION BUTTONS */}
+            <div className="space-y-3 pt-2">
               <Link
-                to={`/track?t=${confirmedBooking.tracking_token}`}
+                to={`/track?t=${confirmedBooking.tracking_token || confirmedBooking.queue_number || confirmedBooking.appointment_id}`}
                 className="w-full py-4 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-xl shadow-emerald-600/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5"
               >
                 <Activity size={16} />
                 <span>Open Live Real-Time Queue Tracker →</span>
               </Link>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setStep(1)
-                  setConfirmedBooking(null)
-                }}
-                className="w-full py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 transition"
-              >
-                Book Another Appointment
-              </button>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="py-3 bg-white hover:bg-slate-50 text-slate-800 font-bold text-xs rounded-xl border border-slate-200 shadow-sm flex items-center justify-center gap-1.5 transition"
+                >
+                  <Printer size={14} />
+                  <span>Print Receipt</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1)
+                    setConfirmedBooking(null)
+                    setFormData({
+                      patient_number: '',
+                      name: '',
+                      phone: '',
+                      gender: 'Male',
+                      age: '',
+                      date_of_birth: '',
+                      symptoms: '',
+                      known_diseases: '',
+                      previous_medicine: '',
+                      previous_doctor_id: '',
+                      previous_doctor_name: '',
+                      emergency_contact: '',
+                      blood_group: '',
+                      consent: true
+                    })
+                  }}
+                  className="py-3 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs rounded-xl border border-slate-200 shadow-sm transition"
+                >
+                  Book Another
+                </button>
+              </div>
             </div>
           </div>
         )}

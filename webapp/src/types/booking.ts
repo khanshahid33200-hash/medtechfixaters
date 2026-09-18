@@ -8,7 +8,7 @@ export type BookingScreen =
   | "review"
   | "success";
 
-export type BookingMethod = "AI" | "MANUAL";
+export type BookingMethod = "AI" | "MANUAL" | "Manual" | "QR" | "Online" | "Walk-in";
 
 export interface PatientIntake {
   fullName: string;
@@ -76,15 +76,20 @@ export interface DepartmentItem {
 
 export interface BookingResult {
   id: string;
+  appointment_id?: string;
   hospital_id: string;
   doctor_id: string;
   doctor_name: string;
   department_name: string;
   hospital_name: string;
+  patient_id?: string;
+  patient_number?: string;
   patient_name: string;
   patient_phone: string;
   booking_method: BookingMethod;
   token_number: string;
+  queue_number?: string;
+  tracking_token?: string;
   queue_position: number;
   patients_ahead: number;
   estimated_wait_mins: number;

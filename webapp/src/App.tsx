@@ -104,6 +104,7 @@ function App() {
         <Route path="/book/:token" element={<AppointmentBookingPage />} />
         <Route path="/intake/:token" element={<IntakePage />} />
         <Route path="/track" element={<TrackPage />} />
+        <Route path="/track/:trackingToken" element={<TrackPage />} />
         <Route path="/rx" element={<RxPage />} />
         <Route path="/display/:token" element={<DisplayBoard />} />
         <Route

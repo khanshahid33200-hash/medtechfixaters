@@ -99,16 +99,16 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
     setScreen("ai-recommendation");
   };
 
-  // Handle AI Recommendation Final Confirmation -> Create Token
+  // Handle AI Recommendation Final Confirmation -> Create Real Database Token
   const handleConfirmAIRecommendation = async () => {
     if (!hospital || !patientIntake || !aiRecommendation) return;
     setSubmitting(true);
 
     try {
-      const docId = selectedDoctor?.id || aiRecommendation.doctorId || "doc-1";
-      const docName = selectedDoctor?.name || aiRecommendation.doctorName;
-      const deptName =
-        selectedDoctor?.department || aiRecommendation.departmentName;
+      const docId = selectedDoctor?.id || aiRecommendation.doctorId;
+      if (!docId) {
+        throw new Error("No doctor selected for booking.");
+      }
 
       const newAppt = await createAppointment({
         hospitalId: hospital.id,
@@ -122,52 +122,34 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
       });
 
       const res: BookingResult = {
-        id: newAppt?.id || Date.now().toString(),
+        id: newAppt.id,
         hospital_id: hospital.id,
         doctor_id: docId,
-        doctor_name: newAppt?.doctor_name || docName,
-        department_name: newAppt?.department_name || deptName,
-        hospital_name: hospital.name,
-        patient_name: patientIntake.fullName,
-        patient_phone: patientIntake.contactNumber,
+        doctor_name: newAppt.doctor_name,
+        department_name: newAppt.department_name,
+        hospital_name: newAppt.hospital_name || hospital.name,
+        patient_name: newAppt.patient_name,
+        patient_phone: newAppt.patient_phone,
         booking_method: "AI",
-        token_number: newAppt?.token_number || "A-013",
-        queue_position: newAppt?.queue_position || 3,
-        patients_ahead: newAppt?.patients_ahead || 2,
-        estimated_wait_mins: newAppt?.estimated_wait_mins || 15,
-        appointment_date: new Date().toISOString(),
-        created_at: new Date().toISOString(),
+        token_number: newAppt.token_number,
+        queue_position: newAppt.queue_position,
+        patients_ahead: newAppt.patients_ahead,
+        estimated_wait_mins: newAppt.estimated_wait_mins,
+        appointment_date: newAppt.appointment_date,
+        created_at: newAppt.created_at,
       };
 
       setBookingResult(res);
       setScreen("success");
-    } catch (err) {
+    } catch (err: any) {
       console.error("AI Booking creation error:", err);
-      // Fallback response for smooth UX
-      setBookingResult({
-        id: Date.now().toString(),
-        hospital_id: hospital.id,
-        doctor_id: selectedDoctor?.id || "doc-1",
-        doctor_name: selectedDoctor?.name || aiRecommendation.doctorName,
-        department_name: aiRecommendation.departmentName,
-        hospital_name: hospital.name,
-        patient_name: patientIntake.fullName,
-        patient_phone: patientIntake.contactNumber,
-        booking_method: "AI",
-        token_number: "A-013",
-        queue_position: 3,
-        patients_ahead: 2,
-        estimated_wait_mins: 15,
-        appointment_date: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      });
-      setScreen("success");
+      alert(err.message || "Failed to book appointment. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
 
-  // Handle Manual Booking Final Confirmation -> Create Token
+  // Handle Manual Booking Final Confirmation -> Create Real Database Token
   const handleConfirmManualBooking = async (
     patient: PatientIntake,
     doc: DoctorItem,
@@ -177,12 +159,10 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
     setSubmitting(true);
 
     try {
-      const deptName = dept?.name || doc.department || "General Medicine";
-
       const newAppt = await createAppointment({
         hospitalId: hospital.id,
         doctorId: doc.id,
-        bookingMethod: "MANUAL",
+        bookingMethod: "Manual",
         patientName: patient.fullName,
         patientPhone: patient.contactNumber,
         patientAge: patient.age,
@@ -191,45 +171,28 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
       });
 
       const res: BookingResult = {
-        id: newAppt?.id || Date.now().toString(),
+        id: newAppt.id,
         hospital_id: hospital.id,
         doctor_id: doc.id,
-        doctor_name: newAppt?.doctor_name || doc.name,
-        department_name: newAppt?.department_name || deptName,
-        hospital_name: hospital.name,
-        patient_name: patient.fullName,
-        patient_phone: patient.contactNumber,
-        booking_method: "MANUAL",
-        token_number: newAppt?.token_number || "M-007",
-        queue_position: newAppt?.queue_position || 2,
-        patients_ahead: newAppt?.patients_ahead || 1,
-        estimated_wait_mins: newAppt?.estimated_wait_mins || 10,
-        appointment_date: new Date().toISOString(),
-        created_at: new Date().toISOString(),
+        doctor_name: newAppt.doctor_name || doc.name,
+        department_name: newAppt.department_name || dept?.name || doc.department || "General OPD",
+        hospital_name: newAppt.hospital_name || hospital.name,
+        patient_name: newAppt.patient_name,
+        patient_phone: newAppt.patient_phone,
+        booking_method: "Manual",
+        token_number: newAppt.token_number,
+        queue_position: newAppt.queue_position,
+        patients_ahead: newAppt.patients_ahead,
+        estimated_wait_mins: newAppt.estimated_wait_mins,
+        appointment_date: newAppt.appointment_date,
+        created_at: newAppt.created_at,
       };
 
       setBookingResult(res);
       setScreen("success");
-    } catch (err) {
+    } catch (err: any) {
       console.error("Manual Booking creation error:", err);
-      setBookingResult({
-        id: Date.now().toString(),
-        hospital_id: hospital.id,
-        doctor_id: doc.id,
-        doctor_name: doc.name,
-        department_name: dept?.name || doc.department || "General OPD",
-        hospital_name: hospital.name,
-        patient_name: patient.fullName,
-        patient_phone: patient.contactNumber,
-        booking_method: "MANUAL",
-        token_number: "M-007",
-        queue_position: 2,
-        patients_ahead: 1,
-        estimated_wait_mins: 10,
-        appointment_date: new Date().toISOString(),
-        created_at: new Date().toISOString(),
-      });
-      setScreen("success");
+      alert(err.message || "Failed to book appointment. Please try again.");
     } finally {
       setSubmitting(false);
     }

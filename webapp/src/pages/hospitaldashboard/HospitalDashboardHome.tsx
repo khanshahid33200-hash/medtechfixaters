@@ -118,6 +118,7 @@ export default function HospitalDashboardHome() {
     name: '',
     email: '',
     password: 'Password123!',
+    docCode: '',
     dept: 'Cardiology',
     specialization: 'Consultant Specialist',
     fee: 500,
@@ -300,28 +301,30 @@ export default function HospitalDashboardHome() {
   const handleCreateDoctor = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
+      const docCode = newDoctorForm.docCode || `DOC-${Date.now().toString().slice(-3)}`
       await registerUserInSupabase(newDoctorForm.email, newDoctorForm.password, {
         role: 'doctor',
         name: newDoctorForm.name,
         dept: newDoctorForm.dept,
         hospital_id: currentHospId,
-        specialization: newDoctorForm.specialization,
+        specialization: newDoctorForm.specialization || 'Consultant Specialist',
         fee: Number(newDoctorForm.fee) || 500,
         limit: Number(newDoctorForm.limit) || 25,
+        doctor_code: docCode,
       })
       logActivity({
         category: 'Doctors',
         action: 'Doctor Added',
         targetType: 'profile',
         targetLabel: newDoctorForm.name,
-        metadata: { department: newDoctorForm.dept, email: newDoctorForm.email },
+        metadata: { department: newDoctorForm.dept, email: newDoctorForm.email, doctor_code: docCode },
       })
-      setFeedbackNotice(`✓ Doctor "${newDoctorForm.name}" created and onboarded!`)
+      setFeedbackNotice(`✓ Doctor "${newDoctorForm.name}" created with ID ${docCode}!`)
       setShowAddDoctorModal(false)
-      setNewDoctorForm({ name: '', email: '', password: 'Password123!', dept: 'Cardiology', specialization: 'Consultant Specialist', fee: 500, limit: 25 })
+      setNewDoctorForm({ name: '', email: '', password: 'Password123!', docCode: '', dept: 'Cardiology', specialization: 'Consultant Specialist', fee: 500, limit: 25 })
       setTimeout(() => setFeedbackNotice(null), 4000)
     } catch (err: any) {
-      alert(`Doctor creation note: ${err.message || 'Saved'}`)
+      alert(`Could not create doctor account: ${err.message || err}`)
     }
   }
 
@@ -1016,16 +1019,28 @@ export default function HospitalDashboardHome() {
               </button>
             </div>
             <form onSubmit={handleCreateDoctor} className="space-y-3.5 text-xs">
-              <div>
-                <label className="font-bold text-slate-700 block mb-1">Doctor Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Dr. Rajesh Khanna"
-                  value={newDoctorForm.name}
-                  onChange={(e) => setNewDoctorForm({ ...newDoctorForm, name: e.target.value })}
-                  className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-purple-600"
-                />
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="font-bold text-slate-700 block mb-1">Doctor Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Dr. Rajesh Khanna"
+                    value={newDoctorForm.name}
+                    onChange={(e) => setNewDoctorForm({ ...newDoctorForm, name: e.target.value })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-purple-600"
+                  />
+                </div>
+                <div>
+                  <label className="font-bold text-slate-700 block mb-1">Doctor ID</label>
+                  <input
+                    type="text"
+                    placeholder="DOC-101"
+                    value={newDoctorForm.docCode}
+                    onChange={(e) => setNewDoctorForm({ ...newDoctorForm, docCode: e.target.value.toUpperCase() })}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-purple-600 font-mono font-bold uppercase text-purple-700"
+                  />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1071,9 +1086,19 @@ export default function HospitalDashboardHome() {
                     type="number"
                     value={newDoctorForm.fee}
                     onChange={(e) => setNewDoctorForm({ ...newDoctorForm, fee: Number(e.target.value) })}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-purple-600"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-purple-600 font-bold text-emerald-600"
                   />
                 </div>
+              </div>
+              <div>
+                <label className="font-bold text-slate-700 block mb-1">Specialization / Degree</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Senior Cardiologist (MD, DM)"
+                  value={newDoctorForm.specialization}
+                  onChange={(e) => setNewDoctorForm({ ...newDoctorForm, specialization: e.target.value })}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:border-purple-600"
+                />
               </div>
               <button
                 type="submit"

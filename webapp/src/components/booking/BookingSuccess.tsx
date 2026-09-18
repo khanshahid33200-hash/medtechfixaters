@@ -87,6 +87,12 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
 
         {/* Appointment Details Summary */}
         <div className="text-left space-y-2 text-xs text-slate-700 bg-slate-50/70 p-4 rounded-2xl border border-slate-100">
+          {result.patient_number && (
+            <div className="flex justify-between items-center pb-1.5 border-b border-slate-100">
+              <span className="text-[#6E6E73]">Patient ID</span>
+              <span className="font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">{result.patient_number}</span>
+            </div>
+          )}
           <div className="flex justify-between items-center">
             <span className="text-[#6E6E73]">Doctor</span>
             <span className="font-bold text-[#1D1D1F]">{result.doctor_name}</span>
@@ -114,12 +120,10 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
         {/* Actions */}
         <div className="space-y-2.5 pt-1">
           <a
-            href={`/track?token=${result.token_number}&hospital_id=${result.hospital_id}`}
-            target="_blank"
-            rel="noreferrer"
-            className="w-full py-3.5 px-4 rounded-2xl bg-[#007AFF] hover:bg-[#0062D6] active:scale-[0.99] text-white font-semibold text-sm flex items-center justify-center gap-2 shadow-lg shadow-[#007AFF]/25 transition-all duration-200"
+            href={`/track?t=${result.tracking_token || result.queue_number || result.appointment_id}`}
+            className="w-full py-3.5 px-4 rounded-2xl bg-orange-500 hover:bg-orange-600 active:scale-[0.99] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition-all duration-200"
           >
-            <span>Track Queue Status Live</span>
+            <span>Track Live Queue Status →</span>
             <ExternalLink className="w-4 h-4" />
           </a>
 
