@@ -888,6 +888,8 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$;
 
+GRANT EXECUTE ON FUNCTION public.admin_create_hospital_with_admin TO anon, authenticated, service_role;
+
 -- 6.3 QR BOOKING INFO RPC (Used by public /book/:token intake)
 CREATE OR REPLACE FUNCTION public.get_qr_booking_info(p_token TEXT)
 RETURNS JSONB
