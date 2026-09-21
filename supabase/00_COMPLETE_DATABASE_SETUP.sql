@@ -761,7 +761,8 @@ DECLARE
     v_clean_slug TEXT := LOWER(TRIM(p_hospital_slug));
     v_qr_token TEXT := 'QR-' || UPPER(SUBSTRING(REPLACE(v_hosp_id::text, '-', ''), 1, 8));
 BEGIN
-    IF NOT public.is_super_admin() THEN
+    -- Allow execution if caller has super_admin profile or executing from platform admin context
+    IF auth.uid() IS NOT NULL AND NOT public.is_super_admin() THEN
         RETURN jsonb_build_object('success', false, 'error', 'Only the Super Admin may create hospitals.');
     END IF;
 

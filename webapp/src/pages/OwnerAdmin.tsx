@@ -523,11 +523,14 @@ export default function OwnerAdmin() {
       if (rpcRes?.success) {
         createdViaRpc = true
         if (rpcRes.qr_token) uniqueQrToken = rpcRes.qr_token
+        setNotice(`✅ Hospital "${cleanName}" & Admin account "${cleanEmail}" created in Supabase Auth!`)
         console.log('Hospital and Admin successfully created via RPC:', rpcRes)
-      } else if (rpcErr) {
-        console.warn('RPC create hospital notice:', rpcErr.message)
+      } else {
+        const errMsg = rpcRes?.error || rpcErr?.message || 'RPC returned unsuccessful'
+        console.warn('RPC create hospital notice:', errMsg)
+        setNotice(`RPC note: ${errMsg}. Attempting direct registration...`)
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn('RPC invocation notice:', err)
     }
 
@@ -549,11 +552,17 @@ export default function OwnerAdmin() {
           }
         ])
 
-        await registerUserInSupabase(cleanEmail, hospitalForm.password, {
-          role: 'hospital_admin',
-          name: cleanName,
-          hospital_id: hospUuid,
-        })
+        try {
+          await registerUserInSupabase(cleanEmail, hospitalForm.password, {
+            role: 'hospital_admin',
+            name: cleanName,
+            hospital_id: hospUuid,
+          })
+          setNotice(`✅ Hospital "${cleanName}" registered with Supabase Auth admin!`)
+        } catch (authRegErr: any) {
+          console.warn('Auth user registration warning:', authRegErr?.message)
+          setNotice(`⚠️ Hospital saved in database, but Auth User requires running setup SQL in Supabase: ${authRegErr?.message}`)
+        }
 
         await supabase.from('qr_codes').upsert([{
           hospital_id: hospUuid,
