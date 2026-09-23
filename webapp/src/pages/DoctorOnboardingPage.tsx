@@ -620,17 +620,17 @@ export default function DoctorOnboardingPage() {
         transition={{ duration: 0.5 }}
         className="h-[76px] border-b border-black/[0.06] bg-white/80 backdrop-blur-xl flex items-center justify-between px-6 lg:px-8 sticky top-0 z-30"
       >
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[#EEF5FF] flex items-center justify-center shadow-xs">
-            <Stethoscope
-              size={20}
-              strokeWidth={2}
-              className="text-[#1677FF]"
+        <Link to="/" className="flex items-center gap-3 group">
+          <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 p-1 flex items-center justify-center shadow-xs group-hover:scale-105 transition-transform">
+            <img
+              src="/assets/brand-icon.png"
+              alt="MedTechFixaters Logo"
+              className="w-full h-full object-contain"
             />
           </div>
 
           <div>
-            <h1 className="font-semibold text-[18px] tracking-[-0.02em] leading-tight">
+            <h1 className="font-semibold text-[18px] tracking-[-0.02em] leading-tight text-gray-900 group-hover:text-[#1677FF] transition-colors">
               MedTechFixaters
             </h1>
 
@@ -638,7 +638,7 @@ export default function DoctorOnboardingPage() {
               Better Tools. Healthier Practices. Happier People.
             </p>
           </div>
-        </div>
+        </Link>
 
         <div className="flex items-center gap-4">
           <Link

@@ -113,11 +113,13 @@ export default function DoctorSignupPage() {
 
       <div className="sm:mx-auto sm:w-full sm:max-w-md relative z-10 px-4">
         <div className="flex justify-center mb-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-cyan-500 to-indigo-600 p-0.5 shadow-xl shadow-cyan-500/20 flex items-center justify-center">
-            <div className="w-full h-full bg-slate-950 rounded-[14px] flex items-center justify-center text-cyan-400">
-              <Stethoscope size={28} />
-            </div>
-          </div>
+          <Link to="/" className="w-14 h-14 rounded-2xl bg-white border border-slate-700/80 p-2 shadow-xl shadow-cyan-500/10 flex items-center justify-center hover:scale-105 transition-transform">
+            <img
+              src="/assets/brand-icon.png"
+              alt="MedTechFixaters Logo"
+              className="w-full h-full object-contain"
+            />
+          </Link>
         </div>
 
         <h2 className="text-center text-3xl font-black tracking-tight text-white">

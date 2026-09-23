@@ -180,8 +180,12 @@ export default function Login({ lockedRole }: LoginProps) {
           {/* Logo & Brand Header */}
           <div className="relative z-10">
             <Link to="/" className="inline-flex items-center gap-3 group">
-              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#1677FF] to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-black text-xl">
-                <Stethoscope size={22} className="text-white" />
+              <div className="w-12 h-12 rounded-2xl bg-white border border-black/[0.06] p-1.5 flex items-center justify-center shadow-lg shadow-blue-500/10 group-hover:scale-105 transition-transform">
+                <img
+                  src="/assets/brand-icon.png"
+                  alt="MedTechFixaters Logo"
+                  className="w-full h-full object-contain"
+                />
               </div>
 
               <div>
@@ -235,19 +239,25 @@ export default function Login({ lockedRole }: LoginProps) {
           <div className="w-full max-w-[580px] mx-auto my-auto">
             {/* Mobile Header Logo */}
             <div className="flex lg:hidden items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-xl bg-[#1677FF] flex items-center justify-center text-white shadow-md shadow-blue-500/20">
-                <Stethoscope size={20} />
-              </div>
-
-              <div>
-                <div className="font-bold text-lg text-gray-900">
-                  MedTechFixaters
+              <Link to="/" className="inline-flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-white border border-gray-200 p-1 flex items-center justify-center shadow-xs">
+                  <img
+                    src="/assets/brand-icon.png"
+                    alt="MedTechFixaters Logo"
+                    className="w-full h-full object-contain"
+                  />
                 </div>
 
-                <div className="text-xs text-gray-500">
-                  Healthcare Technology
+                <div>
+                  <div className="font-bold text-lg text-gray-900">
+                    MedTechFixaters
+                  </div>
+
+                  <div className="text-xs text-gray-500">
+                    Healthcare Technology
+                  </div>
                 </div>
-              </div>
+              </Link>
             </div>
 
             {/* Auth Glass Card */}
