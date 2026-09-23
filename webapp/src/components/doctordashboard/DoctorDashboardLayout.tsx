@@ -36,8 +36,6 @@ const navItems = [
   { name: 'Live Queue', path: '/queue', icon: Layers },
   { name: 'All Appointments', path: '/appointments', icon: Calendar },
   { name: 'Patients', path: '/patients', icon: Users },
-  { name: 'Consultations', path: '/consultations', icon: Stethoscope },
-  { name: 'Prescriptions', path: '/prescriptions', icon: FileText },
   { name: 'Follow-Up', path: '/follow-ups', icon: CheckCircle },
   { name: 'History', path: '/history', icon: Activity },
   { name: 'QR', path: '/qr-kiosk', icon: QrCode },

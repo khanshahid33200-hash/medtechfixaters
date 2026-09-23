@@ -49,8 +49,6 @@ export default function Layout({ children }: LayoutProps) {
     { path: '/queue', label: "Today's Queue", icon: <Calendar size={16} /> },
     { path: '/appointments', label: 'Appointments', icon: <Clock size={16} /> },
     { path: '/patients', label: 'Patients', icon: <Users size={16} /> },
-    { path: '/consultations', label: 'Consultations', icon: <Stethoscope size={16} /> },
-    { path: '/prescriptions', label: 'Prescriptions', icon: <FileText size={16} /> },
     { path: '/templates', label: 'Templates', icon: <FileText size={16} /> },
     { path: '/follow-ups', label: 'Follow Ups', icon: <CheckCircle size={16} /> },
     { path: '/reports', label: 'Reports', icon: <Activity size={16} /> },

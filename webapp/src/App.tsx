@@ -210,22 +210,8 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/consultations"
-          element={
-            <ProtectedRoute requiredRole="doctor">
-              <Dashboard initialTab="consultations" />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/prescriptions"
-          element={
-            <ProtectedRoute requiredRole="doctor">
-              <Dashboard initialTab="prescriptions" />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/consultations" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/prescriptions" element={<Navigate to="/dashboard" replace />} />
         <Route
           path="/templates"
           element={
