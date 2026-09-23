@@ -2,62 +2,126 @@ import { supabase } from '../lib/supabase'
 
 export interface NotificationRow {
   id: string
-  audience: 'platform_all' | 'hospital_admins' | 'hospital_all' | 'specific_user'
-  hospital_id: string | null
-  recipient_id: string | null
-  sender_id: string | null
+  hospital_id?: string | null
+  user_id?: string | null
+  appointment_id?: string | null
   title: string
   message: string
-  category: string
-  priority: 'low' | 'normal' | 'high' | 'urgent'
+  type: string
+  category?: string
+  priority?: 'low' | 'normal' | 'high' | 'urgent'
+  link?: string | null
+  metadata?: any
   created_at: string
   is_read: boolean
-  is_archived: boolean
+}
+
+function formatNotificationRow(item: any): NotificationRow {
+  const type = item.type || 'info'
+  let priority: 'low' | 'normal' | 'high' | 'urgent' = 'normal'
+  if (type === 'urgent' || item.priority === 'urgent' || /urgent|emergency|critical/i.test(item.title || '')) {
+    priority = 'urgent'
+  } else if (type === 'warning' || item.priority === 'high' || /delay|alert/i.test(item.title || '')) {
+    priority = 'high'
+  }
+
+  return {
+    id: item.id,
+    hospital_id: item.hospital_id || null,
+    user_id: item.user_id || null,
+    appointment_id: item.appointment_id || null,
+    title: item.title || 'Notification Alert',
+    message: item.message || '',
+    type,
+    category: item.category || type || 'system',
+    priority,
+    link: item.link || null,
+    metadata: item.metadata || {},
+    created_at: item.created_at || new Date().toISOString(),
+    is_read: Boolean(item.is_read),
+  }
 }
 
 /**
- * Every notification this user is entitled to see, per the RLS policy
- * (platform_all, or hospital_admins/hospital_all scoped to their hospital,
- * or specific_user addressed to them) — left-joined with their own receipt
- * row so unread/archived state is per-viewer, not shared.
+ * Fetch notifications from public.notifications table.
+ * Supports hospital and user level filtering with safe RLS fallback.
  */
-export async function fetchNotifications(userId: string): Promise<NotificationRow[]> {
-  const { data: notifs, error } = await supabase.from('notifications').select('*').order('created_at', { ascending: false }).limit(100)
-  if (error) {
-    console.warn('fetchNotifications error:', error.message)
+export async function fetchNotifications(userId?: string, hospitalId?: string): Promise<NotificationRow[]> {
+  try {
+    let query = supabase
+      .from('notifications')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100)
+
+    if (hospitalId && userId) {
+      query = query.or(`hospital_id.eq.${hospitalId},user_id.eq.${userId}`)
+    } else if (hospitalId) {
+      query = query.eq('hospital_id', hospitalId)
+    } else if (userId) {
+      query = query.eq('user_id', userId)
+    }
+
+    const { data, error } = await query
+
+    if (error) {
+      console.warn('fetchNotifications error, attempting general select:', error.message)
+      const { data: fallbackData, error: fallbackErr } = await supabase
+        .from('notifications')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(50)
+
+      if (fallbackErr) {
+        console.warn('fetchNotifications fallback error:', fallbackErr.message)
+        return []
+      }
+      return (fallbackData || []).map(formatNotificationRow)
+    }
+
+    return (data || []).map(formatNotificationRow)
+  } catch (err) {
+    console.warn('Exception in fetchNotifications:', err)
     return []
   }
-  const { data: receipts } = await supabase
-    .from('notification_receipts')
-    .select('notification_id, is_read, is_archived')
-    .eq('user_id', userId)
-
-  const receiptMap = new Map((receipts || []).map((r) => [r.notification_id, r]))
-  return (notifs || [])
-    .map((n) => ({
-      ...n,
-      is_read: receiptMap.get(n.id)?.is_read || false,
-      is_archived: receiptMap.get(n.id)?.is_archived || false,
-    }))
-    .filter((n) => !n.is_archived) as NotificationRow[]
 }
 
-export async function markNotificationRead(notificationId: string, userId: string) {
-  const { error } = await supabase
-    .from('notification_receipts')
-    .upsert({ notification_id: notificationId, user_id: userId, is_read: true, read_at: new Date().toISOString() }, { onConflict: 'notification_id,user_id' })
-  if (error) throw new Error(error.message)
+export async function markNotificationRead(notificationId: string) {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .eq('id', notificationId)
+    if (error) console.warn('markNotificationRead error:', error.message)
+  } catch (err) {
+    console.warn('Error marking notification read:', err)
+  }
 }
 
-export async function markAllRead(notificationIds: string[], userId: string) {
-  const rows = notificationIds.map((id) => ({ notification_id: id, user_id: userId, is_read: true, read_at: new Date().toISOString() }))
-  const { error } = await supabase.from('notification_receipts').upsert(rows, { onConflict: 'notification_id,user_id' })
-  if (error) throw new Error(error.message)
+export async function markAllRead(notificationIds: string[]) {
+  if (!notificationIds || notificationIds.length === 0) return
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .update({ is_read: true })
+      .in('id', notificationIds)
+    if (error) console.warn('markAllRead error:', error.message)
+  } catch (err) {
+    console.warn('Error marking all notifications read:', err)
+  }
 }
 
-export async function archiveNotification(notificationId: string, userId: string) {
-  const { error } = await supabase
-    .from('notification_receipts')
-    .upsert({ notification_id: notificationId, user_id: userId, is_archived: true }, { onConflict: 'notification_id,user_id' })
-  if (error) throw new Error(error.message)
+export async function archiveNotification(notificationId: string) {
+  try {
+    const { error } = await supabase
+      .from('notifications')
+      .delete()
+      .eq('id', notificationId)
+    if (error) {
+      // If DELETE is restricted by RLS policy, mark as read
+      await supabase.from('notifications').update({ is_read: true }).eq('id', notificationId)
+    }
+  } catch (err) {
+    console.warn('Error archiving notification:', err)
+  }
 }

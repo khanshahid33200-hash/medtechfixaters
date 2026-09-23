@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { PatientIntake } from "../../types/booking";
 import { User, Phone, Calendar, ArrowRight, FileText } from "lucide-react";
+import { validateName, validatePhone, validateAge } from "../../utils/validation";
 
 interface PatientDetailsProps {
   initialIntake?: PatientIntake;
@@ -19,28 +20,34 @@ export const PatientDetails: React.FC<PatientDetailsProps> = ({
     initialIntake?.primaryConcern || ""
   );
 
-  const [errors, setErrors] = useState<{ fullName?: string; phone?: string }>({});
+  const [errors, setErrors] = useState<{ fullName?: string; phone?: string; age?: string }>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const newErrors: { fullName?: string; phone?: string } = {};
+    const newErrors: { fullName?: string; phone?: string; age?: string } = {};
 
-    if (!fullName.trim()) newErrors.fullName = "Full Name is required";
-    if (!phone.trim() || phone.trim().length < 10)
-      newErrors.phone = "Valid 10-digit mobile number required";
+    const nameCheck = validateName(fullName);
+    if (!nameCheck.isValid) newErrors.fullName = nameCheck.error;
+
+    const phoneCheck = validatePhone(phone);
+    if (!phoneCheck.isValid) newErrors.phone = phoneCheck.error;
+
+    const ageCheck = validateAge(age);
+    if (!ageCheck.isValid) newErrors.age = ageCheck.error;
 
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors);
       return;
     }
 
+    setErrors({});
     onSubmitDetails({
-      fullName,
-      contactNumber: phone,
-      age: Number(age),
+      fullName: fullName.trim(),
+      contactNumber: phoneCheck.cleaned,
+      age: ageCheck.ageNum,
       gender,
-      primaryConcern,
-      symptoms: primaryConcern ? [primaryConcern] : [],
+      primaryConcern: primaryConcern.trim(),
+      symptoms: primaryConcern ? [primaryConcern.trim()] : [],
     });
   };
 

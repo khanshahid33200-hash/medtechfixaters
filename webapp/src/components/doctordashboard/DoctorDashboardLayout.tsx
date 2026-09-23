@@ -14,6 +14,8 @@ import {
   QrCode,
   Settings,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   LogOut,
   Menu,
   X,
@@ -29,6 +31,7 @@ import { supabase } from '../../lib/supabase'
 interface DoctorDashboardLayoutProps {
   children: ReactNode
   pageTitle: string
+  onResetView?: () => void
 }
 
 const navItems = [
@@ -45,7 +48,7 @@ const navItems = [
 
 type OnlineStatus = 'active' | 'break' | 'offline'
 
-export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDashboardLayoutProps) {
+export default function DoctorDashboardLayout({ children, pageTitle, onResetView }: DoctorDashboardLayoutProps) {
   useSEO({
     title: `${pageTitle} — Doctor Workspace — Medtech Fixaters`,
     description: 'Doctor clinical workspace: live queue, consultations, prescriptions, and patient history.',
@@ -60,6 +63,33 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
   const [hospitalLogo, setHospitalLogo] = useState<string | null>(null)
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>('active')
   const [now, setNow] = useState(() => new Date())
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('doctor_sidebar_collapsed') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  const toggleCollapse = () => {
+    setIsCollapsed(prev => {
+      const next = !prev
+      try { localStorage.setItem('doctor_sidebar_collapsed', String(next)) } catch {}
+      return next
+    })
+  }
+
+  // Keyboard shortcut Ctrl+B or Cmd+B to toggle sidebar
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault()
+        toggleCollapse()
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
 
   const doctorId = doctorProfile?.doctor_id || ''
   const hospitalId = doctorProfile?.hospital_id || ''
@@ -134,39 +164,64 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
 
       {/* ─── DESKTOP SIDEBAR ─── */}
       <aside
-        className="hidden lg:flex flex-col w-[264px] fixed inset-y-0 left-0 z-40 border-r border-white/70"
-        style={{ background: 'rgba(255,255,255,0.45)', backdropFilter: 'blur(30px) saturate(150%)', WebkitBackdropFilter: 'blur(30px) saturate(150%)' }}
+        className={`hidden lg:flex flex-col fixed inset-y-0 left-0 z-40 border-r border-white/70 transition-all duration-300 ease-in-out ${
+          isCollapsed ? 'w-[76px]' : 'w-[264px]'
+        }`}
+        style={{ background: 'rgba(255,255,255,0.55)', backdropFilter: 'blur(30px) saturate(150%)', WebkitBackdropFilter: 'blur(30px) saturate(150%)' }}
       >
-        <div className="px-5 pt-6 pb-5 border-b border-white/60">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-white/70 border border-white/80 shadow-sm flex items-center justify-center shrink-0 overflow-hidden text-lg">
-              {hospitalLogo ? <img src={hospitalLogo} alt={hospitalName} className="w-full h-full object-cover" /> : <Building2 size={20} className="text-blue-600" />}
+        <div className={`pt-5 pb-4 border-b border-white/60 transition-all ${isCollapsed ? 'px-2' : 'px-5'}`}>
+          <div className={`flex items-center ${isCollapsed ? 'justify-center' : 'justify-between'} gap-2`}>
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-white/70 border border-white/80 shadow-sm flex items-center justify-center shrink-0 overflow-hidden text-lg">
+                {hospitalLogo ? <img src={hospitalLogo} alt={hospitalName} className="w-full h-full object-cover" /> : <Building2 size={20} className="text-blue-600" />}
+              </div>
+              {!isCollapsed && (
+                <div className="min-w-0">
+                  <h2 className="text-[13.5px] font-extrabold text-slate-900 leading-tight truncate">{hospitalName}</h2>
+                  <p className="text-[10.5px] text-slate-500 font-medium truncate">Doctor Workspace</p>
+                </div>
+              )}
             </div>
-            <div className="min-w-0">
-              <h2 className="text-[13.5px] font-extrabold text-slate-900 leading-tight truncate">{hospitalName}</h2>
-              <p className="text-[10.5px] text-slate-500 font-medium truncate">Doctor Workspace</p>
+
+            <button
+              onClick={toggleCollapse}
+              title={isCollapsed ? 'Expand Sidebar (Ctrl+B)' : 'Collapse Sidebar (Ctrl+B)'}
+              className={`p-1.5 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-white/80 border border-transparent hover:border-slate-200 transition cursor-pointer ${isCollapsed ? 'hidden' : 'block'}`}
+            >
+              <ChevronLeft size={16} />
+            </button>
+          </div>
+
+          {!isCollapsed && (
+            <div className="mt-3 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
+              <span>Powered by</span>
+              <span className="inline-flex items-center gap-1 text-slate-500">
+                <img src="/assets/brand-icon.png" alt="" className="w-3.5 h-3.5 object-contain" />
+                MedTech Fixaters
+              </span>
             </div>
-          </div>
-          <div className="mt-4 flex items-center gap-1.5 text-[10px] font-semibold text-slate-400">
-            <span>Powered by</span>
-            <span className="inline-flex items-center gap-1 text-slate-500">
-              <img src="/assets/brand-icon.png" alt="" className="w-3.5 h-3.5 object-contain" />
-              MedTech Fixaters
-            </span>
-          </div>
+          )}
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-4 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        <nav className={`flex-1 overflow-y-auto py-3 space-y-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden ${isCollapsed ? 'px-2' : 'px-3'}`}>
           {navItems.map((item) => {
             const active = isActive(item.path)
             const Icon = item.icon
             return (
-              <Link key={item.name} to={item.path} className="block relative group">
+              <Link
+                key={item.name}
+                to={item.path}
+                title={isCollapsed ? item.name : undefined}
+                onClick={() => {
+                  if (onResetView) onResetView()
+                }}
+                className="block relative group"
+              >
                 <motion.div
-                  whileHover={{ x: 2, y: -1 }}
+                  whileHover={{ x: isCollapsed ? 0 : 2, y: -1 }}
                   whileTap={{ scale: 0.97 }}
                   transition={{ type: 'spring', stiffness: 400, damping: 28 }}
-                  className={`relative flex items-center px-3.5 py-2.5 rounded-2xl text-[12.5px] font-semibold transition-colors duration-200 ${active ? 'text-blue-700' : 'text-slate-500 hover:text-slate-800'}`}
+                  className={`relative flex items-center ${isCollapsed ? 'justify-center px-0 py-2.5' : 'px-3.5 py-2.5'} rounded-2xl text-[12.5px] font-semibold transition-colors duration-200 ${active ? 'text-blue-700' : 'text-slate-500 hover:text-slate-800'}`}
                 >
                   {active && (
                     <motion.span
@@ -176,9 +231,9 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
                     />
                   )}
                   {!active && <span className="absolute inset-0 rounded-2xl bg-white/0 group-hover:bg-white/60 transition-colors duration-200" />}
-                  <span className="relative flex items-center gap-3">
-                    <Icon size={16.5} className={active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'} />
-                    <span>{item.name}</span>
+                  <span className={`relative flex items-center ${isCollapsed ? 'justify-center' : 'gap-3'}`}>
+                    <Icon size={17} className={active ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-600'} />
+                    {!isCollapsed && <span>{item.name}</span>}
                   </span>
                 </motion.div>
               </Link>
@@ -186,10 +241,26 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
           })}
         </nav>
 
-        <div className="p-3 border-t border-white/60">
-          <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl text-[12px] font-semibold text-rose-600 hover:bg-rose-50/70 transition-colors">
+        <div className="p-2.5 border-t border-white/60 space-y-1">
+          <button
+            onClick={toggleCollapse}
+            title={isCollapsed ? 'Expand Sidebar (Ctrl+B)' : 'Collapse Sidebar (Ctrl+B)'}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center py-2' : 'justify-between px-3 py-2'} rounded-xl text-[11px] font-bold text-slate-500 hover:text-slate-800 hover:bg-white/70 transition-colors cursor-pointer`}
+          >
+            <span className="flex items-center gap-2">
+              {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+              {!isCollapsed && <span>Collapse Sidebar</span>}
+            </span>
+            {!isCollapsed && <span className="text-[10px] text-slate-400 font-mono">⌘B</span>}
+          </button>
+
+          <button
+            onClick={handleLogout}
+            title={isCollapsed ? 'Sign Out' : undefined}
+            className={`w-full flex items-center ${isCollapsed ? 'justify-center py-2.5' : 'gap-2.5 px-3.5 py-2.5'} rounded-2xl text-[12px] font-semibold text-rose-600 hover:bg-rose-50/70 transition-colors cursor-pointer`}
+          >
             <LogOut size={16} />
-            <span>Sign Out</span>
+            {!isCollapsed && <span>Sign Out</span>}
           </button>
         </div>
       </aside>
@@ -229,7 +300,10 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
                     <Link
                       key={item.name}
                       to={item.path}
-                      onClick={() => setMobileNavOpen(false)}
+                      onClick={() => {
+                        setMobileNavOpen(false)
+                        if (onResetView) onResetView()
+                      }}
                       className={`flex items-center gap-3 px-3.5 py-2.5 rounded-2xl text-[12.5px] font-semibold transition-colors ${active ? 'bg-blue-500/10 text-blue-700 border border-blue-400/30' : 'text-slate-500 hover:bg-white/70'}`}
                     >
                       <Icon size={16.5} className={active ? 'text-blue-600' : 'text-slate-400'} />
@@ -250,7 +324,7 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
       </AnimatePresence>
 
       {/* ─── MAIN ─── */}
-      <div className="flex-1 lg:pl-[264px] flex flex-col min-w-0 min-h-screen relative z-10">
+      <div className={`flex-1 ${isCollapsed ? 'lg:pl-[76px]' : 'lg:pl-[264px]'} flex flex-col min-w-0 min-h-screen relative z-10 transition-all duration-300 ease-in-out`}>
         <header
           className="h-[68px] sticky top-0 z-30 px-4 sm:px-8 flex items-center justify-between border-b border-white/60"
           style={{ background: 'rgba(247,248,252,0.72)', backdropFilter: 'blur(22px) saturate(160%)', WebkitBackdropFilter: 'blur(22px) saturate(160%)' }}
@@ -258,6 +332,13 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
           <div className="flex items-center gap-3">
             <button onClick={() => setMobileNavOpen(true)} className="lg:hidden p-2 rounded-xl text-slate-600 hover:bg-white/70 transition" aria-label="Open menu">
               <Menu size={20} />
+            </button>
+            <button
+              onClick={toggleCollapse}
+              className="hidden lg:flex p-2 rounded-xl text-slate-500 hover:text-slate-800 hover:bg-white/80 border border-transparent hover:border-slate-200 transition cursor-pointer"
+              title={isCollapsed ? 'Expand Sidebar (Ctrl+B)' : 'Collapse Sidebar (Ctrl+B)'}
+            >
+              {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
             </button>
             <h1 className="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight">{pageTitle}</h1>
           </div>
@@ -308,15 +389,36 @@ export default function DoctorDashboardLayout({ children, pageTitle }: DoctorDas
                       <span className={`w-2 h-2 rounded-full ${statusMeta[onlineStatus].dot}`} />
                       <span>Status: {statusMeta[onlineStatus].label} (tap to change)</span>
                     </button>
-                    <Link to="/profile" onClick={() => setProfileDropdownOpen(false)} className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition">
+                    <Link
+                      to="/profile"
+                      onClick={() => {
+                        setProfileDropdownOpen(false)
+                        if (onResetView) onResetView()
+                      }}
+                      className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition"
+                    >
                       <UserCheck size={15} />
                       <span>My Profile</span>
                     </Link>
-                    <Link to="/settings" onClick={() => setProfileDropdownOpen(false)} className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition">
+                    <Link
+                      to="/settings"
+                      onClick={() => {
+                        setProfileDropdownOpen(false)
+                        if (onResetView) onResetView()
+                      }}
+                      className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition"
+                    >
                       <Settings size={15} />
                       <span>Settings</span>
                     </Link>
-                    <Link to="/settings?tab=security" onClick={() => setProfileDropdownOpen(false)} className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition">
+                    <Link
+                      to="/settings?tab=security"
+                      onClick={() => {
+                        setProfileDropdownOpen(false)
+                        if (onResetView) onResetView()
+                      }}
+                      className="flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition"
+                    >
                       <KeyRound size={15} />
                       <span>Change Password</span>
                     </Link>

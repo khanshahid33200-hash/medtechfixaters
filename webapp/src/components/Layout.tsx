@@ -23,9 +23,10 @@ import { useAuth } from '../context/AuthContext'
 interface LayoutProps {
   children: ReactNode
   userRole?: string
+  onResetView?: () => void
 }
 
-export default function Layout({ children }: LayoutProps) {
+export default function Layout({ children, onResetView }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
   const navigate = useNavigate()
@@ -125,7 +126,10 @@ export default function Layout({ children }: LayoutProps) {
                 <Link
                   key={item.path}
                   to={item.path}
-                  onClick={() => setSidebarOpen(false)}
+                  onClick={() => {
+                    setSidebarOpen(false)
+                    if (onResetView) onResetView()
+                  }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl font-bold transition-all ${
                     active
                       ? 'bg-indigo-600 text-white shadow-md shadow-indigo-500/20'

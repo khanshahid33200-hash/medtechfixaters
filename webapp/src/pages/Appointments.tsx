@@ -3,7 +3,7 @@ import { Plus, X, Calendar, Clock, Ticket, Receipt, CheckCircle, XCircle } from 
 import Layout from '../components/Layout'
 import { Card, CardContent } from '../components/Card'
 import Button from '../components/Button'
-import PatientDetailsModal, { PatientModalData } from '../components/PatientDetailsModal'
+import PatientConsultationWorkspace, { PatientWorkspaceData } from '../components/PatientConsultationWorkspace'
 import { useAuth } from '../context/AuthContext'
 import {
   getDoctorAppointments,
@@ -12,6 +12,7 @@ import {
   updateAppointmentStatus,
   type DoctorAppointment
 } from '../lib/doctorAppointments'
+import { validateName, validatePhone, validateAge } from '../utils/validation'
 
 export default function Appointments() {
   const { doctorProfile } = useAuth()
@@ -23,9 +24,8 @@ export default function Appointments() {
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Patient Details Modal State
-  const [selectedPatientForDetails, setSelectedPatientForDetails] = useState<PatientModalData | null>(null)
-  const [showPatientDetailsModal, setShowPatientDetailsModal] = useState(false)
+  // Patient Details & Full-Window Consultation Workspace State
+  const [selectedPatientForDetails, setSelectedPatientForDetails] = useState<PatientWorkspaceData | null>(null)
 
   const openPatientDetails = (apt: DoctorAppointment) => {
     setSelectedPatientForDetails({
@@ -42,7 +42,6 @@ export default function Appointments() {
       queue_number: apt.queue_number ?? undefined,
       status: apt.status,
     })
-    setShowPatientDetailsModal(true)
   }
   const [bookingForm, setBookingForm] = useState({
     patient_name: '',
@@ -89,8 +88,22 @@ export default function Appointments() {
 
   const handleSubmitBooking = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!bookingForm.patient_name.trim() || !bookingForm.phone.trim()) {
-      alert('Patient name and valid phone number are required.')
+    
+    const nameCheck = validateName(bookingForm.patient_name)
+    if (!nameCheck.isValid) {
+      alert(nameCheck.error || 'Please enter a valid patient full name.')
+      return
+    }
+
+    const phoneCheck = validatePhone(bookingForm.phone)
+    if (!phoneCheck.isValid) {
+      alert(phoneCheck.error || 'Please enter a valid 10-digit mobile number.')
+      return
+    }
+
+    const ageCheck = validateAge(bookingForm.age)
+    if (!ageCheck.isValid) {
+      alert(ageCheck.error || 'Please enter a valid age.')
       return
     }
 
@@ -100,8 +113,8 @@ export default function Appointments() {
         hospitalId,
         doctorId,
         patientName: bookingForm.patient_name.trim(),
-        patientPhone: bookingForm.phone.trim(),
-        patientAge: Number(bookingForm.age) || 30,
+        patientPhone: phoneCheck.cleaned,
+        patientAge: ageCheck.ageNum,
         patientGender: bookingForm.gender,
         symptoms: bookingForm.symptoms.trim() || 'General consultation',
       })
@@ -129,9 +142,27 @@ export default function Appointments() {
   }
 
   return (
-    <Layout>
-      <div className="space-y-6">
-        {/* Page Header */}
+    <Layout onResetView={() => setSelectedPatientForDetails(null)}>
+      {selectedPatientForDetails ? (
+        <PatientConsultationWorkspace
+          patient={selectedPatientForDetails}
+          doctorId={doctorId}
+          hospitalId={hospitalId}
+          doctorName={doctorName}
+          departmentName={doctorProfile?.department_name || doctorProfile?.specialization || 'General Medicine'}
+          hospitalName={doctorProfile?.hospital_name || 'Hospital Facility'}
+          onBack={() => {
+            setSelectedPatientForDetails(null)
+            reloadAppointments()
+          }}
+          onConsultationCompleted={() => {
+            setSelectedPatientForDetails(null)
+            reloadAppointments()
+          }}
+        />
+      ) : (
+        <div className="space-y-6">
+          {/* Page Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Appointments Management for {doctorName}</h1>
@@ -326,15 +357,8 @@ export default function Appointments() {
           </div>
         )}
 
-        {/* Patient Details Modal */}
-        <PatientDetailsModal
-          isOpen={showPatientDetailsModal}
-          onClose={() => setShowPatientDetailsModal(false)}
-          patient={selectedPatientForDetails}
-          doctorId={doctorId}
-          hospitalName={doctorProfile?.hospital_name || 'Hospital Facility'}
-        />
-      </div>
+        </div>
+      )}
     </Layout>
   )
 }

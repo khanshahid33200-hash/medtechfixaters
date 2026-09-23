@@ -19,6 +19,12 @@ import {
   HospitalWorkspace,
 } from "../../types/booking";
 
+import {
+  validateName,
+  validatePhone,
+  validateAge,
+} from "../../utils/validation";
+
 interface AIBookingFlowProps {
   hospital: HospitalWorkspace | null;
   doctors: DoctorItem[];
@@ -58,12 +64,13 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
   const [inputVal, setInputVal] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const [currentStepIndex, setCurrentStepIndex] = useState(1);
-  const totalSteps = 4; // 1: Name, 2: Phone/Age, 3: Primary Concern, 4: Duration/Meds
+  const totalSteps = 6; // 1: Name, 2: Phone, 3: Age, 4: Gender, 5: Concern, 6: Duration/Meds
 
   const [intake, setIntake] = useState<PatientIntake>({
     fullName: "",
     age: 30,
     contactNumber: "",
+    gender: "Male",
     primaryConcern: "",
     symptoms: [],
   });
@@ -74,42 +81,121 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isTyping]);
 
-  // AI Intake Logic Processor
+  // AI Intake Logic Processor with Step-by-Step Validation
   const processNextStep = async (
     userText: string,
     currentMsg: AIChatMessage
   ) => {
     setIsTyping(true);
 
-    // Simulate natural response latency (600ms - 1000ms)
-    await new Promise((res) => setTimeout(res, 800));
+    // Natural conversation pause
+    await new Promise((res) => setTimeout(res, 600));
 
     const step = currentMsg.stepKey || "name";
 
     if (step === "name") {
-      setIntake((prev) => ({ ...prev, fullName: userText }));
+      const nameCheck = validateName(userText);
+      if (!nameCheck.isValid) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `${nameCheck.error || "Please enter your valid full name (at least 2 letters)."}\n\nWhat is your full name?`,
+            timestamp: "Just now",
+            stepKey: "name",
+          },
+        ]);
+        setIsTyping(false);
+        return;
+      }
+
+      setIntake((prev) => ({ ...prev, fullName: userText.trim() }));
       setCurrentStepIndex(2);
       setMessages((prev) => [
         ...prev,
         {
           id: Date.now().toString(),
           sender: "ai",
-          text: `Nice to meet you, ${userText}! Could you please share your Mobile Number and Age?`,
+          text: `Nice to meet you, ${userText.trim()}! Could you please provide your 10-digit mobile number for appointment updates?`,
           timestamp: "Just now",
-          stepKey: "details",
+          stepKey: "phone",
         },
       ]);
-    } else if (step === "details") {
-      // Parse phone and age if possible
-      const ageMatch = userText.match(/\b\d{1,2}\b/);
-      const age = ageMatch ? parseInt(ageMatch[0], 10) : 30;
+    } else if (step === "phone") {
+      const phoneCheck = validatePhone(userText);
+      if (!phoneCheck.isValid) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `${phoneCheck.error || "Please provide a valid 10-digit mobile number (e.g., 9876543210)."}\n\nWhat is your mobile number?`,
+            timestamp: "Just now",
+            stepKey: "phone",
+          },
+        ]);
+        setIsTyping(false);
+        return;
+      }
+
       setIntake((prev) => ({
         ...prev,
-        contactNumber: userText,
-        age: age,
+        contactNumber: phoneCheck.cleaned,
       }));
 
       setCurrentStepIndex(3);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          sender: "ai",
+          text: `Thank you! What is your age in years?`,
+          timestamp: "Just now",
+          stepKey: "age",
+          quickChips: ["22", "28", "35", "45", "60"],
+        },
+      ]);
+    } else if (step === "age") {
+      const ageCheck = validateAge(userText);
+      if (!ageCheck.isValid) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: Date.now().toString(),
+            sender: "ai",
+            text: `${ageCheck.error || "Please enter a valid age in numbers between 1 and 120."}\n\nWhat is your age?`,
+            timestamp: "Just now",
+            stepKey: "age",
+            quickChips: ["20", "28", "35", "48", "62"],
+          },
+        ]);
+        setIsTyping(false);
+        return;
+      }
+
+      setIntake((prev) => ({
+        ...prev,
+        age: ageCheck.ageNum,
+      }));
+
+      setCurrentStepIndex(4);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now().toString(),
+          sender: "ai",
+          text: `Thank you! Please select your gender:`,
+          timestamp: "Just now",
+          stepKey: "gender",
+          quickChips: ["Male", "Female", "Other"],
+        },
+      ]);
+    } else if (step === "gender") {
+      const validGender = /female/i.test(userText) ? "Female" : /other/i.test(userText) ? "Other" : "Male";
+      setIntake((prev) => ({ ...prev, gender: validGender }));
+
+      setCurrentStepIndex(5);
       setMessages((prev) => [
         ...prev,
         {
@@ -147,7 +233,7 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
         symptoms: symptomsList,
       }));
 
-      setCurrentStepIndex(4);
+      setCurrentStepIndex(6);
       setMessages((prev) => [
         ...prev,
         {
@@ -160,10 +246,11 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
         },
       ]);
     } else if (step === "meds") {
-      setIntake((prev) => ({
-        ...prev,
+      const updatedIntake: PatientIntake = {
+        ...intake,
         symptomDuration: userText,
-      }));
+      };
+      setIntake(updatedIntake);
 
       // Final evaluation and matching logic
       setMessages((prev) => [
@@ -179,7 +266,7 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
         },
       ]);
 
-      await new Promise((res) => setTimeout(res, 900));
+      await new Promise((res) => setTimeout(res, 800));
 
       if (isInd) {
         // Individual Doctor Single-Practice Lock
@@ -189,17 +276,17 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
           doctorId: singleDoc ? singleDoc.id : "doc-1",
           doctorName: doctorName,
           specialty: specialty,
-          explanation: `Direct appointment scheduled with ${doctorName} for reported concern: ${intake.primaryConcern || userText || "clinical consultation"}.`,
+          explanation: `Direct appointment scheduled with ${doctorName} for reported concern: ${updatedIntake.primaryConcern || "clinical consultation"}.`,
           availability: singleDoc?.available_hours?.start
             ? `${singleDoc.available_hours.start} - ${singleDoc.available_hours.end || "05:00 PM"}`
             : "Available Today",
           fee: singleDoc ? singleDoc.fee : 500,
         };
 
-        onCompleteAIIntake(intake, rec);
+        onCompleteAIIntake(updatedIntake, rec);
       } else {
         // Multi-Specialty Hospital Department & Doctor Matching
-        const concernLower = (intake.primaryConcern + " " + userText).toLowerCase();
+        const concernLower = (updatedIntake.primaryConcern + " " + userText).toLowerCase();
         let selectedDept = departments[0] || {
           id: "dept-gen",
           name: "General Medicine",
@@ -236,12 +323,12 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
           doctorId: selectedDoc ? selectedDoc.id : "doc-1",
           doctorName: selectedDoc ? selectedDoc.name : "Dr. Available Specialist",
           specialty: selectedDoc ? selectedDoc.specialty : selectedDept.name,
-          explanation: `Recommended based on reported complaint (${intake.primaryConcern || "OPD consultation"}) for optimal evaluation.`,
+          explanation: `Recommended based on reported complaint (${updatedIntake.primaryConcern || "OPD consultation"}) for optimal evaluation.`,
           availability: "Available Today OPD",
           fee: selectedDoc ? selectedDoc.fee : 500,
         };
 
-        onCompleteAIIntake(intake, rec);
+        onCompleteAIIntake(updatedIntake, rec);
       }
     }
 

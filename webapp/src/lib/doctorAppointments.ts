@@ -490,6 +490,64 @@ export async function updatePatientProfile(
   return { success: true }
 }
 
+/**
+ * Updates both the patient master record and the active appointment row
+ * so changes made by doctor during consultation are immediately reflected
+ * everywhere (live queue, prescription, patient records).
+ */
+export async function updateAppointmentAndPatientDetails(params: {
+  appointmentId?: string
+  patientId?: string | null
+  name: string
+  phone: string
+  age?: number
+  gender?: string
+  symptoms?: string
+  allergies?: string
+  known_diseases?: string
+}): Promise<{ success: boolean; error?: string }> {
+  try {
+    if (params.patientId) {
+      const { error: pErr } = await supabase
+        .from('patients')
+        .update({
+          name: params.name,
+          phone: params.phone,
+          age: params.age,
+          gender: params.gender,
+          allergies: params.allergies,
+          known_diseases: params.known_diseases,
+        })
+        .eq('id', params.patientId)
+
+      if (pErr) {
+        console.warn('Error updating patient profile:', pErr.message)
+      }
+    }
+
+    if (params.appointmentId) {
+      const { error: aErr } = await supabase
+        .from('appointments')
+        .update({
+          patient_name: params.name,
+          patient_phone: params.phone,
+          patient_age: params.age,
+          patient_gender: params.gender,
+          symptoms: params.symptoms,
+        })
+        .eq('id', params.appointmentId)
+
+      if (aErr) {
+        console.warn('Error updating appointment patient info:', aErr.message)
+      }
+    }
+
+    return { success: true }
+  } catch (e: any) {
+    return { success: false, error: e?.message || 'Update failed' }
+  }
+}
+
 export interface PatientVisit {
   appointmentId: string
   appointmentDate: string

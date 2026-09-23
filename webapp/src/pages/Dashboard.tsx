@@ -15,7 +15,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 import { supabase } from '../lib/supabase'
 import DoctorDashboardLayout from '../components/doctordashboard/DoctorDashboardLayout'
-import PatientDetailsModal, { PatientModalData } from '../components/PatientDetailsModal'
+import PatientConsultationWorkspace, { PatientWorkspaceData } from '../components/PatientConsultationWorkspace'
 import { useDoctorDashboardStats, resolveRange } from '../hooks/useDoctorDashboardStats'
 import type { DateRangeKey } from '../hooks/useDashboardStats'
 import { createTestRequest, createFollowUp, createDoctorRequest, createEmergencyRequest, DoctorRequestType, fetchFollowUps, updateFollowUpStatus, FollowUpRow } from '../services/consultationWorkflowService'
@@ -185,17 +185,22 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   // Navigation State
   const [activeNav, setActiveNav] = useState<string>(() => {
     const path = window.location.pathname.replace(/^\//, '')
-    if (path && ['queue', 'appointments', 'patients', 'consultations', 'prescriptions', 'templates', 'follow-ups', 'reports', 'profile', 'qr-kiosk', 'settings'].includes(path)) {
+    if (path && ['queue', 'appointments', 'patients', 'consultations', 'prescriptions', 'templates', 'follow-ups', 'reports', 'profile', 'qr-kiosk', 'settings', 'dashboard'].includes(path)) {
       return path
     }
     return initialTab || 'dashboard'
   })
 
   useEffect(() => {
-    if (initialTab && initialTab !== activeNav) {
+    // Whenever doctor clicks or navigates to a new tab/route in sidebar, reset any open patient consultation workspace
+    setPatientDetailsTarget(null)
+    const path = location.pathname.replace(/^\//, '')
+    if (path && ['queue', 'appointments', 'patients', 'consultations', 'prescriptions', 'templates', 'follow-ups', 'reports', 'profile', 'qr-kiosk', 'settings', 'dashboard'].includes(path)) {
+      setActiveNav(path)
+    } else if (initialTab) {
       setActiveNav(initialTab)
     }
-  }, [initialTab])
+  }, [location.pathname, location.key, initialTab])
 
   const [notice, setNotice] = useState<string | null>(null)
 
@@ -405,35 +410,38 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   const [notifications, setNotifications] = useState<NotificationRow[]>([])
   const [notificationsLoading, setNotificationsLoading] = useState(true)
   const loadNotifications = async () => {
-    if (!currentUser?.id) return
     setNotificationsLoading(true)
-    setNotifications(await fetchNotifications(currentUser.id))
-    setNotificationsLoading(false)
+    try {
+      const data = await fetchNotifications(currentUser?.id || doctorId, hospitalId)
+      setNotifications(data)
+    } catch (err) {
+      console.warn('Error fetching doctor notifications:', err)
+      setNotifications([])
+    } finally {
+      setNotificationsLoading(false)
+    }
   }
-  useEffect(() => { loadNotifications() }, [currentUser?.id])
+  useEffect(() => { loadNotifications() }, [currentUser?.id, doctorId, hospitalId])
   useEffect(() => {
     const channel = supabase
       .channel('doctor-notifications')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => loadNotifications())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => loadNotifications())
       .subscribe()
     return () => { channel.unsubscribe() }
-  }, [currentUser?.id])
+  }, [currentUser?.id, doctorId, hospitalId])
 
   const handleMarkNotificationRead = async (id: string) => {
-    if (!currentUser?.id) return
     setNotifications(prev => prev.map(n => (n.id === id ? { ...n, is_read: true } : n)))
-    await markNotificationRead(id, currentUser.id)
+    await markNotificationRead(id)
   }
   const handleMarkAllNotificationsRead = async () => {
-    if (!currentUser?.id) return
     const unreadIds = notifications.filter(n => !n.is_read).map(n => n.id)
     setNotifications(prev => prev.map(n => ({ ...n, is_read: true })))
-    await markAllRead(unreadIds, currentUser.id)
+    await markAllRead(unreadIds)
   }
   const handleArchiveNotification = async (id: string) => {
-    if (!currentUser?.id) return
     setNotifications(prev => prev.filter(n => n.id !== id))
-    await archiveNotification(id, currentUser.id)
+    await archiveNotification(id)
   }
 
   // Current Patient in Consultation
@@ -547,8 +555,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   })
   const [workflowBusy, setWorkflowBusy] = useState(false)
 
-  // ─── PATIENT DETAILS MODAL STATE ───
-  const [patientDetailsTarget, setPatientDetailsTarget] = useState<PatientModalData | null>(null)
+  // ─── PATIENT DETAILS & FULL-WINDOW CONSULTATION WORKSPACE STATE ───
+  const [patientDetailsTarget, setPatientDetailsTarget] = useState<PatientWorkspaceData | null>(null)
 
   const openPatientDetails = (target: any) => {
     const p = target || currentPatient
@@ -569,7 +577,6 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
       queue_number: p.queue_number,
       status: p.status,
     })
-    setShowPatientDetailsModal(true)
   }
 
   // ─── QUICK ACTIONS: MEDICAL CERTIFICATE STATE ───
@@ -1235,12 +1242,16 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     { id: 'follow-ups', label: 'Follow Ups', icon: <CheckCircle size={16} /> },
     { id: 'reports', label: 'Reports', icon: <Activity size={16} /> },
     { id: 'profile', label: 'Profile', icon: <UserCheck size={16} /> },
+    { id: 'notifications', label: 'Notifications', icon: <Bell size={16} /> },
     { id: 'qr-kiosk', label: 'Hospital Patient QR', icon: <QrCode size={16} /> },
     { id: 'settings', label: 'Settings', icon: <Settings size={16} /> },
   ]
 
   return (
-    <DoctorDashboardLayout pageTitle={navItems.find(n => n.id === activeNav)?.label || 'Dashboard'}>
+    <DoctorDashboardLayout
+      pageTitle={navItems.find(n => n.id === activeNav)?.label || 'Dashboard'}
+      onResetView={() => setPatientDetailsTarget(null)}
+    >
         {/* Toast Notification */}
         {notice && (
           <div className="fixed top-5 right-5 z-50 p-4 bg-slate-900 text-white rounded-2xl shadow-2xl flex items-center gap-3 border border-white/10 animate-bounce">
@@ -1249,13 +1260,32 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
           </div>
         )}
 
+        {patientDetailsTarget ? (
+          <PatientConsultationWorkspace
+            patient={patientDetailsTarget}
+            doctorId={doctorId}
+            hospitalId={hospitalId}
+            doctorName={doctorName}
+            departmentName={doctorSpecialty}
+            hospitalName={selectedHospital}
+            onBack={() => {
+              setPatientDetailsTarget(null)
+              refreshQueue()
+            }}
+            onConsultationCompleted={() => {
+              setPatientDetailsTarget(null)
+              refreshQueue()
+            }}
+          />
+        ) : (
+          <>
         {/* ═══════════════════════════════════════════════════════════════════
             VIEW 1: DASHBOARD OVERVIEW (NEW DESIGN)
         ═══════════════════════════════════════════════════════════════════ */}
         {activeNav === 'dashboard' && (
           <>
             {/* ─── TOP KPI CARDS — real Supabase data, doctor+hospital scoped, with actual period-over-period % change (never a hardcoded badge) ─── */}
-            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {[
                 {
                   title: 'Total Patients',
@@ -1263,7 +1293,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   sub: 'Today',
                   change: doctorKpis.totalPatients.change,
                   icon: <Users size={20} className="text-indigo-600" />,
-                  iconBg: 'bg-indigo-50 text-indigo-600'
+                  iconBg: 'bg-indigo-50 text-indigo-600',
+                  onClick: undefined
                 },
                 {
                   title: 'Completed',
@@ -1271,7 +1302,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   sub: 'Today',
                   change: doctorKpis.completed.change,
                   icon: <Clock size={20} className="text-blue-600" />,
-                  iconBg: 'bg-blue-50 text-blue-600'
+                  iconBg: 'bg-blue-50 text-blue-600',
+                  onClick: undefined
                 },
                 {
                   title: 'Waiting Now',
@@ -1279,7 +1311,18 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   sub: 'In your live queue',
                   change: doctorKpis.waiting.change,
                   icon: <Activity size={20} className="text-amber-600" />,
-                  iconBg: 'bg-amber-50 text-amber-600'
+                  iconBg: 'bg-amber-50 text-amber-600',
+                  onClick: undefined
+                },
+                {
+                  title: 'Follow-Ups Due',
+                  value: followUpBuckets.dueToday.length,
+                  sub: `${followUpBuckets.upcoming.length} upcoming · ${followUpBuckets.overdue.length} overdue`,
+                  change: null,
+                  customChangeText: followUpBuckets.overdue.length > 0 ? `${followUpBuckets.overdue.length} Overdue Attention Needed` : 'On Schedule',
+                  icon: <CheckCircle size={20} className="text-purple-600" />,
+                  iconBg: 'bg-purple-50 text-purple-600',
+                  onClick: () => { setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); }
                 },
                 {
                   title: 'Revenue',
@@ -1287,18 +1330,23 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   sub: 'From completed visits',
                   change: doctorKpis.revenue.change,
                   icon: <DollarSign size={20} className="text-emerald-600" />,
-                  iconBg: 'bg-emerald-50 text-emerald-600'
+                  iconBg: 'bg-emerald-50 text-emerald-600',
+                  onClick: undefined
                 },
               ].map((card, idx) => (
-                <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between">
+                <div
+                  key={idx}
+                  onClick={card.onClick}
+                  className={`bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between ${card.onClick ? 'cursor-pointer hover:border-purple-300 hover:shadow-md transition' : ''}`}
+                >
                   <div className="space-y-1">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">{card.title}</span>
                     <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-black text-slate-900 tracking-tight">{card.value}</span>
                       <span className="text-xs font-semibold text-slate-400">{card.sub}</span>
                     </div>
-                    <span className={`text-[10px] font-bold block ${card.change === null ? 'text-slate-400' : card.change >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                      {card.change === null ? 'No prior period data' : `${card.change >= 0 ? '↑' : '↓'} ${Math.abs(card.change).toFixed(1)}% vs yesterday`}
+                    <span className={`text-[10px] font-bold block ${card.customChangeText ? (followUpBuckets.overdue.length > 0 ? 'text-amber-600' : 'text-emerald-600') : card.change === null ? 'text-slate-400' : card.change >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                      {card.customChangeText || (card.change === null ? 'No prior period data' : `${card.change >= 0 ? '↑' : '↓'} ${Math.abs(card.change).toFixed(1)}% vs yesterday`)}
                     </span>
                   </div>
                   <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${card.iconBg}`}>
@@ -1509,6 +1557,127 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     </div>
                   </div>
                 </div>
+
+                {/* ─── FOLLOW-UP CRM SUMMARY & RETENTION ENGINE ─── */}
+                <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center font-bold shrink-0">
+                        <CheckCircle size={18} />
+                      </div>
+                      <div>
+                        <h3 className="font-black text-sm text-slate-900 flex items-center gap-2">
+                          <span>Follow-Up CRM & Patient Recall</span>
+                          {followUpBuckets.dueToday.length > 0 && (
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-800 text-[10px] font-black rounded-full">
+                              {followUpBuckets.dueToday.length} Due Today
+                            </span>
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-slate-400 font-medium">Automated patient retention, recall tokens, and follow-up compliance.</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setShowFollowUpModal(true)}
+                        className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                      >
+                        + Schedule Follow-Up
+                      </button>
+                      <button
+                        onClick={() => { setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); }}
+                        className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Open CRM Console</span>
+                        <ChevronRight size={13} />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* CRM Metric Badges */}
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div
+                      onClick={() => { setFollowUpTab('dueToday'); setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); }}
+                      className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-xl cursor-pointer hover:bg-amber-100/70 transition"
+                    >
+                      <span className="text-[10px] font-bold text-amber-700 uppercase tracking-wider block">Due Today</span>
+                      <span className="text-xl font-black text-amber-900">{followUpBuckets.dueToday.length}</span>
+                      <span className="text-[10px] text-amber-600 font-medium block">Awaiting consult</span>
+                    </div>
+                    <div
+                      onClick={() => { setFollowUpTab('upcoming'); setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); }}
+                      className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-xl cursor-pointer hover:bg-indigo-100/70 transition"
+                    >
+                      <span className="text-[10px] font-bold text-indigo-700 uppercase tracking-wider block">Upcoming</span>
+                      <span className="text-xl font-black text-indigo-900">{followUpBuckets.upcoming.length}</span>
+                      <span className="text-[10px] text-indigo-600 font-medium block">Scheduled future</span>
+                    </div>
+                    <div
+                      onClick={() => { setFollowUpTab('overdue'); setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); }}
+                      className="p-3 bg-rose-50/70 border border-rose-200/80 rounded-xl cursor-pointer hover:bg-rose-100/70 transition"
+                    >
+                      <span className="text-[10px] font-bold text-rose-700 uppercase tracking-wider block">Overdue</span>
+                      <span className="text-xl font-black text-rose-900">{followUpBuckets.overdue.length}</span>
+                      <span className="text-[10px] text-rose-600 font-medium block">Missed recall</span>
+                    </div>
+                    <div
+                      onClick={() => { setFollowUpTab('completed'); setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); }}
+                      className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl cursor-pointer hover:bg-emerald-100/70 transition"
+                    >
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block">Completed</span>
+                      <span className="text-xl font-black text-emerald-900">{followUpBuckets.completed.length}</span>
+                      <span className="text-[10px] text-emerald-600 font-medium block">
+                        {followUps.length > 0 ? `${Math.round((followUpBuckets.completed.length / followUps.length) * 100)}% recall rate` : '100%'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick list of Due Today Follow-Ups */}
+                  {followUpBuckets.dueToday.length > 0 ? (
+                    <div className="space-y-2 pt-1">
+                      <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">Patients Due For Follow-Up Today</span>
+                      <div className="divide-y divide-slate-100 border border-slate-100 rounded-xl overflow-hidden">
+                        {followUpBuckets.dueToday.slice(0, 4).map(fu => (
+                          <div key={fu.id} className="p-3 bg-slate-50/50 hover:bg-slate-50 flex items-center justify-between gap-3 text-xs transition">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="font-mono text-[11px] font-black px-2 py-0.5 bg-purple-50 text-purple-700 rounded-lg border border-purple-200 shrink-0">
+                                {fu.follow_up_token}
+                              </span>
+                              <div className="min-w-0">
+                                <span className="font-extrabold text-slate-900 block truncate">{fu.patient?.name || 'Patient'}</span>
+                                <span className="text-[10px] text-slate-400 truncate block">
+                                  {fu.patient?.phone || 'No phone'} {fu.reason ? `· ${fu.reason}` : ''}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              {fu.patient?.phone && (
+                                <a
+                                  href={`https://wa.me/${fu.patient.phone.replace(/[^0-9]/g, '')}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg text-[11px] inline-flex items-center gap-1 transition"
+                                >
+                                  <Phone size={11} /> WhatsApp
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleCompleteFollowUp(fu.id)}
+                                className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-lg text-[11px] transition cursor-pointer"
+                              >
+                                ✓ Mark Done
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-slate-400 font-medium italic pt-1">
+                      No follow-ups due today. All scheduled patient recalls are up to date!
+                    </p>
+                  )}
+                </div>
               </div>
 
               {/* RIGHT SIDEBAR (Current Queue & Current Patient Card) */}
@@ -1570,15 +1739,6 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                         </>
                       )}
                     </div>
-
-                    <button
-                      onClick={() => handleCallNextPatient()}
-                      disabled={!nextPatient}
-                      className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5 cursor-pointer"
-                    >
-                      <Volume2 size={16} />
-                      <span>Call Next Patient</span>
-                    </button>
                   </div>
                 </div>
 
@@ -1658,8 +1818,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                   </div>
 
                   <button
-                    onClick={() => openRxModalForCurrentPatient()}
-                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition"
+                    onClick={() => openPatientDetails(currentPatient)}
+                    className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition cursor-pointer"
                   >
                     <Stethoscope size={16} />
                     <span>Start Consultation</span>
@@ -1791,14 +1951,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
 
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => handleCallNextPatient()}
-                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-md flex items-center gap-2 transition"
-                  >
-                    <Volume2 size={16} /> Call Next Patient
-                  </button>
-                  <button
                     onClick={() => setShowAddWalkinModal(true)}
-                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
+                    className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
                   >
                     <Plus size={16} /> Add Walk-In
                   </button>
@@ -1817,7 +1971,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     <button
                       key={tab.key}
                       onClick={() => setQueueFilter(tab.key as any)}
-                      className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap ${
+                      className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer ${
                         queueFilter === tab.key
                           ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
                           : 'text-slate-600 hover:bg-slate-50'
@@ -1853,18 +2007,32 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                       <th className="py-3 px-4">Chief Complaint</th>
                       <th className="py-3 px-4">Vitals</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredQueue.map(q => (
-                      <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">
+                      <tr
+                        key={q.id}
+                        onClick={() => openPatientDetails(q)}
+                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                      >
                         <td className="py-3.5 px-4 font-mono font-black text-indigo-600 text-sm">
                           #{q.token_number}
                         </td>
                         <td className="py-3.5 px-4 font-bold text-slate-900">
-                          {q.patient_name}
-                          <span className="block text-[10px] text-slate-400 font-medium">{q.phone}</span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              openPatientDetails(q)
+                            }}
+                            className="text-left group cursor-pointer"
+                          >
+                            <span className="group-hover:text-indigo-600 group-hover:underline block transition font-bold">
+                              {q.patient_name}
+                            </span>
+                            <span className="block text-[10px] text-slate-400 font-medium">{q.phone}</span>
+                          </button>
                         </td>
                         <td className="py-3.5 px-4 text-slate-600">{q.age} Yrs • {q.gender}</td>
                         <td className="py-3.5 px-4 text-slate-700 font-medium max-w-xs truncate">{q.chief_complaint}</td>
@@ -1885,24 +2053,6 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                           }`}>
                             {q.status}
                           </span>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              onClick={() => handleCallNextPatient(q)}
-                              title="Voice Call Token"
-                              className="p-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1"
-                            >
-                              <Volume2 size={13} /> Call
-                            </button>
-                            <button
-                              onClick={() => openRxModalForCurrentPatient()}
-                              title="Start Consultation & Rx"
-                              className="p-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-lg text-xs font-bold transition flex items-center gap-1"
-                            >
-                              <Stethoscope size={13} /> Rx
-                            </button>
-                          </div>
                         </td>
                       </tr>
                     ))}
@@ -2080,11 +2230,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                       <td className="py-3.5 px-4 text-slate-500 font-medium">{p.lastVisit}</td>
                       <td className="py-3.5 px-4 text-right">
                         <button
-                          onClick={() => {
-                            setSelectedPatientRecord(p)
-                            setShowPatientDetailsModal(true)
-                          }}
-                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition inline-flex items-center gap-1"
+                          onClick={() => openPatientDetails(p)}
+                          className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold rounded-xl transition inline-flex items-center gap-1 cursor-pointer"
                         >
                           <Eye size={13} /> View Record
                         </button>
@@ -2857,11 +3004,11 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                         {!n.is_read && <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0" />}
                         <h4 className="font-bold text-slate-900 text-sm">{n.title}</h4>
                         <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${n.priority === 'urgent' || n.priority === 'high' ? 'bg-rose-100 text-rose-700' : 'bg-slate-100 text-slate-500'}`}>
-                          {n.priority}
+                          {n.priority || 'Normal'}
                         </span>
                       </div>
                       <p className="text-xs text-slate-600 mt-1">{n.message}</p>
-                      <p className="text-[10px] text-slate-400 mt-1.5">{new Date(n.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {n.category.replace('_', ' ')}</p>
+                      <p className="text-[10px] text-slate-400 mt-1.5">{new Date(n.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · {(n.category || n.type || 'system').replace(/_/g, ' ')}</p>
                     </div>
                     <div className="flex flex-col gap-1.5 shrink-0">
                       {!n.is_read && (
@@ -2979,6 +3126,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               </div>
             </div>
           </section>
+        )}
+          </>
         )}
 
       {/* ─── 30-SECOND PRESCRIPTION BUILDER MODAL ─────────── */}
@@ -3279,178 +3428,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
         </div>
       )}
 
-      {/* ─── MODAL: PATIENT DETAILS ─── */}
-      {showPatientDetailsModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full shadow-2xl flex flex-col max-h-[85vh]">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 shrink-0">
-              <div>
-                <h3 className="font-black text-base text-slate-900">Patient Record</h3>
-                <p className="text-[11px] text-slate-400 font-medium">Profile, details, and your visit history with this patient — one screen.</p>
-              </div>
-              <button onClick={() => setShowPatientDetailsModal(false)} className="text-slate-400 hover:text-slate-700">
-                <X size={18} />
-              </button>
-            </div>
 
-            <div className="p-6 space-y-5 text-xs overflow-y-auto">
-              {patientRecordLoading ? (
-                <p className="text-slate-400 text-center py-8">Loading patient record…</p>
-              ) : (
-                <>
-                  {/* Editable Profile */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h4 className="font-black text-xs text-slate-800 uppercase tracking-wider">Profile & Details</h4>
-                      <span className="text-[10px] font-bold text-indigo-600">
-                        {selectedPatientRecord?.token_number || currentPatient?.token_number ? `#${selectedPatientRecord?.token_number ?? currentPatient?.token_number}` : '—'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Full Name</label>
-                        <input
-                          type="text"
-                          value={patientEditForm.name || ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, name: e.target.value }))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Phone</label>
-                        <input
-                          type="text"
-                          value={patientEditForm.phone || ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, phone: e.target.value }))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Age</label>
-                        <input
-                          type="number"
-                          value={patientEditForm.age ?? ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, age: e.target.value ? Number(e.target.value) : null }))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Gender</label>
-                        <select
-                          value={patientEditForm.gender || ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, gender: e.target.value }))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        >
-                          <option value="">—</option>
-                          <option value="Male">Male</option>
-                          <option value="Female">Female</option>
-                          <option value="Other">Other</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1 col-span-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Known Allergies</label>
-                        <input
-                          type="text"
-                          value={patientEditForm.allergies || ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, allergies: e.target.value }))}
-                          placeholder="e.g. Penicillin, Sulfa Drugs"
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        />
-                      </div>
-                      <div className="space-y-1 col-span-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Known Chronic Conditions</label>
-                        <input
-                          type="text"
-                          value={patientEditForm.known_diseases || ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, known_diseases: e.target.value }))}
-                          placeholder="e.g. Diabetes, Hypertension"
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        />
-                      </div>
-                      <div className="space-y-1 col-span-2">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">Address</label>
-                        <input
-                          type="text"
-                          value={patientEditForm.address || ''}
-                          onChange={e => setPatientEditForm(p => ({ ...p, address: e.target.value }))}
-                          className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
-                        />
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleSavePatientProfile}
-                      disabled={patientRecordSaving}
-                      className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold rounded-xl transition"
-                    >
-                      {patientRecordSaving ? 'Saving…' : 'Save Patient Details'}
-                    </button>
-                  </div>
-
-                  {/* Previous Visit History */}
-                  <div className="space-y-2 pt-3 border-t border-slate-100">
-                    <h4 className="font-black text-xs text-slate-800 uppercase tracking-wider">
-                      Previous Visits ({patientHistory.length})
-                    </h4>
-                    {patientHistory.length === 0 ? (
-                      <p className="text-slate-400 text-center py-6">No previous visits with you on record yet.</p>
-                    ) : (
-                      <div className="space-y-2">
-                        {patientHistory.map(visit => (
-                          <div key={visit.appointmentId} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5">
-                            <div className="flex items-center justify-between">
-                              <span className="font-bold text-slate-800">{visit.appointmentDate}</span>
-                              <span className="px-2 py-0.5 bg-white border border-slate-200 rounded-full text-[10px] font-bold text-slate-600 capitalize">
-                                {visit.status.replace('_', ' ')}
-                              </span>
-                            </div>
-                            {visit.symptoms && (
-                              <p className="text-slate-600"><span className="font-bold text-slate-400">Symptoms:</span> {visit.symptoms}</p>
-                            )}
-                            {visit.diagnosis && (
-                              <p className="text-slate-800 font-bold">🩺 {visit.diagnosis}</p>
-                            )}
-                            {visit.medicines.length > 0 && (
-                              <p className="text-slate-600">
-                                <span className="font-bold text-slate-400">Rx:</span> {visit.medicines.map(m => m.name).join(', ')}
-                              </p>
-                            )}
-                            {visit.followUp && (
-                              <p className="text-indigo-600 font-semibold">Follow-up: {visit.followUp}</p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="px-6 py-4 border-t border-slate-100 flex items-center justify-between shrink-0">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setShowRequestModal(true)}
-                  className="px-3 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-bold text-[11px] rounded-xl transition"
-                >
-                  Raise Request
-                </button>
-                <button
-                  onClick={() => setShowEmergencyModal(true)}
-                  className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-[11px] rounded-xl transition flex items-center gap-1"
-                >
-                  <AlertCircle size={13} /> Send to Emergency
-                </button>
-              </div>
-              <button
-                onClick={() => setShowPatientDetailsModal(false)}
-                className="px-4 py-2 bg-slate-100 font-bold text-xs rounded-xl"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ─── MODAL: ADD WALKIN PATIENT ─── */}
       {showAddWalkinModal && (
@@ -4466,29 +4444,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
         </div>
       )}
 
-      {/* ─── MODAL: PATIENT DETAILS ─── */}
-      <PatientDetailsModal
-        isOpen={showPatientDetailsModal}
-        onClose={() => setShowPatientDetailsModal(false)}
-        patient={patientDetailsTarget}
-        doctorId={doctorId}
-        hospitalName={selectedHospital}
-        onStartConsultation={(p) => {
-          openRxModalForCurrentPatient()
-        }}
-        onIssueCertificate={(p) => {
-          setSelectedPatientRecord(p as any)
-          setShowCertModal(true)
-        }}
-        onLabAdvice={(p) => {
-          setSelectedPatientRecord(p as any)
-          setShowLabModal(true)
-        }}
-        onScheduleFollowUp={(p) => {
-          setSelectedPatientRecord(p as any)
-          setShowFollowUpModal(true)
-        }}
-      />
+
 
     </DoctorDashboardLayout>
   )

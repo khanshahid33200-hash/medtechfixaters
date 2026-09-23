@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSEO } from '../hooks/useSEO'
+import { validateName, validatePhone, validateAge } from '../utils/validation'
 
 interface Department {
   id: string
@@ -252,6 +253,24 @@ export default function IntakePage() {
       return
     }
 
+    const nameCheck = validateName(formData.name)
+    if (!nameCheck.isValid) {
+      alert(nameCheck.error || 'Please enter a valid patient full name.')
+      return
+    }
+
+    const phoneCheck = validatePhone(formData.phone)
+    if (!phoneCheck.isValid) {
+      alert(phoneCheck.error || 'Please enter a valid 10-digit mobile number.')
+      return
+    }
+
+    const ageCheck = validateAge(formData.age)
+    if (!ageCheck.isValid) {
+      alert(ageCheck.error || 'Please enter a valid patient age.')
+      return
+    }
+
     setIsSubmitting(true)
     setSubmittingStep('Validating registration & checking patient record...')
     setError(null)
@@ -263,9 +282,9 @@ export default function IntakePage() {
         p_doctor_id: selectedDoctor.id,
         p_appointment_date: selectedDate,
         p_patient_name: formData.name.trim(),
-        p_patient_phone: formData.phone.trim(),
+        p_patient_phone: phoneCheck.cleaned,
         p_patient_gender: formData.gender,
-        p_patient_age: parseInt(formData.age) || 30,
+        p_patient_age: ageCheck.ageNum,
         p_patient_dob: formData.date_of_birth || null,
         p_symptoms: formData.symptoms.trim(),
         p_known_diseases: formData.known_diseases.trim() || null,

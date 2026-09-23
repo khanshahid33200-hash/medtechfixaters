@@ -74,12 +74,19 @@ interface LeadItem {
 interface DoctorItem {
   id: string
   name: string
+  doctor_code?: string
   hospital: string
+  hospital_id?: string
   specialty: string
   email: string
   phone: string
   status: 'online' | 'in_session' | 'off_duty'
+  account_status?: string
+  is_active?: boolean
+  auth_provider?: string
   todayConsults: number
+  onboarding_status?: string
+  joinedOn?: string
 }
 
 interface SupportTicket {
@@ -252,15 +259,7 @@ export default function OwnerAdmin() {
     }
   })
 
-  const [doctorsList] = useState<DoctorItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('clinicos_doctors')
-      if (saved) return JSON.parse(saved)
-      return []
-    } catch {
-      return []
-    }
-  })
+  const [doctorsList, setDoctorsList] = useState<DoctorItem[]>([])
 
   const [departmentsList, setDepartmentsList] = useState<DepartmentItem[]>(() => {
     try {
@@ -350,11 +349,10 @@ export default function OwnerAdmin() {
 
     async function loadPlatformData() {
       try {
-        // 1. Fetch real hospitals (excluding individual doctor private clinics)
+        // 1. Fetch ALL real hospitals and clinics (never exclude individual doctor clinics)
         const { data: dbHosps } = await supabase
           .from('hospitals')
           .select('*')
-          .neq('client_type', 'individual_doctor')
           .order('created_at', { ascending: false })
 
         // 2. Fetch distinct QR codes
@@ -365,7 +363,7 @@ export default function OwnerAdmin() {
         const qrMap = new Map((dbQrs || []).map(q => [q.hospital_id, q.token]))
         const docQrMap = new Map((dbQrs || []).filter(q => q.doctor_id).map(q => [q.doctor_id, q.token]))
 
-        // 3. Fetch Individual Doctors
+        // 3. Fetch Individual Doctors & Clinics
         try {
           const { data: indDocs } = await supabase
             .from('doctor_details')
@@ -382,31 +380,29 @@ export default function OwnerAdmin() {
             .order('created_at', { ascending: false })
 
           if (indDocs) {
-            const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[])
-              .filter(d => d.profiles?.client_type === 'individual_doctor' || d.hospitals?.client_type === 'individual_doctor')
-              .map(d => {
-                const docId = d.user_id
-                const hospId = d.hospitals?.id || d.profiles?.hospital_id
-                const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
-                return {
-                  doctor_id: docId,
-                  doctor_code: d.profiles?.doctor_code || `DOC-${docId.slice(-4).toUpperCase()}`,
-                  doctor_name: d.profiles?.full_name || 'Doctor',
-                  clinic_name: d.clinic_name || d.hospitals?.name || 'Clinic',
-                  clinic_id: hospId || '',
-                  email: d.profiles?.email || '',
-                  phone: d.hospitals?.phone || '',
-                  specialization: d.specialization || 'General Physician',
-                  consultation_fee: Number(d.consultation_fee) || 500,
-                  plan_tier: d.onboarding_status === 'ACTIVE' ? 'Pro' : 'Starter',
-                  onboarding_status: d.onboarding_status || 'ACTIVE',
-                  account_status: d.profiles?.account_status || (d.profiles?.is_active ? 'active' : 'inactive'),
-                  is_active: Boolean(d.profiles?.is_active),
-                  qr_token: token,
-                  booking_url: `/book/${token}`,
-                  joined_on: d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
-                }
-              })
+            const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[]).map(d => {
+              const docId = d.user_id
+              const hospId = d.hospitals?.id || d.profiles?.hospital_id
+              const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
+              return {
+                doctor_id: docId,
+                doctor_code: d.profiles?.doctor_code || `DOC-${docId.slice(-4).toUpperCase()}`,
+                doctor_name: d.profiles?.full_name || 'Doctor',
+                clinic_name: d.clinic_name || d.hospitals?.name || 'Clinic',
+                clinic_id: hospId || '',
+                email: d.profiles?.email || '',
+                phone: d.hospitals?.phone || '',
+                specialization: d.specialization || 'General Physician',
+                consultation_fee: Number(d.consultation_fee) || 500,
+                plan_tier: d.onboarding_status === 'ACTIVE' ? 'Pro' : 'Starter',
+                onboarding_status: d.onboarding_status || 'ACTIVE',
+                account_status: d.profiles?.account_status || (d.profiles?.is_active ? 'active' : 'inactive'),
+                is_active: Boolean(d.profiles?.is_active),
+                qr_token: token,
+                booking_url: `/book/${token}`,
+                joined_on: d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+              }
+            })
             setIndividualDoctorsList(mappedIndDocs)
           }
         } catch (indErr) {
@@ -441,7 +437,7 @@ export default function OwnerAdmin() {
               doctor_limit: h.doctor_limit || 10,
               doctor_count: 0,
               joinedOn: new Date(h.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
-              plan: (h.plan as any) || 'Hospital Pro',
+              plan: (h.plan as any) || (h.client_type === 'individual_doctor' ? 'Single OPD' : 'Hospital Pro'),
               revenue: 0,
               status: h.status || 'active'
             }
@@ -450,13 +446,105 @@ export default function OwnerAdmin() {
           localStorage.setItem('clinicos_hospitals', JSON.stringify(mapped))
         }
 
-        // 4. Count real doctors across all hospitals
-        const { count: docCount } = await supabase
-          .from('profiles')
-          .select('id', { count: 'exact', head: true })
-          .eq('role', 'doctor')
-          .eq('is_active', true)
-        setRealDoctorCount(docCount || 0)
+        // 4. Fetch ALL doctors (hospital specialists, private clinics, and Google account registrations)
+        try {
+          const { data: allProfiles } = await supabase
+            .from('profiles')
+            .select('id, full_name, email, doctor_code, hospital_id, is_active, account_status, role, client_type, created_at')
+            .order('created_at', { ascending: false })
+
+          const { data: docDetails } = await supabase
+            .from('doctor_details')
+            .select('user_id, specialization, clinic_name, consultation_fee, onboarding_status, created_at')
+
+          const { data: allHosps } = await supabase
+            .from('hospitals')
+            .select('id, name, phone, client_type, city')
+
+          const todayStr = new Date().toISOString().split('T')[0]
+          const { data: todayAppts } = await supabase
+            .from('appointments')
+            .select('doctor_id')
+            .gte('created_at', `${todayStr}T00:00:00`)
+
+          const docDetailMap = new Map((docDetails || []).map(d => [d.user_id, d]))
+          const hospMap = new Map((allHosps || []).map(h => [h.id, h]))
+          const apptCountMap = new Map<string, number>()
+          todayAppts?.forEach(a => {
+            if (a.doctor_id) {
+              apptCountMap.set(a.doctor_id, (apptCountMap.get(a.doctor_id) || 0) + 1)
+            }
+          })
+
+          const doctorMap = new Map<string, any>()
+
+          // A) Profiles marked as doctor or individual doctor
+          ;(allProfiles || []).forEach(p => {
+            const detail = docDetailMap.get(p.id)
+            const isDoc = p.role === 'doctor' || p.client_type === 'individual_doctor' || Boolean(detail) || (p.doctor_code && p.doctor_code.startsWith('DOC'))
+            if (isDoc) {
+              doctorMap.set(p.id, p)
+            }
+          })
+
+          // B) Records in doctor_details (including Google signups before profile role update)
+          ;(docDetails || []).forEach(d => {
+            if (d.user_id && !doctorMap.has(d.user_id)) {
+              const prof = (allProfiles || []).find(p => p.id === d.user_id)
+              doctorMap.set(d.user_id, prof || {
+                id: d.user_id,
+                full_name: 'Dr. (Google Registered)',
+                email: '',
+                doctor_code: `DOC-${d.user_id.slice(0, 4).toUpperCase()}`,
+                role: 'doctor',
+                is_active: true,
+                account_status: 'active',
+                created_at: d.created_at,
+              })
+            }
+          })
+
+          // C) Any other user who signed up as doctor or with Google for clinic
+          ;(allProfiles || []).forEach(p => {
+            if (!doctorMap.has(p.id) && p.role !== 'super_admin' && p.role !== 'hospital_admin' && p.role !== 'staff') {
+              if (p.email?.toLowerCase().includes('doc') || p.full_name?.toLowerCase().includes('dr') || p.doctor_code) {
+                doctorMap.set(p.id, p)
+              }
+            }
+          })
+
+          const mappedDoctors: DoctorItem[] = Array.from(doctorMap.values()).map(p => {
+            const detail = docDetailMap.get(p.id)
+            const hosp = p.hospital_id ? hospMap.get(p.hospital_id) : null
+            const hospName = hosp?.name || detail?.clinic_name || (p.client_type === 'individual_doctor' ? 'Solo Clinic' : 'Clinical OPD')
+            const docPhone = hosp?.phone || ''
+            const isGoogle = Boolean(p.email && p.email.toLowerCase().endsWith('@gmail.com'))
+            const authProvider = isGoogle ? 'Google Auth' : (p.doctor_code ? 'Doctor ID / Password' : 'Email Auth')
+
+            return {
+              id: p.id,
+              name: p.full_name || 'Dr. Consultant',
+              doctor_code: p.doctor_code || `DOC-${p.id.slice(0, 4).toUpperCase()}`,
+              hospital: hospName,
+              hospital_id: p.hospital_id || undefined,
+              specialty: detail?.specialization || 'General Physician',
+              email: p.email || '',
+              phone: docPhone,
+              status: p.is_active !== false ? 'online' : 'off_duty',
+              account_status: p.account_status || (p.is_active !== false ? 'active' : 'suspended'),
+              is_active: p.is_active !== false,
+              auth_provider: authProvider,
+              todayConsults: apptCountMap.get(p.id) || 0,
+              onboarding_status: detail?.onboarding_status || 'ACTIVE',
+              joinedOn: p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+            }
+          })
+
+          setDoctorsList(mappedDoctors)
+          setRealDoctorCount(mappedDoctors.filter(d => d.is_active).length)
+        } catch (docErr) {
+          console.warn('Doctors list load error:', docErr)
+        }
 
         // 5. Count real appointments
         const { count: apptCount } = await supabase
@@ -948,6 +1036,29 @@ export default function OwnerAdmin() {
     setTimeout(() => setNotice(null), 3000)
   }
 
+  // Toggle Doctor Active / Suspended Status
+  const handleToggleDoctorStatus = async (doctor: DoctorItem) => {
+    const nextActive = !doctor.is_active
+    const nextAccStatus = nextActive ? 'active' : 'suspended'
+    try {
+      await supabase
+        .from('profiles')
+        .update({ is_active: nextActive, account_status: nextAccStatus })
+        .eq('id', doctor.id)
+
+      setDoctorsList(prev => prev.map(d => d.id === doctor.id ? {
+        ...d,
+        is_active: nextActive,
+        account_status: nextAccStatus,
+        status: nextActive ? 'online' : 'off_duty'
+      } : d))
+      setNotice(`Status for Dr. ${doctor.name} updated to ${nextActive ? 'ACTIVE' : 'SUSPENDED'}`)
+      setTimeout(() => setNotice(null), 3000)
+    } catch (err: any) {
+      setNotice(`Failed to update doctor status: ${err.message}`)
+    }
+  }
+
   // Filtered lists
   const filteredHospitals = hospitalsList.filter(h =>
     h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -958,7 +1069,10 @@ export default function OwnerAdmin() {
   const filteredDoctors = doctorsList.filter(d =>
     d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     d.hospital.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.specialty.toLowerCase().includes(searchQuery.toLowerCase())
+    d.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    d.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (d.doctor_code && d.doctor_code.toLowerCase().includes(searchQuery.toLowerCase())) ||
+    (d.auth_provider && d.auth_provider.toLowerCase().includes(searchQuery.toLowerCase()))
   )
 
   const filteredLogs = auditLogs.filter(l =>
@@ -2519,9 +2633,16 @@ export default function OwnerAdmin() {
         {/* ─── VIEW 10: DOCTORS DIRECTORY (CLEAN) ──────────────── */}
         {activeNav === 'doctors' && (
           <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-black text-slate-900">Consulting Doctors Directory ({doctorsList.length})</h2>
-              <p className="text-xs text-slate-500">Live roster of active OPD specialists across all hospital tenants.</p>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">Consulting Doctors Directory ({doctorsList.length})</h2>
+                <p className="text-xs text-slate-500">Live roster of active OPD specialists and private clinic doctors across all hospital tenants.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700">
+                  {doctorsList.filter(d => d.is_active).length} Active / {doctorsList.length} Total
+                </span>
+              </div>
             </div>
 
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -2530,40 +2651,96 @@ export default function OwnerAdmin() {
                   <Stethoscope size={36} className="mx-auto text-slate-300" />
                   <h3 className="font-black text-base text-slate-800">No Doctors Registered Yet</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    When hospital administrators onboard doctors from their respective hospital portals, they will appear in this master roster.
+                    When hospital administrators or individual clinics onboard doctors, they will automatically appear in this master platform roster.
                   </p>
                 </div>
               ) : (
                 <table className="w-full text-left text-xs">
                   <thead>
                     <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                      <th className="py-3 px-4">Doctor Name</th>
-                      <th className="py-3 px-4">Hospital</th>
+                      <th className="py-3 px-4">Doctor Name & ID</th>
+                      <th className="py-3 px-4">Hospital / Clinic</th>
                       <th className="py-3 px-4">Specialty</th>
+                      <th className="py-3 px-4">Login Email</th>
+                      <th className="py-3 px-4">Auth Method</th>
                       <th className="py-3 px-4">Today Consults</th>
-                      <th className="py-3 px-4 text-right">Quick Contact</th>
+                      <th className="py-3 px-4">Account Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredDoctors.map(doc => (
                       <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-3.5 px-4 font-black text-slate-900">{doc.name}</td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-600">{doc.hospital}</td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">
+                              Dr
+                            </div>
+                            <div>
+                              <span className="font-extrabold text-slate-900 block text-sm">{doc.name}</span>
+                              <span className="text-[10px] font-mono font-bold text-slate-400">{doc.doctor_code || `ID: ${doc.id.slice(0, 8)}`}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4 font-semibold text-slate-700">{doc.hospital}</td>
                         <td className="py-3.5 px-4">
                           <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg text-[10px]">
                             {doc.specialty}
                           </span>
                         </td>
-                        <td className="py-3.5 px-4 font-black text-slate-800">{doc.todayConsults} Patients</td>
-                        <td className="py-3.5 px-4 text-right">
-                          <a
-                            href={`https://wa.me/${doc.phone.replace(/[^0-9]/g, '')}`}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg inline-flex items-center gap-1 text-[11px]"
+                        <td className="py-3.5 px-4">
+                          <span className="font-medium text-slate-600 block">{doc.email || '—'}</span>
+                          {doc.phone && <span className="text-[10px] text-slate-400">{doc.phone}</span>}
+                        </td>
+                        <td className="py-3.5 px-4">
+                          {doc.auth_provider === 'Google Auth' ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200/80 rounded-full text-[10px] font-extrabold shadow-xs">
+                              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
+                              <span>Google Account</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">
+                              {doc.auth_provider || 'Email Auth'}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3.5 px-4 font-black text-slate-800">
+                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-extrabold">
+                            {doc.todayConsults} Patients
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <button
+                            onClick={() => handleToggleDoctorStatus(doc)}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition cursor-pointer ${
+                              doc.is_active
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700'
+                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-emerald-50 hover:text-emerald-700'
+                            }`}
+                            title="Click to toggle status"
                           >
-                            <Phone size={11} /> WhatsApp
-                          </a>
+                            {doc.is_active ? 'Active' : 'Suspended'}
+                          </button>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {doc.phone && (
+                              <a
+                                href={`https://wa.me/${doc.phone.replace(/[^0-9]/g, '')}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-bold rounded-lg inline-flex items-center gap-1 text-[11px] transition"
+                              >
+                                <Phone size={11} /> WhatsApp
+                              </a>
+                            )}
+                            <button
+                              onClick={() => handleToggleDoctorStatus(doc)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition"
+                            >
+                              {doc.is_active ? 'Suspend' : 'Activate'}
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}

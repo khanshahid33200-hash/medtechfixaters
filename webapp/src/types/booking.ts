@@ -132,6 +132,6 @@ export interface AIChatMessage {
   sender: "ai" | "patient";
   text: string;
   timestamp: string;
-  stepKey?: "name" | "details" | "concern" | "symptoms" | "meds" | "processing";
+  stepKey?: "name" | "phone" | "age" | "gender" | "details" | "concern" | "symptoms" | "meds" | "processing";
   quickChips?: string[];
 }
