@@ -62,6 +62,17 @@ export interface HospitalWorkspace {
   license?: string;
   qrToken?: string;
   active: boolean;
+  client_type?: 'hospital' | 'individual_doctor';
+  is_individual_doctor?: boolean;
+  clinic?: {
+    name: string;
+    address?: string;
+    city?: string;
+    phone?: string;
+    pincode?: string;
+  };
+  doctor?: DoctorItem;
+  doctors?: DoctorItem[];
 }
 
 export interface DoctorItem {
@@ -80,6 +91,13 @@ export interface DoctorItem {
   accepting_appointments: boolean;
   todayConsults?: number;
   avatar_url?: string;
+  qualification?: string;
+  registration_number?: string;
+  clinic_name?: string;
+  clinic_address?: string;
+  available_days?: string[];
+  available_hours?: { start?: string; end?: string };
+  slot_duration?: number;
 }
 
 export interface DepartmentItem {
@@ -99,10 +117,14 @@ export interface AppointmentResult {
   doctor_name: string;
   department_name: string;
   hospital_name: string;
+  patient_id?: string;
+  patient_number?: string;
   patient_name: string;
   patient_phone: string;
   booking_method: BookingMethod;
   token_number: string;
+  queue_number?: string;
+  tracking_token?: string;
   queue_position: number;
   patients_ahead: number;
   estimated_wait_mins: number;

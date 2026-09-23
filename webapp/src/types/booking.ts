@@ -6,7 +6,8 @@ export type BookingScreen =
   | "manual-department"
   | "manual-doctor"
   | "review"
-  | "success";
+  | "success"
+  | "track";
 
 export type BookingMethod = "AI" | "MANUAL" | "Manual" | "QR" | "Online" | "Walk-in";
 
@@ -46,6 +47,20 @@ export interface HospitalWorkspace {
   license?: string;
   qrToken?: string;
   active: boolean;
+  client_type?: 'hospital' | 'individual_doctor';
+  is_individual_doctor?: boolean;
+  clinic?: {
+    id?: string;
+    name?: string;
+    address?: string;
+    city?: string;
+    state?: string;
+    pincode?: string;
+    phone?: string;
+    email?: string;
+  };
+  doctor?: DoctorItem | any;
+  doctors?: DoctorItem[];
 }
 
 export interface DoctorItem {
@@ -56,12 +71,19 @@ export interface DoctorItem {
   department_id?: string;
   department?: string;
   specialty: string;
+  qualification?: string;
+  registration_number?: string;
   fee: number;
   room_number?: string;
   active: boolean;
   accepting_appointments: boolean;
   todayConsults?: number;
   avatar_url?: string;
+  clinic_name?: string;
+  clinic_address?: string;
+  available_days?: string[];
+  available_hours?: { start?: string; end?: string };
+  slot_duration?: number;
 }
 
 export interface DepartmentItem {

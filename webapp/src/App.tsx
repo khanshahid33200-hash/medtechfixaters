@@ -38,6 +38,8 @@ import QRKiosk from './pages/QRKiosk'
 import History from './pages/History'
 import DoctorProfile from './pages/DoctorProfile'
 import OwnerAdmin from './pages/OwnerAdmin'
+import DoctorSignupPage from './pages/DoctorSignupPage'
+import DoctorOnboardingPage from './pages/DoctorOnboardingPage'
 // (Legacy Hospital Admin system deleted & merged into Hospital Dashboard system)
 
 // Medtech Fixaters Hospital Dashboard Pages (design.md)
@@ -118,6 +120,9 @@ function App() {
 
         {/* Sign In Portals & Access Control */}
         <Route path="/account-blocked" element={<AccountBlockedPage />} />
+        <Route path="/signup/doctor" element={<DoctorSignupPage />} />
+        <Route path="/doctor/signup" element={<DoctorSignupPage />} />
+        <Route path="/doctor/onboarding" element={<DoctorOnboardingPage />} />
         <Route path="/doctor" element={<Login />} />
         <Route path="/doctor/login" element={<Login />} />
         <Route path="/login" element={<Login />} />

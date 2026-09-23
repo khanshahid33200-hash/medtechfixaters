@@ -11,18 +11,25 @@ export async function getHospitalByTokenOrId(tokenOrId: string): Promise<Hospita
       p_token: clean,
     });
 
-    if (!rpcErr && rpcData?.success && rpcData?.hospital) {
-      const h = rpcData.hospital;
+    if (!rpcErr && rpcData?.success && (rpcData?.hospital || rpcData?.clinic)) {
+      const h = rpcData.hospital || {};
+      const clinic = rpcData.clinic || {};
+      const isInd = Boolean(rpcData.is_individual_doctor);
       return {
-        id: h.id,
-        name: h.name || "Hospital Facility",
-        address: h.address || "Main OPD Building",
-        city: h.city || h.location || "Central Facility",
-        phone: h.phone || "",
+        id: h.id || clinic.id || "clinic-id",
+        name: isInd ? (clinic.name || h.name || "Doctor's Clinic") : (h.name || "Hospital Facility"),
+        address: clinic.address || h.address || "Main OPD Building",
+        city: clinic.city || h.city || h.location || "Central Facility",
+        phone: clinic.phone || h.phone || "",
         email: h.email || "",
         license: h.license || "",
         qrToken: clean,
         active: true,
+        client_type: isInd ? 'individual_doctor' : 'hospital',
+        is_individual_doctor: isInd,
+        clinic: clinic,
+        doctor: rpcData.doctor,
+        doctors: rpcData.doctors || (rpcData.doctor ? [rpcData.doctor] : []),
       };
     }
 

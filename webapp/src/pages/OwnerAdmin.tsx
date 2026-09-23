@@ -38,6 +38,25 @@ interface HospitalItem {
   status: 'active' | 'pending' | 'suspended'
 }
 
+interface IndividualDoctorItem {
+  doctor_id: string
+  doctor_code: string
+  doctor_name: string
+  clinic_name: string
+  clinic_id: string
+  email: string
+  phone: string
+  specialization: string
+  consultation_fee: number
+  plan_tier: string
+  onboarding_status: string
+  account_status: string
+  is_active: boolean
+  qr_token: string
+  booking_url: string
+  joined_on: string
+}
+
 interface LeadItem {
   id?: string
   name?: string
@@ -148,6 +167,20 @@ export default function OwnerAdmin() {
 
   const [editingHospital, setEditingHospital] = useState<HospitalItem | null>(null)
   const [selectedHospitalForQR, setSelectedHospitalForQR] = useState<HospitalItem | null>(null)
+  const [selectedIndividualDoctorForQR, setSelectedIndividualDoctorForQR] = useState<IndividualDoctorItem | null>(null)
+  const [clientTypeToCreate, setClientTypeToCreate] = useState<'hospital' | 'individual_doctor'>('hospital')
+  const [individualDoctorsList, setIndividualDoctorsList] = useState<IndividualDoctorItem[]>([])
+  const [individualDoctorForm, setIndividualDoctorForm] = useState({
+    doctor_name: '',
+    clinic_name: '',
+    email: '',
+    password: '',
+    phone: '',
+    specialization: 'General Physician',
+    consultation_fee: 500,
+    plan_tier: 'starter',
+    city: 'Mumbai',
+  })
   const [qrCopied, setQrCopied] = useState(false)
   const [hospSecurityModal, setHospSecurityModal] = useState<{ hospital: HospitalItem; action: 'blocked' | 'banned' | 'suspended' | 'deleted' | 'unblock' } | null>(null)
   const [hospSecurityReason, setHospSecurityReason] = useState('Administrative Action / Compliance Review')
@@ -317,20 +350,68 @@ export default function OwnerAdmin() {
 
     async function loadPlatformData() {
       try {
-        // 1. Fetch real hospitals from Supabase — RLS's "Super Admin full
-        // access to hospitals" policy (is_super_admin()) authorizes this for
-        // the now-real authenticated super_admin session, no service role.
+        // 1. Fetch real hospitals (excluding individual doctor private clinics)
         const { data: dbHosps } = await supabase
           .from('hospitals')
           .select('*')
+          .neq('client_type', 'individual_doctor')
           .order('created_at', { ascending: false })
 
-        // 2. Fetch or initialize distinct QR codes for all hospitals
+        // 2. Fetch distinct QR codes
         const { data: dbQrs } = await supabase
           .from('qr_codes')
           .select('*')
 
         const qrMap = new Map((dbQrs || []).map(q => [q.hospital_id, q.token]))
+        const docQrMap = new Map((dbQrs || []).filter(q => q.doctor_id).map(q => [q.doctor_id, q.token]))
+
+        // 3. Fetch Individual Doctors
+        try {
+          const { data: indDocs } = await supabase
+            .from('doctor_details')
+            .select(`
+              user_id,
+              clinic_name,
+              specialization,
+              consultation_fee,
+              onboarding_status,
+              created_at,
+              profiles(id, full_name, email, doctor_code, is_active, account_status, client_type, hospital_id),
+              hospitals(id, name, city, phone, status, client_type)
+            `)
+            .order('created_at', { ascending: false })
+
+          if (indDocs) {
+            const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[])
+              .filter(d => d.profiles?.client_type === 'individual_doctor' || d.hospitals?.client_type === 'individual_doctor')
+              .map(d => {
+                const docId = d.user_id
+                const hospId = d.hospitals?.id || d.profiles?.hospital_id
+                const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
+                return {
+                  doctor_id: docId,
+                  doctor_code: d.profiles?.doctor_code || `DOC-${docId.slice(-4).toUpperCase()}`,
+                  doctor_name: d.profiles?.full_name || 'Doctor',
+                  clinic_name: d.clinic_name || d.hospitals?.name || 'Clinic',
+                  clinic_id: hospId || '',
+                  email: d.profiles?.email || '',
+                  phone: d.hospitals?.phone || '',
+                  specialization: d.specialization || 'General Physician',
+                  consultation_fee: Number(d.consultation_fee) || 500,
+                  plan_tier: d.onboarding_status === 'ACTIVE' ? 'Pro' : 'Starter',
+                  onboarding_status: d.onboarding_status || 'ACTIVE',
+                  account_status: d.profiles?.account_status || (d.profiles?.is_active ? 'active' : 'inactive'),
+                  is_active: Boolean(d.profiles?.is_active),
+                  qr_token: token,
+                  booking_url: `/book/${token}`,
+                  joined_on: d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+                }
+              })
+            setIndividualDoctorsList(mappedIndDocs)
+          }
+        } catch (indErr) {
+          console.warn('Individual doctors fetch notice:', indErr)
+        }
 
         if (dbHosps) {
           const mapped: HospitalItem[] = dbHosps.map(h => {
@@ -369,7 +450,7 @@ export default function OwnerAdmin() {
           localStorage.setItem('clinicos_hospitals', JSON.stringify(mapped))
         }
 
-        // 2. Count real doctors across all hospitals
+        // 4. Count real doctors across all hospitals
         const { count: docCount } = await supabase
           .from('profiles')
           .select('id', { count: 'exact', head: true })
@@ -377,13 +458,13 @@ export default function OwnerAdmin() {
           .eq('is_active', true)
         setRealDoctorCount(docCount || 0)
 
-        // 3. Count real appointments
+        // 5. Count real appointments
         const { count: apptCount } = await supabase
           .from('appointments')
           .select('id', { count: 'exact', head: true })
         setRealApptCount(apptCount || 0)
 
-        // 4. Calculate real revenue from completed appointments
+        // 6. Calculate real revenue from completed appointments
         const { data: paidAppts } = await supabase
           .from('appointments')
           .select('id, fee')
@@ -617,6 +698,122 @@ export default function OwnerAdmin() {
     setHospitalForm({ name: '', location: '', license: '', phone: '', email: '', password: '', address: '', plan: 'Hospital Pro', doctor_limit: 10 })
     setNotice(`✓ Hospital "${newHosp.name}" & Admin (${cleanEmail}) saved to Supabase Auth! Login active at /login.`)
     setTimeout(() => setNotice(null), 6000)
+  }
+
+  // Create Individual Doctor Action (Admin Mode)
+  const handleCreateIndividualDoctor = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setNotice(`Creating Individual Doctor account for "${individualDoctorForm.doctor_name}" in Supabase...`)
+
+    try {
+      const cleanSlug = (individualDoctorForm.clinic_name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').slice(0, 30) || 'clinic') + '-' + Date.now().toString().slice(-4)
+      const { data: res, error: err } = await supabase.rpc('admin_create_individual_doctor', {
+        p_doctor_name: individualDoctorForm.doctor_name.trim(),
+        p_clinic_name: individualDoctorForm.clinic_name.trim(),
+        p_email: individualDoctorForm.email.trim().toLowerCase(),
+        p_password: individualDoctorForm.password.trim(),
+        p_phone: individualDoctorForm.phone.trim(),
+        p_specialization: individualDoctorForm.specialization.trim(),
+        p_consultation_fee: Number(individualDoctorForm.consultation_fee) || 500,
+        p_plan_tier: individualDoctorForm.plan_tier,
+        p_city: individualDoctorForm.city.trim(),
+        p_slug: cleanSlug,
+      })
+
+      if (res?.success) {
+        setNotice(`✅ Individual Doctor created! Doctor ID: ${res.doctor_code}, QR Token: ${res.qr_token}`)
+        setShowCreateHospitalModal(false)
+        setIndividualDoctorForm({
+          doctor_name: '',
+          clinic_name: '',
+          email: '',
+          password: '',
+          phone: '',
+          specialization: 'General Physician',
+          consultation_fee: 500,
+          plan_tier: 'starter',
+          city: 'Mumbai',
+        })
+
+        // Refresh list
+        const { data: indDocs } = await supabase
+          .from('doctor_details')
+          .select(`
+            user_id,
+            clinic_name,
+            specialization,
+            consultation_fee,
+            onboarding_status,
+            created_at,
+            profiles(id, full_name, email, doctor_code, is_active, account_status, client_type, hospital_id),
+            hospitals(id, name, city, phone, status, client_type)
+          `)
+          .order('created_at', { ascending: false })
+
+        if (indDocs) {
+          const { data: dbQrs } = await supabase.from('qr_codes').select('*')
+          const qrMap = new Map((dbQrs || []).map(q => [q.hospital_id, q.token]))
+          const docQrMap = new Map((dbQrs || []).filter(q => q.doctor_id).map(q => [q.doctor_id, q.token]))
+
+          const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[])
+            .filter(d => d.profiles?.client_type === 'individual_doctor' || d.hospitals?.client_type === 'individual_doctor')
+            .map(d => {
+              const docId = d.user_id
+              const hospId = d.hospitals?.id || d.profiles?.hospital_id
+              const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
+              return {
+                doctor_id: docId,
+                doctor_code: d.profiles?.doctor_code || `DOC-${docId.slice(-4).toUpperCase()}`,
+                doctor_name: d.profiles?.full_name || 'Doctor',
+                clinic_name: d.clinic_name || d.hospitals?.name || 'Clinic',
+                clinic_id: hospId || '',
+                email: d.profiles?.email || '',
+                phone: d.hospitals?.phone || '',
+                specialization: d.specialization || 'General Physician',
+                consultation_fee: Number(d.consultation_fee) || 500,
+                plan_tier: d.onboarding_status === 'ACTIVE' ? 'Pro' : 'Starter',
+                onboarding_status: d.onboarding_status || 'ACTIVE',
+                account_status: d.profiles?.account_status || (d.profiles?.is_active ? 'active' : 'inactive'),
+                is_active: Boolean(d.profiles?.is_active),
+                qr_token: token,
+                booking_url: `/book/${token}`,
+                joined_on: d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+              }
+            })
+          setIndividualDoctorsList(mappedIndDocs)
+        }
+      } else {
+        throw new Error(res?.error || err?.message || 'Failed to create individual doctor.')
+      }
+    } catch (createErr: any) {
+      setNotice(`❌ Error creating individual doctor: ${createErr.message}`)
+    }
+  }
+
+  // Toggle Individual Doctor Active Status
+  const handleToggleIndividualDoctorStatus = async (doctor: IndividualDoctorItem) => {
+    const nextStatus = doctor.is_active ? false : true
+    const nextAccStatus = nextStatus ? 'active' : 'suspended'
+
+    try {
+      await supabase
+        .from('profiles')
+        .update({ is_active: nextStatus, account_status: nextAccStatus })
+        .eq('id', doctor.doctor_id)
+
+      if (doctor.clinic_id) {
+        await supabase
+          .from('hospitals')
+          .update({ status: nextStatus ? 'active' : 'suspended' })
+          .eq('id', doctor.clinic_id)
+      }
+
+      setIndividualDoctorsList(prev => prev.map(d => d.doctor_id === doctor.doctor_id ? { ...d, is_active: nextStatus, account_status: nextAccStatus } : d))
+      setNotice(`Status for Dr. ${doctor.doctor_name} updated to ${nextStatus ? 'ACTIVE' : 'SUSPENDED'}`)
+      setTimeout(() => setNotice(null), 3000)
+    } catch (err: any) {
+      setNotice(`Failed to update status: ${err.message}`)
+    }
   }
 
   // Handle Hospital Security Action (Block / Ban / Suspend / Unblock)
@@ -1103,12 +1300,13 @@ export default function OwnerAdmin() {
               ))}
             </div>
 
-            {/* HOSPITAL MANAGEMENT */}
+            {/* HOSPITAL & CLIENT MANAGEMENT */}
             <div className="space-y-1">
-              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">HOSPITAL MANAGEMENT</span>
+              <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">CLIENT & CLINIC MANAGEMENT</span>
               {[
                 { id: 'hospitals', label: 'Hospitals', icon: <Building2 size={16} /> },
-                { id: 'create-hospital', label: 'Create Hospital', icon: <Plus size={16} />, isAction: true },
+                { id: 'individual_doctors', label: 'Individual Doctors', icon: <Stethoscope size={16} /> },
+                { id: 'create-hospital', label: 'Add New Client', icon: <Plus size={16} />, isAction: true },
                 { id: 'hospital-admins', label: 'Hospital Admins', icon: <UserCheck size={16} /> },
                 { id: 'departments', label: 'Departments', icon: <Sliders size={16} /> },
               ].map(item => (
@@ -2019,6 +2217,158 @@ export default function OwnerAdmin() {
           </div>
         )}
 
+        {/* ─── VIEW 8.5: INDIVIDUAL DOCTORS & CLINICS DIRECTORY ────── */}
+        {activeNav === 'individual_doctors' && (
+          <div className="space-y-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-black text-slate-900">Individual Doctors & Solo Clinics ({individualDoctorsList.length})</h2>
+                <p className="text-xs text-slate-500">Dedicated single-doctor client accounts with unique QR booking and direct patient intake.</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    setClientTypeToCreate('individual_doctor')
+                    setShowCreateHospitalModal(true)
+                  }}
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/20 transition flex items-center gap-2"
+                >
+                  <Plus size={15} /> Add Individual Doctor
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+              {individualDoctorsList.length === 0 ? (
+                <div className="p-16 text-center space-y-3">
+                  <Stethoscope size={36} className="mx-auto text-slate-300" />
+                  <h3 className="font-black text-base text-slate-800">No Individual Doctors Registered Yet</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    Create your first single-doctor client account or share the signup link with practitioners.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setClientTypeToCreate('individual_doctor')
+                      setShowCreateHospitalModal(true)
+                    }}
+                    className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow mt-2"
+                  >
+                    + Register Individual Doctor
+                  </button>
+                </div>
+              ) : (
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
+                      <th className="py-3 px-4">Doctor & Practice</th>
+                      <th className="py-3 px-4">Doctor ID & Email</th>
+                      <th className="py-3 px-4">Specialty & Fee</th>
+                      <th className="py-3 px-4">Plan & Onboarding</th>
+                      <th className="py-3 px-4">Unique QR Booking</th>
+                      <th className="py-3 px-4">Account Status</th>
+                      <th className="py-3 px-4 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {individualDoctorsList.map(doc => (
+                      <tr key={doc.doctor_id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
+                              🩺
+                            </div>
+                            <div>
+                              <span className="font-extrabold text-slate-900 block text-sm">{doc.doctor_name}</span>
+                              <span className="text-[10px] text-slate-400 font-medium">{doc.clinic_name}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-mono text-xs font-bold text-indigo-700 block">{doc.doctor_code}</span>
+                          <span className="text-[11px] text-slate-500">{doc.email}</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="font-bold text-slate-800 block">{doc.specialization}</span>
+                          <span className="text-[10px] text-emerald-600 font-bold">₹{doc.consultation_fee} / consult</span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 font-black text-[10px] rounded-lg inline-block mb-0.5">
+                            {doc.plan_tier}
+                          </span>
+                          <span className={`text-[10px] block font-bold ${
+                            doc.onboarding_status === 'ACTIVE' ? 'text-emerald-600' : 'text-amber-600'
+                          }`}>
+                            {doc.onboarding_status}
+                          </span>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <div className="flex items-center gap-1.5">
+                            <span className="px-2 py-0.5 font-mono text-[11px] font-black bg-blue-50 text-blue-700 border border-blue-200 rounded-lg">
+                              {doc.qr_token}
+                            </span>
+                            <button
+                              onClick={() => setSelectedIndividualDoctorForQR(doc)}
+                              title="View & Download Unique Doctor QR"
+                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer"
+                            >
+                              <QrCode size={12} />
+                              <span>QR</span>
+                            </button>
+                            <button
+                              onClick={() => {
+                                const fullUrl = `${window.location.origin}/book/${doc.qr_token}`
+                                navigator.clipboard.writeText(fullUrl)
+                                setNotice(`Copied direct booking link: ${fullUrl}`)
+                                setTimeout(() => setNotice(null), 3000)
+                              }}
+                              title="Copy Direct Patient Booking Link"
+                              className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] transition cursor-pointer"
+                            >
+                              <Copy size={12} />
+                            </button>
+                          </div>
+                        </td>
+                        <td className="py-3.5 px-4">
+                          <button
+                            onClick={() => handleToggleIndividualDoctorStatus(doc)}
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition cursor-pointer ${
+                              doc.is_active
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700'
+                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-emerald-50 hover:text-emerald-700'
+                            }`}
+                          >
+                            {doc.is_active ? 'Active' : 'Suspended'}
+                          </button>
+                        </td>
+                        <td className="py-3.5 px-4 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <a
+                              href={`/book/${doc.qr_token}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="Test Direct Booking Link"
+                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition"
+                            >
+                              <ExternalLink size={14} />
+                            </a>
+                            <button
+                              onClick={() => setSelectedIndividualDoctorForQR(doc)}
+                              title="Doctor QR Standee"
+                              className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition cursor-pointer"
+                            >
+                              <QrCode size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* ─── VIEW 9: HOSPITALS & ADMINS DIRECTORY (CLEAN) ────── */}
         {(activeNav === 'hospitals' || activeNav === 'hospital-admins') && (
           <div className="space-y-6">
@@ -2432,123 +2782,290 @@ export default function OwnerAdmin() {
 
       </main>
 
-      {/* ─── CREATE HOSPITAL MODAL ───────────────────────── */}
+      {/* ─── CREATE CLIENT / HOSPITAL / INDIVIDUAL DOCTOR MODAL ──────── */}
       {showCreateHospitalModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 text-left">
             <div className="flex items-center justify-between pb-3 border-b border-slate-100">
               <div className="flex items-center gap-2">
-                <Building2 size={20} className="text-indigo-600" />
-                <h3 className="text-lg font-black text-slate-900">Create New Hospital</h3>
+                {clientTypeToCreate === 'individual_doctor' ? (
+                  <Stethoscope size={20} className="text-blue-600" />
+                ) : (
+                  <Building2 size={20} className="text-indigo-600" />
+                )}
+                <h3 className="text-lg font-black text-slate-900">
+                  {clientTypeToCreate === 'individual_doctor' ? 'Onboard Individual Doctor' : 'Register New Hospital'}
+                </h3>
               </div>
               <button onClick={() => setShowCreateHospitalModal(false)} className="text-slate-400 hover:text-slate-700">
                 <X size={18} />
               </button>
             </div>
 
-            <form onSubmit={handleCreateHospital} className="space-y-3 text-left text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Hospital Name</label>
-                  <input
-                    type="text"
-                    required
-                    value={hospitalForm.name}
-                    onChange={e => setHospitalForm(p => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g. Metro Care Hospital"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Location / City</label>
-                  <input
-                    type="text"
-                    required
-                    value={hospitalForm.location}
-                    onChange={e => setHospitalForm(p => ({ ...p, location: e.target.value }))}
-                    placeholder="e.g. Mumbai, Maharashtra"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
+            {/* Client Type Selector */}
+            <div className="p-1 bg-slate-100 rounded-2xl flex items-center text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => setClientTypeToCreate('hospital')}
+                className={`flex-1 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  clientTypeToCreate === 'hospital'
+                    ? 'bg-white text-indigo-700 shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Building2 size={14} />
+                <span>Multi-Specialty Hospital</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setClientTypeToCreate('individual_doctor')}
+                className={`flex-1 py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  clientTypeToCreate === 'individual_doctor'
+                    ? 'bg-white text-blue-700 shadow-sm font-black'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                <Stethoscope size={14} />
+                <span>Individual Doctor / Clinic</span>
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Admin Login Email</label>
-                  <input
-                    type="email"
-                    required
-                    value={hospitalForm.email}
-                    onChange={e => setHospitalForm(p => ({ ...p, email: e.target.value }))}
-                    placeholder="admin@metrocare.com"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                  />
+            {clientTypeToCreate === 'individual_doctor' ? (
+              <form onSubmit={handleCreateIndividualDoctor} className="space-y-3 text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Doctor Full Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={individualDoctorForm.doctor_name}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, doctor_name: e.target.value }))}
+                      placeholder="Dr. Rajesh Sharma"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Clinic / Practice Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={individualDoctorForm.clinic_name}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, clinic_name: e.target.value }))}
+                      placeholder="Sharma Dental Clinic"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Admin Password</label>
-                  <input
-                    type="password"
-                    required
-                    value={hospitalForm.password}
-                    onChange={e => setHospitalForm(p => ({ ...p, password: e.target.value }))}
-                    placeholder="Temporary password"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Phone Number</label>
-                  <input
-                    type="tel"
-                    required
-                    value={hospitalForm.phone}
-                    onChange={e => setHospitalForm(p => ({ ...p, phone: e.target.value }))}
-                    placeholder="+91 98765 43210"
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                  />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Doctor Email *</label>
+                    <input
+                      type="email"
+                      required
+                      value={individualDoctorForm.email}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, email: e.target.value }))}
+                      placeholder="doctor@sharmaclinic.com"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Password *</label>
+                    <input
+                      type="password"
+                      required
+                      value={individualDoctorForm.password}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, password: e.target.value }))}
+                      placeholder="Secure password"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-700">Doctor Limit</label>
-                  <input
-                    type="number"
-                    value={hospitalForm.doctor_limit}
-                    onChange={e => setHospitalForm(p => ({ ...p, doctor_limit: Number(e.target.value) }))}
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                  />
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Phone Number *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={individualDoctorForm.phone}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, phone: e.target.value }))}
+                      placeholder="+91 98765 43210"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Specialization *</label>
+                    <input
+                      type="text"
+                      required
+                      value={individualDoctorForm.specialization}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, specialization: e.target.value }))}
+                      placeholder="e.g. Dentist / Dermatologist / Cardiologist"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-700">Subscription Plan</label>
-                <select
-                  value={hospitalForm.plan}
-                  onChange={e => setHospitalForm(p => ({ ...p, plan: e.target.value as any }))}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="Single OPD">Single OPD Clinic (₹999/mo)</option>
-                  <option value="Hospital Pro">Hospital Pro (₹2,499/mo)</option>
-                  <option value="Enterprise">Multi-Specialty Enterprise (Custom)</option>
-                </select>
-              </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Consultation Fee (₹)</label>
+                    <input
+                      type="number"
+                      required
+                      value={individualDoctorForm.consultation_fee}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, consultation_fee: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">City / Location</label>
+                    <input
+                      type="text"
+                      required
+                      value={individualDoctorForm.city}
+                      onChange={e => setIndividualDoctorForm(p => ({ ...p, city: e.target.value }))}
+                      placeholder="e.g. Mumbai"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    />
+                  </div>
+                </div>
 
-              <div className="flex justify-end gap-2 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowCreateHospitalModal(false)}
-                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20"
-                >
-                  Create & Issue Credentials →
-                </button>
-              </div>
-            </form>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Subscription Plan Tier</label>
+                  <select
+                    value={individualDoctorForm.plan_tier}
+                    onChange={e => setIndividualDoctorForm(p => ({ ...p, plan_tier: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:outline-none focus:border-blue-500"
+                  >
+                    <option value="starter">Starter Plan (₹499/mo) — 1 Doctor + QR Standee</option>
+                    <option value="growth">Growth Plan (₹999/mo) — WhatsApp Rx + Audio Speech</option>
+                    <option value="pro">Pro Plan (₹1,999/mo) — Full AI Prescriptions + Teleconsults</option>
+                    <option value="enterprise">Enterprise (Custom)</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateHospitalModal(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 cursor-pointer"
+                  >
+                    Create Doctor & Generate QR →
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleCreateHospital} className="space-y-3 text-left text-xs">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Hospital Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={hospitalForm.name}
+                      onChange={e => setHospitalForm(p => ({ ...p, name: e.target.value }))}
+                      placeholder="e.g. Metro Care Hospital"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Location / City</label>
+                    <input
+                      type="text"
+                      required
+                      value={hospitalForm.location}
+                      onChange={e => setHospitalForm(p => ({ ...p, location: e.target.value }))}
+                      placeholder="e.g. Mumbai, Maharashtra"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Admin Login Email</label>
+                    <input
+                      type="email"
+                      required
+                      value={hospitalForm.email}
+                      onChange={e => setHospitalForm(p => ({ ...p, email: e.target.value }))}
+                      placeholder="admin@metrocare.com"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Admin Password</label>
+                    <input
+                      type="password"
+                      required
+                      value={hospitalForm.password}
+                      onChange={e => setHospitalForm(p => ({ ...p, password: e.target.value }))}
+                      placeholder="Temporary password"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Phone Number</label>
+                    <input
+                      type="tel"
+                      required
+                      value={hospitalForm.phone}
+                      onChange={e => setHospitalForm(p => ({ ...p, phone: e.target.value }))}
+                      placeholder="+91 98765 43210"
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Doctor Limit</label>
+                    <input
+                      type="number"
+                      value={hospitalForm.doctor_limit}
+                      onChange={e => setHospitalForm(p => ({ ...p, doctor_limit: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Subscription Plan</label>
+                  <select
+                    value={hospitalForm.plan}
+                    onChange={e => setHospitalForm(p => ({ ...p, plan: e.target.value as any }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="Single OPD">Single OPD Clinic (₹999/mo)</option>
+                    <option value="Hospital Pro">Hospital Pro (₹2,499/mo)</option>
+                    <option value="Enterprise">Multi-Specialty Enterprise (Custom)</option>
+                  </select>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-3">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateHospitalModal(false)}
+                    className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg shadow-indigo-500/20 cursor-pointer"
+                  >
+                    Create & Issue Credentials →
+                  </button>
+                </div>
+              </form>
+            )}
           </div>
         </div>
       )}
@@ -3125,6 +3642,109 @@ export default function OwnerAdmin() {
               >
                 <ExternalLink size={14} />
                 <span>Open Kiosk</span>
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: INDIVIDUAL DOCTOR QR STANDEE & DIRECT BOOKING LINK ─── */}
+      {selectedIndividualDoctorForQR && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-6 text-center relative overflow-hidden">
+            {/* Top Close Button */}
+            <button
+              onClick={() => { setSelectedIndividualDoctorForQR(null); setQrCopied(false); }}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-full transition cursor-pointer"
+            >
+              <X size={16} />
+            </button>
+
+            {/* Header */}
+            <div>
+              <div className="w-12 h-12 mx-auto mb-2 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center text-xl shadow-inner">
+                🩺
+              </div>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">
+                {selectedIndividualDoctorForQR.doctor_name}
+              </h3>
+              <p className="text-xs text-slate-500 font-medium mt-0.5">
+                {selectedIndividualDoctorForQR.clinic_name} • {selectedIndividualDoctorForQR.specialization}
+              </p>
+            </div>
+
+            {/* QR Poster Preview Box */}
+            <div className="bg-gradient-to-b from-blue-50/70 to-slate-50 p-6 rounded-3xl border-2 border-blue-100 shadow-inner flex flex-col items-center space-y-3">
+              <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-md">
+                <img
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(
+                    `${window.location.origin}/book/${selectedIndividualDoctorForQR.qr_token}`
+                  )}`}
+                  alt={`QR for ${selectedIndividualDoctorForQR.doctor_name}`}
+                  className="w-48 h-48 object-contain"
+                />
+              </div>
+
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                  Direct Doctor Intake Token
+                </span>
+                <span className="text-base font-mono font-black text-blue-700">
+                  {selectedIndividualDoctorForQR.qr_token}
+                </span>
+              </div>
+
+              {/* Direct Booking URL */}
+              <div className="w-full bg-white px-3 py-2 rounded-xl border border-slate-200 text-left flex items-center justify-between gap-2">
+                <span className="text-[11px] font-mono text-slate-600 truncate">
+                  {`${window.location.origin}/book/${selectedIndividualDoctorForQR.qr_token}`}
+                </span>
+                <button
+                  onClick={() => {
+                    const url = `${window.location.origin}/book/${selectedIndividualDoctorForQR.qr_token}`
+                    navigator.clipboard.writeText(url)
+                    setQrCopied(true)
+                    setTimeout(() => setQrCopied(false), 3000)
+                  }}
+                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold shrink-0 flex items-center gap-1 transition cursor-pointer"
+                >
+                  {qrCopied ? <CheckCircle2 size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                  <span>{qrCopied ? 'Copied!' : 'Copy'}</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-3 gap-2 text-xs">
+              <a
+                href={`https://api.qrserver.com/v1/create-qr-code/?size=600x600&data=${encodeURIComponent(
+                  `${window.location.origin}/book/${selectedIndividualDoctorForQR.qr_token}`
+                )}`}
+                download={`${selectedIndividualDoctorForQR.doctor_name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-qr.png`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center justify-center gap-1.5 transition"
+              >
+                <Download size={14} />
+                <span>PNG</span>
+              </a>
+
+              <button
+                onClick={() => window.print()}
+                className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer"
+              >
+                <Printer size={14} />
+                <span>Print Standee</span>
+              </button>
+
+              <a
+                href={`${window.location.origin}/book/${selectedIndividualDoctorForQR.qr_token}`}
+                target="_blank"
+                rel="noreferrer"
+                className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl flex items-center justify-center gap-1.5 transition shadow-sm"
+              >
+                <ExternalLink size={14} />
+                <span>Test Booking</span>
               </a>
             </div>
           </div>

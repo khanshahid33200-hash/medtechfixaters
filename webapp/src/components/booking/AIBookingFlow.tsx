@@ -37,11 +37,19 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
   onCompleteAIIntake,
   onBack,
 }) => {
+  const isInd = Boolean(hospital?.is_individual_doctor);
+  const singleDoc = hospital?.doctor || doctors[0];
+  const doctorName = singleDoc?.name || hospital?.name || "Doctor Specialist";
+  const clinicName = hospital?.clinic?.name || hospital?.name || "the clinic";
+  const specialty = singleDoc?.specialization || singleDoc?.specialty || singleDoc?.department || "Consultation";
+
   const [messages, setMessages] = useState<AIChatMessage[]>([
     {
       id: "1",
       sender: "ai",
-      text: `Hello! I am your AI receptionist at ${hospital?.name || "the hospital"}. What is your full name?`,
+      text: isInd
+        ? `Hello! I am the AI clinical assistant for ${doctorName} at ${clinicName}. What is your full name?`
+        : `Hello! I am your AI receptionist at ${hospital?.name || "the hospital"}. What is your full name?`,
       timestamp: "Just now",
       stepKey: "name",
     },
@@ -107,17 +115,27 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
         {
           id: Date.now().toString(),
           sender: "ai",
-          text: `Got it! What main symptoms or health concern are you experiencing today?`,
+          text: isInd
+            ? `Got it! What main symptoms or health concern brings you to see ${doctorName} today?`
+            : `Got it! What main symptoms or health concern are you experiencing today?`,
           timestamp: "Just now",
           stepKey: "concern",
-          quickChips: [
-            "Fever & Cold",
-            "Severe Headache",
-            "Abdominal Pain",
-            "Skin Rash",
-            "Joint/Back Pain",
-            "Eye Consultation",
-          ],
+          quickChips: isInd
+            ? [
+                `Routine ${specialty} Checkup`,
+                "New Symptom / Consultation",
+                "Follow-up Visit",
+                "Prescription Renewal",
+                "Emergency Consultation",
+              ]
+            : [
+                "Fever & Cold",
+                "Severe Headache",
+                "Abdominal Pain",
+                "Skin Rash",
+                "Joint/Back Pain",
+                "Eye Consultation",
+              ],
         },
       ]);
     } else if (step === "concern") {
@@ -153,58 +171,78 @@ export const AIBookingFlow: React.FC<AIBookingFlowProps> = ({
         {
           id: Date.now().toString(),
           sender: "ai",
-          text: `Analyzing your responses against ${hospital?.name || "hospital"}'s active OPD doctor availability...`,
+          text: isInd
+            ? `Confirming consultation appointment with ${doctorName}...`
+            : `Analyzing your responses against ${hospital?.name || "hospital"}'s active OPD doctor availability...`,
           timestamp: "Just now",
           stepKey: "processing",
         },
       ]);
 
-      await new Promise((res) => setTimeout(res, 1000));
+      await new Promise((res) => setTimeout(res, 900));
 
-      // Match Department & Doctor
-      const concernLower = (intake.primaryConcern + " " + userText).toLowerCase();
-      let selectedDept = departments[0] || {
-        id: "dept-gen",
-        name: "General Medicine",
-        hospital_id: hospital?.id || "",
-      };
+      if (isInd) {
+        // Individual Doctor Single-Practice Lock
+        const rec: DoctorRecommendation = {
+          departmentId: singleDoc?.department_id || "dept-practice",
+          departmentName: specialty,
+          doctorId: singleDoc ? singleDoc.id : "doc-1",
+          doctorName: doctorName,
+          specialty: specialty,
+          explanation: `Direct appointment scheduled with ${doctorName} for reported concern: ${intake.primaryConcern || userText || "clinical consultation"}.`,
+          availability: singleDoc?.available_hours?.start
+            ? `${singleDoc.available_hours.start} - ${singleDoc.available_hours.end || "05:00 PM"}`
+            : "Available Today",
+          fee: singleDoc ? singleDoc.fee : 500,
+        };
 
-      if (concernLower.includes("headache") || concernLower.includes("neuro") || concernLower.includes("brain")) {
-        selectedDept = departments.find((d) => d.name.toLowerCase().includes("neuro")) || selectedDept;
-      } else if (concernLower.includes("heart") || concernLower.includes("chest") || concernLower.includes("cardio")) {
-        selectedDept = departments.find((d) => d.name.toLowerCase().includes("cardio")) || selectedDept;
-      } else if (concernLower.includes("skin") || concernLower.includes("rash") || concernLower.includes("derma")) {
-        selectedDept = departments.find((d) => d.name.toLowerCase().includes("derma")) || selectedDept;
-      } else if (concernLower.includes("eye") || concernLower.includes("vision")) {
-        selectedDept = departments.find((d) => d.name.toLowerCase().includes("ophthalm")) || selectedDept;
-      } else if (concernLower.includes("bone") || concernLower.includes("joint") || concernLower.includes("ortho")) {
-        selectedDept = departments.find((d) => d.name.toLowerCase().includes("ortho")) || selectedDept;
+        onCompleteAIIntake(intake, rec);
+      } else {
+        // Multi-Specialty Hospital Department & Doctor Matching
+        const concernLower = (intake.primaryConcern + " " + userText).toLowerCase();
+        let selectedDept = departments[0] || {
+          id: "dept-gen",
+          name: "General Medicine",
+          hospital_id: hospital?.id || "",
+        };
+
+        if (concernLower.includes("headache") || concernLower.includes("neuro") || concernLower.includes("brain")) {
+          selectedDept = departments.find((d) => d.name.toLowerCase().includes("neuro")) || selectedDept;
+        } else if (concernLower.includes("heart") || concernLower.includes("chest") || concernLower.includes("cardio")) {
+          selectedDept = departments.find((d) => d.name.toLowerCase().includes("cardio")) || selectedDept;
+        } else if (concernLower.includes("skin") || concernLower.includes("rash") || concernLower.includes("derma")) {
+          selectedDept = departments.find((d) => d.name.toLowerCase().includes("derma")) || selectedDept;
+        } else if (concernLower.includes("eye") || concernLower.includes("vision")) {
+          selectedDept = departments.find((d) => d.name.toLowerCase().includes("ophthalm")) || selectedDept;
+        } else if (concernLower.includes("bone") || concernLower.includes("joint") || concernLower.includes("ortho")) {
+          selectedDept = departments.find((d) => d.name.toLowerCase().includes("ortho")) || selectedDept;
+        }
+
+        // Find doctor in selected department or general roster
+        let selectedDoc = doctors.find(
+          (doc) =>
+            doc.active &&
+            doc.accepting_appointments &&
+            (doc.department_id === selectedDept.id || doc.department === selectedDept.name)
+        );
+
+        if (!selectedDoc) {
+          selectedDoc = doctors.find((doc) => doc.active && doc.accepting_appointments) || doctors[0];
+        }
+
+        const rec: DoctorRecommendation = {
+          departmentId: selectedDept.id,
+          departmentName: selectedDept.name,
+          doctorId: selectedDoc ? selectedDoc.id : "doc-1",
+          doctorName: selectedDoc ? selectedDoc.name : "Dr. Available Specialist",
+          specialty: selectedDoc ? selectedDoc.specialty : selectedDept.name,
+          explanation: `Recommended based on reported complaint (${intake.primaryConcern || "OPD consultation"}) for optimal evaluation.`,
+          availability: "Available Today OPD",
+          fee: selectedDoc ? selectedDoc.fee : 500,
+        };
+
+        onCompleteAIIntake(intake, rec);
       }
-
-      // Find doctor in selected department or general roster
-      let selectedDoc = doctors.find(
-        (doc) =>
-          doc.active &&
-          doc.accepting_appointments &&
-          (doc.department_id === selectedDept.id || doc.department === selectedDept.name)
-      );
-
-      if (!selectedDoc) {
-        selectedDoc = doctors.find((doc) => doc.active && doc.accepting_appointments) || doctors[0];
-      }
-
-      const rec: DoctorRecommendation = {
-        departmentId: selectedDept.id,
-        departmentName: selectedDept.name,
-        doctorId: selectedDoc ? selectedDoc.id : "doc-1",
-        doctorName: selectedDoc ? selectedDoc.name : "Dr. Available Specialist",
-        specialty: selectedDoc ? selectedDoc.specialty : selectedDept.name,
-        explanation: `Recommended based on reported complaint (${intake.primaryConcern || "OPD consultation"}) for optimal evaluation.`,
-        availability: "Available Today OPD",
-        fee: selectedDoc ? selectedDoc.fee : 500,
-      };
-
-      onCompleteAIIntake(intake, rec);
     }
 
     setIsTyping(false);

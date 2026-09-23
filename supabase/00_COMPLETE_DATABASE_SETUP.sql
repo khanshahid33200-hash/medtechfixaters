@@ -35,10 +35,13 @@ CREATE TABLE IF NOT EXISTS public.hospitals (
     plan TEXT DEFAULT 'Hospital Pro',
     subscription_plan TEXT DEFAULT 'Hospital Pro',
     doctor_limit INTEGER DEFAULT 20,
+    client_type TEXT DEFAULT 'hospital' CHECK (client_type IN ('hospital', 'individual_doctor')),
     status TEXT DEFAULT 'active' CHECK (status IN ('active', 'pending', 'suspended', 'blocked', 'banned', 'deleted')),
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+ALTER TABLE public.hospitals ADD COLUMN IF NOT EXISTS client_type TEXT DEFAULT 'hospital';
 
 -- 2.2 DEPARTMENTS
 CREATE TABLE IF NOT EXISTS public.departments (
@@ -60,16 +63,21 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     full_name TEXT NOT NULL,
     email TEXT UNIQUE NOT NULL,
     role TEXT DEFAULT 'doctor' NOT NULL CHECK (role IN ('super_admin', 'hospital_admin', 'doctor', 'staff')),
+    client_type TEXT DEFAULT 'hospital' CHECK (client_type IN ('hospital', 'individual_doctor')),
     hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
     department_id UUID REFERENCES public.departments(id) ON DELETE SET NULL,
     department TEXT,
     specialization TEXT DEFAULT 'General Physician',
     registration_number TEXT,
+    onboarding_status TEXT DEFAULT 'ACTIVE' CHECK (onboarding_status IN ('PROFILE_INCOMPLETE', 'PAYMENT_PENDING', 'ACTIVE', 'SUSPENDED', 'CANCELLED')),
     account_status TEXT DEFAULT 'active' CHECK (account_status IN ('active', 'suspended', 'blocked', 'banned', 'deleted')),
     is_active BOOLEAN DEFAULT true NOT NULL,
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS client_type TEXT DEFAULT 'hospital';
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'ACTIVE';
 
 -- Foreign key for head_doctor_id in departments
 DO $$
@@ -96,6 +104,17 @@ CREATE TABLE IF NOT EXISTS public.doctor_details (
     specialization TEXT DEFAULT 'Consultant Specialist',
     registration_number TEXT,
     room_number TEXT DEFAULT 'Room 101',
+    clinic_name TEXT,
+    clinic_address TEXT,
+    city TEXT,
+    state TEXT,
+    pincode TEXT,
+    clinic_phone TEXT,
+    slot_duration INTEGER DEFAULT 15,
+    available_days JSONB DEFAULT '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb,
+    available_hours JSONB DEFAULT '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb,
+    unavailable_dates JSONB DEFAULT '[]'::jsonb,
+    onboarding_status TEXT DEFAULT 'ACTIVE',
     daily_patient_limit INTEGER DEFAULT 30,
     consultation_fee NUMERIC(10, 2) DEFAULT 500.00,
     availability_status TEXT DEFAULT 'active',
@@ -104,7 +123,39 @@ CREATE TABLE IF NOT EXISTS public.doctor_details (
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
--- 2.5 USER CREDENTIALS VAULT (Stores generated passwords and access details for Super/Hospital Admin reference)
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS clinic_name TEXT;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS clinic_address TEXT;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS city TEXT;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS state TEXT;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS pincode TEXT;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS clinic_phone TEXT;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS slot_duration INTEGER DEFAULT 15;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS available_days JSONB DEFAULT '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS available_hours JSONB DEFAULT '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS unavailable_dates JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.doctor_details ADD COLUMN IF NOT EXISTS onboarding_status TEXT DEFAULT 'ACTIVE';
+
+-- 2.5 INDIVIDUAL DOCTOR SUBSCRIPTIONS
+CREATE TABLE IF NOT EXISTS public.individual_doctor_subscriptions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    doctor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    hospital_id UUID NOT NULL REFERENCES public.hospitals(id) ON DELETE CASCADE,
+    plan_id TEXT NOT NULL DEFAULT 'doctor_monthly',
+    plan_name TEXT NOT NULL DEFAULT 'Individual Doctor Solo',
+    amount NUMERIC(10, 2) NOT NULL DEFAULT 999.00,
+    currency TEXT DEFAULT 'INR',
+    status TEXT DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'failed', 'expired', 'cancelled')),
+    payment_provider TEXT DEFAULT 'razorpay',
+    provider_order_id TEXT,
+    provider_payment_id TEXT,
+    provider_signature TEXT,
+    started_at TIMESTAMPTZ,
+    expires_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
+    updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
+);
+
+-- 2.6 USER CREDENTIALS VAULT (Stores generated passwords and access details for Super/Hospital Admin reference)
 CREATE TABLE IF NOT EXISTS public.user_credentials_vault (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     hospital_id UUID REFERENCES public.hospitals(id) ON DELETE CASCADE,
@@ -529,6 +580,14 @@ ALTER TABLE public.chat_message_reads ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.doctor_availability ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.doctor_working_hours ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.individual_doctor_subscriptions ENABLE ROW LEVEL SECURITY;
+
+-- 5.0 INDIVIDUAL DOCTOR SUBSCRIPTIONS
+DROP POLICY IF EXISTS "Super Admin full access to subscriptions" ON public.individual_doctor_subscriptions;
+DROP POLICY IF EXISTS "Doctors view own subscriptions" ON public.individual_doctor_subscriptions;
+
+CREATE POLICY "Super Admin full access to subscriptions" ON public.individual_doctor_subscriptions FOR ALL TO authenticated USING (public.is_super_admin());
+CREATE POLICY "Doctors view own subscriptions" ON public.individual_doctor_subscriptions FOR SELECT TO authenticated USING (doctor_id = auth.uid());
 
 -- 5.1 HOSPITALS
 DROP POLICY IF EXISTS "Super Admin full access to hospitals" ON public.hospitals;
@@ -633,6 +692,7 @@ DROP POLICY IF EXISTS "Chat members manage conversations" ON public.chat_convers
 DROP POLICY IF EXISTS "Chat members manage messages" ON public.chat_messages;
 DROP POLICY IF EXISTS "Chat members manage members" ON public.chat_members;
 DROP POLICY IF EXISTS "Users manage own notifications" ON public.notifications;
+DROP POLICY IF EXISTS "Public view notifications for appointment" ON public.notifications;
 DROP POLICY IF EXISTS "Doctor manage own availability" ON public.doctor_availability;
 DROP POLICY IF EXISTS "Public view doctor availability" ON public.doctor_availability;
 DROP POLICY IF EXISTS "Doctor manage own working hours" ON public.doctor_working_hours;
@@ -676,6 +736,10 @@ BEGIN
               'get_or_create_direct_conversation',
               'create_group_conversation',
               'admin_create_hospital_with_admin',
+              'admin_create_individual_doctor',
+              'doctor_self_signup',
+              'doctor_complete_profile',
+              'doctor_verify_and_activate_subscription',
               'handle_new_user',
               'update_updated_at_column'
           )
@@ -684,47 +748,131 @@ BEGIN
     END LOOP;
 END $$;
 
--- 6.1 AUTH USER SYNC TRIGGER FUNCTION
+-- 6.1 AUTH USER SYNC & GOOGLE OAUTH TRIGGER FUNCTION
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, auth
+SET search_path = public, auth, extensions
 AS $$
+DECLARE
+    v_clean_email TEXT := LOWER(TRIM(NEW.email));
+    v_full_name TEXT;
+    v_role TEXT := 'doctor';
+    v_existing_profile_id UUID;
+    v_clinic_id UUID;
+    v_clinic_name TEXT;
+    v_qr_token TEXT;
+    v_raw_meta JSONB := COALESCE(NEW.raw_user_meta_data, '{}'::jsonb);
 BEGIN
-    INSERT INTO public.profiles (
-        id,
-        email,
-        full_name,
-        role,
-        hospital_id,
-        department_id,
-        department,
-        specialization,
-        is_active,
-        account_status
-    )
-    VALUES (
-        NEW.id,
-        COALESCE(NEW.email, ''),
-        COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', 'New User'),
-        COALESCE(NEW.raw_user_meta_data->>'role', 'patient'),
-        (NEW.raw_user_meta_data->>'hospital_id')::uuid,
-        (NEW.raw_user_meta_data->>'department_id')::uuid,
-        NEW.raw_user_meta_data->>'department',
-        NEW.raw_user_meta_data->>'specialization',
-        true,
+    -- Extract full name from Google metadata or user metadata
+    v_full_name := COALESCE(
+        v_raw_meta->>'full_name',
+        v_raw_meta->>'name',
+        v_raw_meta->>'user_name',
+        split_part(v_clean_email, '@', 1)
+    );
+
+    -- Check if a profile already exists with this email (e.g. created by Admin)
+    SELECT id INTO v_existing_profile_id FROM public.profiles WHERE LOWER(email) = v_clean_email LIMIT 1;
+
+    IF v_existing_profile_id IS NOT NULL THEN
+        UPDATE public.profiles
+        SET updated_at = NOW(),
+            full_name = COALESCE(full_name, v_full_name)
+        WHERE id = v_existing_profile_id;
+        RETURN NEW;
+    END IF;
+
+    -- Check if user role is explicitly specified in metadata (e.g. hospital admin / super admin)
+    IF v_raw_meta->>'role' IS NOT NULL AND v_raw_meta->>'role' != '' THEN
+        v_role := v_raw_meta->>'role';
+    END IF;
+
+    IF v_role = 'super_admin' OR v_role = 'hospital_admin' THEN
+        INSERT INTO public.profiles (
+            id, full_name, email, role, client_type, onboarding_status, is_active, account_status
+        ) VALUES (
+            NEW.id, v_full_name, v_clean_email, v_role, 'hospital', 'ACTIVE', true, 'active'
+        ) ON CONFLICT (id) DO NOTHING;
+        RETURN NEW;
+    END IF;
+
+    -- Default: Create Individual Doctor Account
+    v_clinic_name := COALESCE(v_full_name || ' Clinic', 'Doctor Clinic');
+
+    -- Create private clinic facility for this individual doctor
+    INSERT INTO public.hospitals (
+        name, slug, client_type, plan, subscription_plan, doctor_limit, status
+    ) VALUES (
+        v_clinic_name,
+        'clinic-' || SUBSTRING(REPLACE(NEW.id::text, '-', ''), 1, 8),
+        'individual_doctor',
+        'Individual Doctor Solo',
+        'Individual Doctor Solo',
+        1,
         'active'
-    )
-    ON CONFLICT (id) DO UPDATE SET
-        email = COALESCE(EXCLUDED.email, profiles.email),
-        full_name = COALESCE(EXCLUDED.full_name, profiles.full_name),
-        role = COALESCE(EXCLUDED.role, profiles.role),
-        hospital_id = COALESCE(EXCLUDED.hospital_id, profiles.hospital_id),
-        department_id = COALESCE(EXCLUDED.department_id, profiles.department_id),
-        department = COALESCE(EXCLUDED.department, profiles.department),
-        specialization = COALESCE(EXCLUDED.specialization, profiles.specialization),
-        updated_at = NOW();
+    ) RETURNING id INTO v_clinic_id;
+
+    -- Create Profile
+    INSERT INTO public.profiles (
+        id, full_name, email, role, client_type, hospital_id, onboarding_status, is_active, account_status, doctor_code
+    ) VALUES (
+        NEW.id,
+        v_full_name,
+        v_clean_email,
+        'doctor',
+        'individual_doctor',
+        v_clinic_id,
+        'PROFILE_INCOMPLETE',
+        true,
+        'active',
+        'DOC-' || UPPER(SUBSTRING(REPLACE(NEW.id::text, '-', ''), 1, 6))
+    ) ON CONFLICT (id) DO UPDATE SET
+        full_name = EXCLUDED.full_name,
+        client_type = 'individual_doctor',
+        hospital_id = COALESCE(public.profiles.hospital_id, v_clinic_id);
+
+    -- Create Doctor Details
+    INSERT INTO public.doctor_details (
+        id, doctor_code, hospital_id, name, email, clinic_name, specialization, qualification,
+        consultation_fee, slot_duration, available_days, available_hours, onboarding_status, is_active
+    ) VALUES (
+        NEW.id,
+        'DOC-' || UPPER(SUBSTRING(REPLACE(NEW.id::text, '-', ''), 1, 6)),
+        v_clinic_id,
+        v_full_name,
+        v_clean_email,
+        v_clinic_name,
+        'General Physician',
+        'MBBS, MD',
+        500.00,
+        15,
+        '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb,
+        '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb,
+        'PROFILE_INCOMPLETE',
+        true
+    ) ON CONFLICT (id) DO NOTHING;
+
+    -- Create Initial Pending Subscription
+    INSERT INTO public.individual_doctor_subscriptions (
+        doctor_id, hospital_id, plan_id, plan_name, amount, status
+    ) VALUES (
+        NEW.id, v_clinic_id, 'doctor_monthly', 'Individual Doctor Solo', 999.00, 'pending'
+    ) ON CONFLICT DO NOTHING;
+
+    -- Generate Branded Direct Doctor QR Code
+    v_qr_token := 'QR-DOC-' || UPPER(SUBSTRING(REPLACE(NEW.id::text, '-', ''), 1, 8));
+    INSERT INTO public.qr_codes (
+        hospital_id, token, booking_url, intake_url, status, is_active
+    ) VALUES (
+        v_clinic_id,
+        v_qr_token,
+        '/book/' || v_qr_token,
+        '/book/' || v_qr_token,
+        'active',
+        true
+    ) ON CONFLICT (token) DO NOTHING;
 
     RETURN NEW;
 EXCEPTION WHEN OTHERS THEN
@@ -890,6 +1038,482 @@ $$;
 
 GRANT EXECUTE ON FUNCTION public.admin_create_hospital_with_admin TO anon, authenticated, service_role;
 
+-- 6.2B ATOMIC INDIVIDUAL DOCTOR CREATION RPC (for Platform Super Admin)
+CREATE OR REPLACE FUNCTION public.admin_create_individual_doctor(
+    p_doctor_name TEXT,
+    p_doctor_email TEXT,
+    p_doctor_password TEXT,
+    p_doctor_phone TEXT DEFAULT NULL,
+    p_qualification TEXT DEFAULT 'MBBS, MD',
+    p_specialization TEXT DEFAULT 'General Physician',
+    p_doctor_code TEXT DEFAULT NULL,
+    p_registration_number TEXT DEFAULT NULL,
+    p_clinic_name TEXT DEFAULT NULL,
+    p_clinic_address TEXT DEFAULT NULL,
+    p_city TEXT DEFAULT NULL,
+    p_state TEXT DEFAULT NULL,
+    p_pincode TEXT DEFAULT NULL,
+    p_clinic_phone TEXT DEFAULT NULL,
+    p_consultation_fee NUMERIC DEFAULT 500.00,
+    p_daily_limit INTEGER DEFAULT 30,
+    p_slot_duration INTEGER DEFAULT 15,
+    p_plan_id TEXT DEFAULT 'doctor_monthly',
+    p_is_paid BOOLEAN DEFAULT true
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_clinic_id UUID := gen_random_uuid();
+    v_user_id UUID := gen_random_uuid();
+    v_clean_email TEXT := LOWER(TRIM(p_doctor_email));
+    v_clean_name TEXT := TRIM(p_doctor_name);
+    v_clinic_display TEXT := COALESCE(NULLIF(TRIM(p_clinic_name), ''), v_clean_name || ' Clinic');
+    v_clean_slug TEXT := (LOWER(REGEXP_REPLACE(v_clinic_display, '[^a-zA-Z0-9]+', '-', 'g')) || '-' || SUBSTRING(gen_random_uuid()::text, 1, 6));
+    v_doc_code TEXT := COALESCE(NULLIF(TRIM(p_doctor_code), ''), 'DOC-' || UPPER(SUBSTRING(gen_random_uuid()::text, 1, 6)));
+    v_qr_token TEXT := 'QR-' || UPPER(SUBSTRING(REPLACE(v_clinic_id::text, '-', ''), 1, 8));
+    v_onboarding_status TEXT := CASE WHEN p_is_paid THEN 'ACTIVE' ELSE 'PAYMENT_PENDING' END;
+    v_account_status TEXT := CASE WHEN p_is_paid THEN 'active' ELSE 'pending' END;
+BEGIN
+    -- 1. Create or Update Clinic Hospital Entity (client_type = 'individual_doctor')
+    IF EXISTS (SELECT 1 FROM public.hospitals WHERE LOWER(email) = v_clean_email) THEN
+        UPDATE public.hospitals SET
+            name = v_clinic_display,
+            phone = COALESCE(p_clinic_phone, p_doctor_phone, phone),
+            address = COALESCE(p_clinic_address, address),
+            city = COALESCE(p_city, city),
+            state = COALESCE(p_state, state),
+            pincode = COALESCE(p_pincode, pincode),
+            client_type = 'individual_doctor',
+            plan = p_plan_id,
+            subscription_plan = p_plan_id,
+            status = 'active',
+            updated_at = NOW()
+        WHERE LOWER(email) = v_clean_email
+        RETURNING id INTO v_clinic_id;
+    ELSE
+        INSERT INTO public.hospitals (
+            id, name, slug, email, phone, address, city, state, pincode, doctor_limit, client_type, plan, subscription_plan, status
+        ) VALUES (
+            v_clinic_id, v_clinic_display, v_clean_slug, v_clean_email, COALESCE(p_clinic_phone, p_doctor_phone, '+91 9876543210'),
+            COALESCE(p_clinic_address, 'Main Clinic Facility'), COALESCE(p_city, 'India'), p_state, p_pincode, 1, 'individual_doctor', p_plan_id, p_plan_id, 'active'
+        );
+    END IF;
+
+    -- 2. Upsert Auth User in auth.users
+    IF EXISTS (SELECT 1 FROM auth.users WHERE LOWER(email) = v_clean_email) THEN
+        UPDATE auth.users SET
+            encrypted_password = crypt(p_doctor_password, gen_salt('bf')),
+            email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+            updated_at = NOW(),
+            raw_app_meta_data = '{"provider": "email", "providers": ["email"]}'::jsonb,
+            raw_user_meta_data = jsonb_build_object(
+                'role', 'doctor',
+                'client_type', 'individual_doctor',
+                'full_name', v_clean_name,
+                'hospital_id', v_clinic_id,
+                'doctor_code', v_doc_code
+            )
+        WHERE LOWER(email) = v_clean_email
+        RETURNING id INTO v_user_id;
+    ELSE
+        INSERT INTO auth.users (
+            id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+            last_sign_in_at, raw_app_meta_data, raw_user_meta_data,
+            is_super_admin, is_anonymous, created_at, updated_at,
+            confirmation_token, recovery_token, email_change,
+            email_change_token_new, email_change_token_current,
+            phone_change, phone_change_token, reauthentication_token
+        ) VALUES (
+            v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+            v_clean_email, crypt(p_doctor_password, gen_salt('bf')), NOW(), NOW(),
+            '{"provider": "email", "providers": ["email"]}'::jsonb,
+            jsonb_build_object(
+                'role', 'doctor',
+                'client_type', 'individual_doctor',
+                'full_name', v_clean_name,
+                'hospital_id', v_clinic_id,
+                'doctor_code', v_doc_code
+            ),
+            false, false, NOW(), NOW(),
+            '', '', '', '', '', '', '', ''
+        );
+    END IF;
+
+    -- 3. Upsert Identity
+    IF NOT EXISTS (SELECT 1 FROM auth.identities WHERE user_id = v_user_id AND provider = 'email') THEN
+        INSERT INTO auth.identities (
+            id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+        ) VALUES (
+            v_user_id, v_user_id,
+            jsonb_build_object('sub', v_user_id::text, 'email', v_clean_email),
+            'email', v_clean_email, NOW(), NOW(), NOW()
+        );
+    END IF;
+
+    -- 4. Upsert Profile
+    INSERT INTO public.profiles (
+        id, doctor_code, full_name, email, role, client_type, hospital_id,
+        specialization, registration_number, onboarding_status, account_status, is_active
+    ) VALUES (
+        v_user_id, v_doc_code, v_clean_name, v_clean_email, 'doctor', 'individual_doctor', v_clinic_id,
+        p_specialization, p_registration_number, v_onboarding_status, v_account_status, true
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        doctor_code = EXCLUDED.doctor_code,
+        full_name = EXCLUDED.full_name,
+        role = 'doctor',
+        client_type = 'individual_doctor',
+        hospital_id = v_clinic_id,
+        specialization = EXCLUDED.specialization,
+        registration_number = EXCLUDED.registration_number,
+        onboarding_status = EXCLUDED.onboarding_status,
+        account_status = EXCLUDED.account_status,
+        is_active = true;
+
+    -- 5. Upsert Doctor Details
+    INSERT INTO public.doctor_details (
+        id, doctor_code, hospital_id, name, email, qualification, specialization,
+        registration_number, clinic_name, clinic_address, city, state, pincode,
+        clinic_phone, slot_duration, consultation_fee, daily_patient_limit,
+        onboarding_status, availability_status, is_active
+    ) VALUES (
+        v_user_id, v_doc_code, v_clinic_id, v_clean_name, v_clean_email, p_qualification, p_specialization,
+        p_registration_number, v_clinic_display, p_clinic_address, p_city, p_state, p_pincode,
+        COALESCE(p_clinic_phone, p_doctor_phone), p_slot_duration, p_consultation_fee, p_daily_limit,
+        v_onboarding_status, 'active', true
+    )
+    ON CONFLICT (id) DO UPDATE SET
+        name = EXCLUDED.name,
+        qualification = EXCLUDED.qualification,
+        specialization = EXCLUDED.specialization,
+        registration_number = EXCLUDED.registration_number,
+        clinic_name = EXCLUDED.clinic_name,
+        clinic_address = EXCLUDED.clinic_address,
+        city = EXCLUDED.city,
+        state = EXCLUDED.state,
+        pincode = EXCLUDED.pincode,
+        clinic_phone = EXCLUDED.clinic_phone,
+        slot_duration = EXCLUDED.slot_duration,
+        consultation_fee = EXCLUDED.consultation_fee,
+        daily_patient_limit = EXCLUDED.daily_patient_limit,
+        onboarding_status = EXCLUDED.onboarding_status,
+        availability_status = 'active',
+        is_active = true;
+
+    -- 6. Upsert QR Code
+    INSERT INTO public.qr_codes (
+        hospital_id, token, booking_url, intake_url, status, is_active
+    ) VALUES (
+        v_clinic_id, v_qr_token, '/book/' || v_qr_token, '/book/' || v_qr_token, 'active', true
+    )
+    ON CONFLICT (hospital_id) DO UPDATE SET
+        token = EXCLUDED.token,
+        booking_url = EXCLUDED.booking_url,
+        intake_url = EXCLUDED.intake_url,
+        status = 'active',
+        is_active = true;
+
+    -- 7. Upsert Subscription Record
+    INSERT INTO public.individual_doctor_subscriptions (
+        doctor_id, hospital_id, plan_id, plan_name, amount, currency, status,
+        payment_provider, provider_order_id, provider_payment_id, started_at, expires_at
+    ) VALUES (
+        v_user_id, v_clinic_id, p_plan_id, 'Individual Doctor Solo',
+        CASE WHEN p_plan_id = 'doctor_annual' THEN 9999.00 ELSE 999.00 END, 'INR',
+        CASE WHEN p_is_paid THEN 'active' ELSE 'pending' END,
+        'manual_admin_provision', 'ADMIN_ORDER_' || SUBSTRING(gen_random_uuid()::text, 1, 8),
+        'ADMIN_PAY_' || SUBSTRING(gen_random_uuid()::text, 1, 8),
+        NOW(), NOW() + INTERVAL '365 days'
+    );
+
+    -- 8. Save Credentials in Vault
+    INSERT INTO public.user_credentials_vault (
+        hospital_id, user_id, doctor_code, role, full_name, email, initial_password
+    ) VALUES (
+        v_clinic_id, v_user_id, v_doc_code, 'doctor', v_clean_name, v_clean_email, p_doctor_password
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'doctor_id', v_user_id,
+        'clinic_id', v_clinic_id,
+        'doctor_code', v_doc_code,
+        'qr_token', v_qr_token,
+        'booking_url', '/book/' || v_qr_token,
+        'message', 'Individual Doctor client and login credentials provisioned successfully!'
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.admin_create_individual_doctor TO anon, authenticated, service_role;
+
+-- 6.2C DOCTOR SELF-SIGNUP RPC (Called on Google OAuth / Email Signup)
+CREATE OR REPLACE FUNCTION public.doctor_self_signup(
+    p_email TEXT,
+    p_full_name TEXT,
+    p_auth_user_id UUID DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_user_id UUID := COALESCE(p_auth_user_id, auth.uid());
+    v_clean_email TEXT := LOWER(TRIM(p_email));
+    v_clean_name TEXT := COALESCE(NULLIF(TRIM(p_full_name), ''), 'Doctor');
+    v_clinic_id UUID := gen_random_uuid();
+    v_doc_code TEXT;
+    v_existing_profile RECORD;
+BEGIN
+    IF v_user_id IS NULL THEN
+        SELECT id INTO v_user_id FROM auth.users WHERE LOWER(email) = v_clean_email LIMIT 1;
+    END IF;
+
+    IF v_user_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'No authenticated Supabase user found.');
+    END IF;
+
+    -- Check if profile already exists
+    SELECT * INTO v_existing_profile FROM public.profiles WHERE id = v_user_id OR LOWER(email) = v_clean_email LIMIT 1;
+    
+    IF v_existing_profile.id IS NOT NULL THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'doctor_id', v_existing_profile.id,
+            'clinic_id', v_existing_profile.hospital_id,
+            'onboarding_status', COALESCE(v_existing_profile.onboarding_status, 'PROFILE_INCOMPLETE'),
+            'client_type', v_existing_profile.client_type,
+            'message', 'Existing doctor account recognized.'
+        );
+    END IF;
+
+    v_doc_code := 'DOC-' || UPPER(SUBSTRING(v_user_id::text, 1, 6));
+
+    -- Create clinic shell
+    INSERT INTO public.hospitals (
+        id, name, slug, email, client_type, plan, status
+    ) VALUES (
+        v_clinic_id, v_clean_name || ' Clinic', 'clinic-' || SUBSTRING(v_user_id::text, 1, 8),
+        v_clean_email, 'individual_doctor', 'doctor_monthly', 'pending'
+    );
+
+    -- Create profile with PROFILE_INCOMPLETE
+    INSERT INTO public.profiles (
+        id, doctor_code, full_name, email, role, client_type, hospital_id,
+        onboarding_status, account_status, is_active
+    ) VALUES (
+        v_user_id, v_doc_code, v_clean_name, v_clean_email, 'doctor', 'individual_doctor',
+        v_clinic_id, 'PROFILE_INCOMPLETE', 'pending', true
+    );
+
+    -- Create doctor details record
+    INSERT INTO public.doctor_details (
+        id, doctor_code, hospital_id, name, email, clinic_name,
+        onboarding_status, availability_status, is_active
+    ) VALUES (
+        v_user_id, v_doc_code, v_clinic_id, v_clean_name, v_clean_email, v_clean_name || ' Clinic',
+        'PROFILE_INCOMPLETE', 'pending', true
+    );
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'doctor_id', v_user_id,
+        'clinic_id', v_clinic_id,
+        'onboarding_status', 'PROFILE_INCOMPLETE',
+        'message', 'Doctor profile initialized for setup.'
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.doctor_self_signup TO anon, authenticated, service_role;
+
+-- 6.2D DOCTOR COMPLETE PROFILE RPC
+CREATE OR REPLACE FUNCTION public.doctor_complete_profile(
+    p_doctor_id UUID,
+    p_doctor_name TEXT,
+    p_qualification TEXT,
+    p_specialization TEXT,
+    p_doctor_phone TEXT,
+    p_registration_number TEXT,
+    p_clinic_name TEXT,
+    p_clinic_address TEXT,
+    p_city TEXT,
+    p_state TEXT,
+    p_pincode TEXT,
+    p_clinic_phone TEXT,
+    p_consultation_fee NUMERIC DEFAULT 500.00,
+    p_available_days JSONB DEFAULT '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb,
+    p_available_hours JSONB DEFAULT '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb,
+    p_slot_duration INTEGER DEFAULT 15
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_prof RECORD;
+    v_clinic_id UUID;
+    v_clean_clinic TEXT;
+BEGIN
+    SELECT * INTO v_prof FROM public.profiles WHERE id = p_doctor_id;
+    IF v_prof.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Doctor profile not found.');
+    END IF;
+
+    v_clinic_id := v_prof.hospital_id;
+    v_clean_clinic := COALESCE(NULLIF(TRIM(p_clinic_name), ''), TRIM(p_doctor_name) || ' Clinic');
+
+    -- Update Clinic in hospitals table
+    UPDATE public.hospitals SET
+        name = v_clean_clinic,
+        phone = COALESCE(p_clinic_phone, p_doctor_phone),
+        address = p_clinic_address,
+        city = p_city,
+        state = p_state,
+        pincode = p_pincode,
+        updated_at = NOW()
+    WHERE id = v_clinic_id;
+
+    -- Update Profiles
+    UPDATE public.profiles SET
+        full_name = TRIM(p_doctor_name),
+        specialization = TRIM(p_specialization),
+        registration_number = TRIM(p_registration_number),
+        onboarding_status = 'PAYMENT_PENDING',
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    -- Update Doctor Details
+    UPDATE public.doctor_details SET
+        name = TRIM(p_doctor_name),
+        qualification = TRIM(p_qualification),
+        specialization = TRIM(p_specialization),
+        registration_number = TRIM(p_registration_number),
+        clinic_name = v_clean_clinic,
+        clinic_address = p_clinic_address,
+        city = p_city,
+        state = p_state,
+        pincode = p_pincode,
+        clinic_phone = COALESCE(p_clinic_phone, p_doctor_phone),
+        consultation_fee = p_consultation_fee,
+        available_days = p_available_days,
+        available_hours = p_available_hours,
+        slot_duration = p_slot_duration,
+        onboarding_status = 'PAYMENT_PENDING',
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'onboarding_status', 'PAYMENT_PENDING',
+        'message', 'Profile completed! Proceed to subscription payment.'
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.doctor_complete_profile TO anon, authenticated, service_role;
+
+-- 6.2E DOCTOR VERIFY AND ACTIVATE SUBSCRIPTION RPC
+CREATE OR REPLACE FUNCTION public.doctor_verify_and_activate_subscription(
+    p_doctor_id UUID,
+    p_plan_id TEXT,
+    p_amount NUMERIC,
+    p_payment_provider TEXT DEFAULT 'razorpay',
+    p_order_id TEXT DEFAULT NULL,
+    p_payment_id TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, auth, extensions
+AS $$
+DECLARE
+    v_prof RECORD;
+    v_clinic_id UUID;
+    v_qr_token TEXT;
+    v_booking_url TEXT;
+BEGIN
+    SELECT * INTO v_prof FROM public.profiles WHERE id = p_doctor_id;
+    IF v_prof.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Doctor profile not found.');
+    END IF;
+
+    v_clinic_id := v_prof.hospital_id;
+    v_qr_token := 'QR-' || UPPER(SUBSTRING(REPLACE(v_clinic_id::text, '-', ''), 1, 8));
+    v_booking_url := '/book/' || v_qr_token;
+
+    -- 1. Create or Update active subscription
+    INSERT INTO public.individual_doctor_subscriptions (
+        doctor_id, hospital_id, plan_id, plan_name, amount, currency, status,
+        payment_provider, provider_order_id, provider_payment_id, started_at, expires_at
+    ) VALUES (
+        p_doctor_id, v_clinic_id, p_plan_id,
+        CASE WHEN p_plan_id = 'doctor_annual' THEN 'Individual Doctor Annual' ELSE 'Individual Doctor Monthly' END,
+        p_amount, 'INR', 'active',
+        p_payment_provider, p_order_id, p_payment_id,
+        NOW(), NOW() + (CASE WHEN p_plan_id = 'doctor_annual' THEN INTERVAL '365 days' ELSE INTERVAL '30 days' END)
+    );
+
+    -- 2. Activate Profile
+    UPDATE public.profiles SET
+        onboarding_status = 'ACTIVE',
+        account_status = 'active',
+        is_active = true,
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    -- 3. Activate Doctor Details
+    UPDATE public.doctor_details SET
+        onboarding_status = 'ACTIVE',
+        availability_status = 'active',
+        is_active = true,
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    -- 4. Activate Clinic Hospital
+    UPDATE public.hospitals SET
+        status = 'active',
+        updated_at = NOW()
+    WHERE id = v_clinic_id;
+
+    -- 5. Generate and Activate QR code
+    INSERT INTO public.qr_codes (
+        hospital_id, token, booking_url, intake_url, status, is_active
+    ) VALUES (
+        v_clinic_id, v_qr_token, v_booking_url, v_booking_url, 'active', true
+    )
+    ON CONFLICT (hospital_id) DO UPDATE SET
+        token = EXCLUDED.token,
+        booking_url = EXCLUDED.booking_url,
+        intake_url = EXCLUDED.intake_url,
+        status = 'active',
+        is_active = true;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'onboarding_status', 'ACTIVE',
+        'qr_token', v_qr_token,
+        'booking_url', v_booking_url,
+        'message', 'Subscription verified! Doctor account and unique QR are now active.'
+    );
+EXCEPTION WHEN OTHERS THEN
+    RETURN jsonb_build_object('success', false, 'error', SQLERRM);
+END;
+$$;
+
+GRANT EXECUTE ON FUNCTION public.doctor_verify_and_activate_subscription TO anon, authenticated, service_role;
+
 -- 6.3 QR BOOKING INFO RPC (Used by public /book/:token intake)
 CREATE OR REPLACE FUNCTION public.get_qr_booking_info(p_token TEXT)
 RETURNS JSONB
@@ -903,6 +1527,7 @@ DECLARE
     v_hosp RECORD;
     v_departments JSONB;
     v_doctors JSONB;
+    v_single_doc JSONB;
     v_possible_uuid UUID;
 BEGIN
     v_clean_token := TRIM(p_token);
@@ -925,25 +1550,121 @@ BEGIN
     END IF;
 
     IF v_qr.id IS NULL THEN 
-        RETURN jsonb_build_object('success', false, 'error', 'Invalid or unrecognized hospital QR booking code.'); 
+        RETURN jsonb_build_object('success', false, 'error', 'Invalid or unrecognized QR booking code.'); 
     END IF;
 
     UPDATE public.qr_codes SET scans_count = COALESCE(scans_count, 0) + 1, last_scanned_at = NOW() WHERE id = v_qr.id;
-    SELECT id, name, phone, email, address, status INTO v_hosp FROM public.hospitals WHERE id = v_qr.hospital_id;
+    SELECT id, name, phone, email, address, city, state, pincode, client_type, status INTO v_hosp FROM public.hospitals WHERE id = v_qr.hospital_id;
 
     IF v_hosp.id IS NULL OR v_hosp.status != 'active' THEN
-        RETURN jsonb_build_object('success', false, 'error', 'This hospital facility is currently inactive.');
+        RETURN jsonb_build_object('success', false, 'error', 'This clinic/hospital facility is currently inactive.');
     END IF;
 
+    -- Fetch Doctors
+    SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'id', p.id,
+        'doctor_code', COALESCE(p.doctor_code, 'DOC-' || SUBSTRING(p.id::text, 1, 6)),
+        'name', p.full_name,
+        'department_id', p.department_id,
+        'department', COALESCE(p.department, dd.specialization, 'Consultation'),
+        'specialization', COALESCE(p.specialization, dd.specialization, 'Consultant Specialist'),
+        'qualification', COALESCE(dd.qualification, 'MBBS, MD'),
+        'registration_number', dd.registration_number,
+        'fee', COALESCE(dd.consultation_fee, 500),
+        'room', COALESCE(dd.room_number, 'Consultation Room'),
+        'daily_limit', COALESCE(dd.daily_patient_limit, 40),
+        'slot_duration', COALESCE(dd.slot_duration, 15),
+        'available_days', COALESCE(dd.available_days, '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb),
+        'available_hours', COALESCE(dd.available_hours, '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb),
+        'clinic_name', COALESCE(dd.clinic_name, v_hosp.name),
+        'clinic_address', COALESCE(dd.clinic_address, v_hosp.address),
+        'city', COALESCE(dd.city, v_hosp.city),
+        'availability_status', COALESCE(dd.availability_status, 'active')
+    ) ORDER BY p.full_name ASC), '[]'::jsonb)
+    INTO v_doctors FROM public.profiles p LEFT JOIN public.doctor_details dd ON dd.id = p.id
+    WHERE (p.hospital_id = v_hosp.id OR dd.hospital_id = v_hosp.id) AND p.role = 'doctor' AND p.is_active = true;
+
+    -- Check if Individual Doctor Client
+    IF v_hosp.client_type = 'individual_doctor' OR jsonb_array_length(v_doctors) = 1 THEN
+        v_single_doc := v_doctors->0;
+
+        -- Fallback if v_doctors array was empty for an individual doctor clinic
+        IF v_single_doc IS NULL THEN
+            SELECT jsonb_build_object(
+                'id', p.id,
+                'doctor_code', COALESCE(p.doctor_code, 'DOC-' || SUBSTRING(p.id::text, 1, 6)),
+                'name', p.full_name,
+                'department_id', p.department_id,
+                'department', COALESCE(p.department, dd.specialization, 'Consultation'),
+                'specialization', COALESCE(p.specialization, dd.specialization, 'Consultant Specialist'),
+                'qualification', COALESCE(dd.qualification, 'MBBS, MD'),
+                'registration_number', dd.registration_number,
+                'fee', COALESCE(dd.consultation_fee, 500),
+                'room', COALESCE(dd.room_number, 'Consultation Room'),
+                'daily_limit', COALESCE(dd.daily_patient_limit, 40),
+                'slot_duration', COALESCE(dd.slot_duration, 15),
+                'available_days', COALESCE(dd.available_days, '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb),
+                'available_hours', COALESCE(dd.available_hours, '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb),
+                'clinic_name', COALESCE(dd.clinic_name, v_hosp.name),
+                'clinic_address', COALESCE(dd.clinic_address, v_hosp.address),
+                'city', COALESCE(dd.city, v_hosp.city),
+                'availability_status', COALESCE(dd.availability_status, 'active')
+            ) INTO v_single_doc
+            FROM public.profiles p LEFT JOIN public.doctor_details dd ON dd.id = p.id
+            WHERE p.hospital_id = v_hosp.id OR dd.hospital_id = v_hosp.id LIMIT 1;
+
+            IF v_single_doc IS NOT NULL THEN
+                v_doctors := jsonb_build_array(v_single_doc);
+            END IF;
+        END IF;
+
+        RETURN jsonb_build_object(
+            'success', true,
+            'is_individual_doctor', true,
+            'client_type', 'individual_doctor',
+            'hospital', jsonb_build_object(
+                'id', v_hosp.id,
+                'name', v_hosp.name,
+                'phone', v_hosp.phone,
+                'email', v_hosp.email,
+                'address', v_hosp.address,
+                'city', v_hosp.city,
+                'state', v_hosp.state,
+                'pincode', v_hosp.pincode,
+                'client_type', 'individual_doctor'
+            ),
+            'clinic', jsonb_build_object(
+                'id', v_hosp.id,
+                'name', v_hosp.name,
+                'phone', v_hosp.phone,
+                'email', v_hosp.email,
+                'address', v_hosp.address,
+                'city', v_hosp.city,
+                'state', v_hosp.state,
+                'pincode', v_hosp.pincode
+            ),
+            'doctor', v_single_doc,
+            'departments', '[]'::jsonb,
+            'doctors', v_doctors
+        );
+    END IF;
+
+    -- Multi-Specialty Hospital Flow
     SELECT COALESCE(jsonb_agg(jsonb_build_object('id', d.id, 'name', d.name, 'description', d.description, 'is_opd', (LOWER(d.name) = 'opd' OR LOWER(d.name) LIKE '%opd%')) ORDER BY (CASE WHEN LOWER(d.name) = 'opd' OR LOWER(d.name) LIKE '%opd%' THEN 0 ELSE 1 END), d.name ASC), '[]'::jsonb)
     INTO v_departments FROM public.departments d WHERE d.hospital_id = v_hosp.id AND d.is_active = true;
 
-    SELECT COALESCE(jsonb_agg(jsonb_build_object('id', p.id, 'doctor_code', COALESCE(p.doctor_code, 'DOC-' || SUBSTRING(p.id::text, 1, 6)), 'name', p.full_name, 'department_id', p.department_id, 'department', COALESCE(p.department, 'General OPD'), 'specialization', COALESCE(p.specialization, 'Consultant Specialist'), 'fee', COALESCE(dd.consultation_fee, 500), 'room', COALESCE(dd.room_number, 'OPD Room'), 'daily_limit', COALESCE(dd.daily_patient_limit, 40), 'availability_status', COALESCE(dd.availability_status, 'active')) ORDER BY p.full_name ASC), '[]'::jsonb)
-    INTO v_doctors FROM public.profiles p LEFT JOIN public.doctor_details dd ON dd.id = p.id WHERE p.hospital_id = v_hosp.id AND p.role = 'doctor' AND p.is_active = true;
-
-    RETURN jsonb_build_object('success', true, 'hospital', jsonb_build_object('id', v_hosp.id, 'name', v_hosp.name, 'phone', v_hosp.phone, 'email', v_hosp.email, 'address', v_hosp.address), 'departments', v_departments, 'doctors', v_doctors);
+    RETURN jsonb_build_object(
+        'success', true,
+        'is_individual_doctor', false,
+        'client_type', 'hospital',
+        'hospital', jsonb_build_object('id', v_hosp.id, 'name', v_hosp.name, 'phone', v_hosp.phone, 'email', v_hosp.email, 'address', v_hosp.address, 'city', v_hosp.city),
+        'departments', v_departments,
+        'doctors', v_doctors
+    );
 END;
 $$;
+
+GRANT EXECUTE ON FUNCTION public.get_qr_booking_info TO anon, authenticated, service_role;
 
 -- 6.4 PATIENT LOOKUP BY QR RPC
 CREATE OR REPLACE FUNCTION public.lookup_patient_by_qr(
@@ -1364,24 +2085,96 @@ CREATE TRIGGER trg_evaluate_queue_notifications
     AFTER INSERT OR UPDATE ON public.appointments
     FOR EACH ROW EXECUTE FUNCTION public.evaluate_queue_notifications();
 
--- 6.7 LIVE QUEUE STATUS RPC (for /track/:token)
-CREATE OR REPLACE FUNCTION public.get_live_queue_status(p_tracking_token TEXT)
+-- 6.7 LIVE QUEUE STATUS RPC (Hospital-Scoped lookup by Phone Number, Permanent Patient ID, or Tracking Token)
+DROP FUNCTION IF EXISTS public.get_live_queue_status(TEXT);
+DROP FUNCTION IF EXISTS public.get_live_queue_status(TEXT, TEXT);
+CREATE OR REPLACE FUNCTION public.get_live_queue_status(
+    p_tracking_token TEXT,
+    p_hospital_id TEXT DEFAULT NULL
+)
 RETURNS JSONB
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
+    v_clean_input TEXT := TRIM(COALESCE(p_tracking_token, ''));
+    v_digits_only TEXT := regexp_replace(v_clean_input, '[^0-9]', '', 'g');
+    v_target_hosp_id UUID := NULL;
     v_appt RECORD;
     v_doctor RECORD;
     v_hosp RECORD;
-    v_waiting_count INTEGER;
-    v_current_token INTEGER;
-    v_queue_progress JSONB;
-    v_notifications JSONB;
-    v_est_wait INTEGER;
-    v_status_label TEXT;
+    v_waiting_count INTEGER := 0;
+    v_current_token INTEGER := 1;
+    v_queue_progress JSONB := '[]'::jsonb;
+    v_notifications JSONB := '[]'::jsonb;
+    v_matched_appts JSONB := '[]'::jsonb;
+    v_est_wait INTEGER := 0;
+    v_status_label TEXT := 'Waiting';
 BEGIN
+    IF v_clean_input = '' THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Mobile number, Patient ID, or Tracking token is required.');
+    END IF;
+
+    -- Resolve hospital_id if provided (could be UUID, QR token, or slug/subdomain)
+    IF p_hospital_id IS NOT NULL AND TRIM(p_hospital_id) <> '' THEN
+        BEGIN
+            v_target_hosp_id := p_hospital_id::UUID;
+        EXCEPTION WHEN OTHERS THEN
+            v_target_hosp_id := NULL;
+        END;
+
+        IF v_target_hosp_id IS NULL THEN
+            SELECT hospital_id INTO v_target_hosp_id FROM public.qr_codes WHERE token = TRIM(p_hospital_id) LIMIT 1;
+        END IF;
+
+        IF v_target_hosp_id IS NULL THEN
+            SELECT id INTO v_target_hosp_id FROM public.hospitals WHERE subdomain = TRIM(p_hospital_id) OR slug = TRIM(p_hospital_id) LIMIT 1;
+        END IF;
+    END IF;
+
+    -- Collect all matching active appointments for this patient in the target hospital (if hospital-scoped)
+    IF v_target_hosp_id IS NOT NULL THEN
+        SELECT COALESCE(jsonb_agg(
+            jsonb_build_object(
+                'id', sub.id,
+                'token_number', sub.token_number,
+                'queue_number', sub.queue_number,
+                'tracking_token', sub.tracking_token,
+                'patient_id', sub.patient_id,
+                'patient_number', sub.patient_number,
+                'patient_name', sub.patient_name,
+                'doctor_id', sub.doctor_id,
+                'doctor_name', sub.doctor_name,
+                'department', sub.department,
+                'appointment_date', sub.appointment_date,
+                'status', sub.status,
+                'created_at', sub.created_at
+            ) ORDER BY (CASE WHEN sub.appointment_date = CURRENT_DATE THEN 0 ELSE 1 END), sub.created_at DESC
+        ), '[]'::jsonb)
+        INTO v_matched_appts
+        FROM (
+            SELECT a.*, p.full_name AS doctor_name, p.department, pt.patient_number
+            FROM public.appointments a
+            LEFT JOIN public.profiles p ON p.id = a.doctor_id
+            LEFT JOIN public.patients pt ON pt.id = a.patient_id
+            WHERE a.hospital_id = v_target_hosp_id
+              AND (
+                  a.id::TEXT = v_clean_input
+                  OR a.queue_number = v_clean_input
+                  OR a.tracking_token = v_clean_input
+                  OR (pt.patient_number IS NOT NULL AND pt.patient_number = v_clean_input)
+                  OR (pt.id::TEXT = v_clean_input)
+                  OR (a.patient_phone = v_clean_input)
+                  OR (LENGTH(v_digits_only) >= 10 AND (
+                        a.patient_phone LIKE '%' || RIGHT(v_digits_only, 10)
+                        OR pt.phone LIKE '%' || RIGHT(v_digits_only, 10)
+                     ))
+              )
+        ) sub;
+    END IF;
+
+    -- Lookup targeted single appointment
     SELECT a.*, p.full_name AS doctor_name, p.doctor_code, p.department, dd.room_number, h.name AS hospital_name, pt.patient_number
     INTO v_appt
     FROM public.appointments a
@@ -1389,15 +2182,36 @@ BEGIN
     LEFT JOIN public.doctor_details dd ON dd.id = a.doctor_id
     LEFT JOIN public.hospitals h ON h.id = a.hospital_id
     LEFT JOIN public.patients pt ON pt.id = a.patient_id
-    WHERE a.id::TEXT = TRIM(p_tracking_token)
-       OR a.queue_number = TRIM(p_tracking_token)
-       OR a.tracking_token = TRIM(p_tracking_token)
-    ORDER BY a.created_at DESC LIMIT 1;
+    WHERE (
+       (v_target_hosp_id IS NULL OR a.hospital_id = v_target_hosp_id)
+       AND (
+           a.id::TEXT = v_clean_input
+           OR a.queue_number = v_clean_input
+           OR a.tracking_token = v_clean_input
+           OR (pt.patient_number IS NOT NULL AND pt.patient_number = v_clean_input)
+           OR (pt.id::TEXT = v_clean_input)
+           OR (a.patient_phone = v_clean_input)
+           OR (LENGTH(v_digits_only) >= 10 AND (
+                 a.patient_phone LIKE '%' || RIGHT(v_digits_only, 10)
+                 OR pt.phone LIKE '%' || RIGHT(v_digits_only, 10)
+              ))
+       )
+    )
+    ORDER BY 
+       (CASE WHEN a.appointment_date = CURRENT_DATE THEN 0 ELSE 1 END),
+       (CASE WHEN a.status IN ('Waiting', 'In Consultation') THEN 0 ELSE 1 END),
+       a.created_at DESC 
+    LIMIT 1;
 
     IF v_appt.id IS NULL THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Appointment record not found.');
+        IF v_target_hosp_id IS NOT NULL THEN
+            RETURN jsonb_build_object('success', false, 'error', 'No active appointment found for this hospital.');
+        ELSE
+            RETURN jsonb_build_object('success', false, 'error', 'No active appointment found for this tracking token or patient ID.');
+        END IF;
     END IF;
 
+    -- Current Serving Token for this Doctor & Date
     SELECT COALESCE(MIN(token_number), v_appt.token_number) INTO v_current_token
     FROM public.appointments
     WHERE doctor_id = v_appt.doctor_id AND appointment_date = v_appt.appointment_date AND status = 'In Consultation';
@@ -1408,6 +2222,7 @@ BEGIN
         WHERE doctor_id = v_appt.doctor_id AND appointment_date = v_appt.appointment_date AND status = 'Waiting';
     END IF;
 
+    -- Patients ahead
     SELECT COUNT(*) INTO v_waiting_count
     FROM public.appointments
     WHERE doctor_id = v_appt.doctor_id 
@@ -1448,7 +2263,7 @@ BEGIN
     FROM public.notifications
     WHERE appointment_id = v_appt.id;
 
-    -- Calculate estimated wait
+    -- Calculate estimated wait time
     v_est_wait := v_waiting_count * 12;
 
     -- Compute live status label
@@ -1461,7 +2276,7 @@ BEGIN
     ELSIF v_appt.status = 'No Show' THEN
         v_status_label := 'Missed';
     ELSIF v_waiting_count = 0 THEN
-        v_status_label := 'Now Serving';
+        v_status_label := 'Your Turn Soon';
     ELSIF v_waiting_count <= 2 THEN
         v_status_label := 'Your Turn Soon';
     ELSE
@@ -1474,13 +2289,17 @@ BEGIN
         'token_number', v_appt.token_number,
         'original_token', v_appt.token_number,
         'queue_number', COALESCE(v_appt.queue_number, 'OPD-' || LPAD(v_appt.token_number::TEXT, 3, '0')),
+        'tracking_token', COALESCE(v_appt.tracking_token, v_appt.queue_number),
         'patient_id', v_appt.patient_id,
         'patient_number', v_appt.patient_number,
         'patient_name', v_appt.patient_name,
+        'patient_phone', v_appt.patient_phone,
+        'doctor_id', v_appt.doctor_id,
         'doctor_name', v_appt.doctor_name,
         'doctor_code', v_appt.doctor_code,
         'room_number', COALESCE(v_appt.room_number, 'Room 101'),
         'department', COALESCE(v_appt.department, 'General OPD'),
+        'hospital_id', v_appt.hospital_id,
         'hospital_name', v_appt.hospital_name,
         'status', v_appt.status,
         'live_status_label', v_status_label,
@@ -1491,7 +2310,8 @@ BEGIN
         'estimated_wait_mins', v_est_wait,
         'appointment_date', v_appt.appointment_date,
         'queue_progress', v_queue_progress,
-        'notifications', v_notifications
+        'notifications', v_notifications,
+        'matched_appointments', v_matched_appts
     );
 END;
 $$;
@@ -1766,7 +2586,466 @@ BEGIN
 END;
 $$;
 
--- 6.11 FUNCTION PERMISSIONS (Universal Schema Grants)
+
+
+-- 6.12 DOCTOR SELF-SIGNUP RPC
+DROP FUNCTION IF EXISTS public.doctor_self_signup(TEXT, TEXT, UUID) CASCADE;
+CREATE OR REPLACE FUNCTION public.doctor_self_signup(
+    p_email TEXT,
+    p_full_name TEXT,
+    p_auth_user_id UUID DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_user_id UUID := COALESCE(p_auth_user_id, auth.uid());
+    v_clean_email TEXT := LOWER(TRIM(p_email));
+    v_full_name TEXT := TRIM(p_full_name);
+    v_clinic_id UUID;
+    v_clinic_name TEXT;
+    v_qr_token TEXT;
+    v_existing_prof RECORD;
+BEGIN
+    IF v_user_id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'User ID required for doctor registration.');
+    END IF;
+
+    SELECT * INTO v_existing_prof FROM public.profiles WHERE id = v_user_id;
+
+    IF v_existing_prof.id IS NOT NULL THEN
+        RETURN jsonb_build_object(
+            'success', true,
+            'doctor_id', v_existing_prof.id,
+            'hospital_id', v_existing_prof.hospital_id,
+            'onboarding_status', v_existing_prof.onboarding_status
+        );
+    END IF;
+
+    v_clinic_name := COALESCE(v_full_name || ' Clinic', 'Doctor Clinic');
+
+    INSERT INTO public.hospitals (
+        name, slug, client_type, plan, subscription_plan, doctor_limit, status
+    ) VALUES (
+        v_clinic_name,
+        'clinic-' || SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 8),
+        'individual_doctor',
+        'Individual Doctor Solo',
+        'Individual Doctor Solo',
+        1,
+        'active'
+    ) RETURNING id INTO v_clinic_id;
+
+    INSERT INTO public.profiles (
+        id, full_name, email, role, client_type, hospital_id, onboarding_status, is_active, account_status, doctor_code
+    ) VALUES (
+        v_user_id,
+        v_full_name,
+        v_clean_email,
+        'doctor',
+        'individual_doctor',
+        v_clinic_id,
+        'PROFILE_INCOMPLETE',
+        true,
+        'active',
+        'DOC-' || UPPER(SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 6))
+    );
+
+    INSERT INTO public.doctor_details (
+        id, doctor_code, hospital_id, name, email, clinic_name, specialization, qualification,
+        consultation_fee, slot_duration, available_days, available_hours, onboarding_status, is_active
+    ) VALUES (
+        v_user_id,
+        'DOC-' || UPPER(SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 6)),
+        v_clinic_id,
+        v_full_name,
+        v_clean_email,
+        v_clinic_name,
+        'General Physician',
+        'MBBS, MD',
+        500.00,
+        15,
+        '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb,
+        '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb,
+        'PROFILE_INCOMPLETE',
+        true
+    );
+
+    v_qr_token := 'QR-DOC-' || UPPER(SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 8));
+    INSERT INTO public.qr_codes (
+        hospital_id, token, booking_url, intake_url, status, is_active
+    ) VALUES (
+        v_clinic_id,
+        v_qr_token,
+        '/book/' || v_qr_token,
+        '/book/' || v_qr_token,
+        'active',
+        true
+    ) ON CONFLICT (token) DO NOTHING;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'doctor_id', v_user_id,
+        'hospital_id', v_clinic_id,
+        'qr_token', v_qr_token,
+        'onboarding_status', 'PROFILE_INCOMPLETE'
+    );
+END;
+$$;
+
+-- 6.13 DOCTOR COMPLETE PROFILE RPC
+DROP FUNCTION IF EXISTS public.doctor_complete_profile CASCADE;
+CREATE OR REPLACE FUNCTION public.doctor_complete_profile(
+    p_doctor_id UUID,
+    p_doctor_name TEXT,
+    p_qualification TEXT,
+    p_specialization TEXT,
+    p_doctor_phone TEXT,
+    p_registration_number TEXT,
+    p_clinic_name TEXT,
+    p_clinic_address TEXT,
+    p_city TEXT,
+    p_state TEXT,
+    p_pincode TEXT,
+    p_clinic_phone TEXT,
+    p_consultation_fee NUMERIC,
+    p_available_days JSONB,
+    p_available_hours JSONB,
+    p_slot_duration INTEGER
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_prof RECORD;
+    v_clinic_id UUID;
+BEGIN
+    SELECT * INTO v_prof FROM public.profiles WHERE id = p_doctor_id;
+    IF v_prof.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Doctor profile not found.');
+    END IF;
+
+    v_clinic_id := v_prof.hospital_id;
+
+    -- Update Clinic Details in Hospitals table
+    IF v_clinic_id IS NOT NULL THEN
+        UPDATE public.hospitals SET
+            name = TRIM(p_clinic_name),
+            address = TRIM(p_clinic_address),
+            city = TRIM(p_city),
+            state = TRIM(p_state),
+            pincode = TRIM(p_pincode),
+            phone = TRIM(p_clinic_phone),
+            updated_at = NOW()
+        WHERE id = v_clinic_id;
+    END IF;
+
+    -- Update Profile
+    UPDATE public.profiles SET
+        full_name = TRIM(p_doctor_name),
+        specialization = TRIM(p_specialization),
+        registration_number = TRIM(p_registration_number),
+        onboarding_status = 'PAYMENT_PENDING',
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    -- Update Doctor Details
+    UPDATE public.doctor_details SET
+        name = TRIM(p_doctor_name),
+        qualification = TRIM(p_qualification),
+        specialization = TRIM(p_specialization),
+        registration_number = TRIM(p_registration_number),
+        clinic_name = TRIM(p_clinic_name),
+        clinic_address = TRIM(p_clinic_address),
+        city = TRIM(p_city),
+        state = TRIM(p_state),
+        pincode = TRIM(p_pincode),
+        clinic_phone = TRIM(p_clinic_phone),
+        consultation_fee = COALESCE(p_consultation_fee, 500.00),
+        available_days = COALESCE(p_available_days, '["Mon","Tue","Wed","Thu","Fri","Sat"]'::jsonb),
+        available_hours = COALESCE(p_available_hours, '{"start": "09:00 AM", "end": "05:00 PM"}'::jsonb),
+        slot_duration = COALESCE(p_slot_duration, 15),
+        onboarding_status = 'PAYMENT_PENDING',
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'onboarding_status', 'PAYMENT_PENDING'
+    );
+END;
+$$;
+
+-- 6.14 DOCTOR VERIFY AND ACTIVATE SUBSCRIPTION RPC
+DROP FUNCTION IF EXISTS public.doctor_verify_and_activate_subscription CASCADE;
+CREATE OR REPLACE FUNCTION public.doctor_verify_and_activate_subscription(
+    p_doctor_id UUID,
+    p_plan_id TEXT,
+    p_amount NUMERIC,
+    p_payment_provider TEXT DEFAULT 'razorpay',
+    p_order_id TEXT DEFAULT NULL,
+    p_payment_id TEXT DEFAULT NULL,
+    p_signature TEXT DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_prof RECORD;
+    v_qr RECORD;
+    v_expires_at TIMESTAMPTZ;
+BEGIN
+    SELECT * INTO v_prof FROM public.profiles WHERE id = p_doctor_id;
+    IF v_prof.id IS NULL THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Doctor profile not found.');
+    END IF;
+
+    IF p_plan_id = 'doctor_annual' THEN
+        v_expires_at := NOW() + INTERVAL '365 days';
+    ELSE
+        v_expires_at := NOW() + INTERVAL '30 days';
+    END IF;
+
+    -- Upsert Active Subscription Record
+    INSERT INTO public.individual_doctor_subscriptions (
+        doctor_id, hospital_id, plan_id, plan_name, amount, status,
+        payment_provider, provider_order_id, provider_payment_id, provider_signature,
+        started_at, expires_at, updated_at
+    ) VALUES (
+        p_doctor_id, v_prof.hospital_id, p_plan_id,
+        CASE WHEN p_plan_id = 'doctor_annual' THEN 'Annual Professional' ELSE 'Monthly Solo' END,
+        COALESCE(p_amount, 999.00), 'active',
+        p_payment_provider, p_order_id, p_payment_id, p_signature,
+        NOW(), v_expires_at, NOW()
+    );
+
+    -- Activate Profile and Doctor Details
+    UPDATE public.profiles SET
+        onboarding_status = 'ACTIVE',
+        is_active = true,
+        account_status = 'active',
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    UPDATE public.doctor_details SET
+        onboarding_status = 'ACTIVE',
+        is_active = true,
+        updated_at = NOW()
+    WHERE id = p_doctor_id;
+
+    -- Ensure QR Code is Active
+    SELECT * INTO v_qr FROM public.qr_codes WHERE hospital_id = v_prof.hospital_id AND (status = 'active' OR is_active = true) LIMIT 1;
+    IF v_qr.id IS NULL THEN
+        INSERT INTO public.qr_codes (
+            hospital_id, token, booking_url, intake_url, status, is_active
+        ) VALUES (
+            v_prof.hospital_id,
+            'QR-DOC-' || UPPER(SUBSTRING(REPLACE(p_doctor_id::text, '-', ''), 1, 8)),
+            '/book/QR-DOC-' || UPPER(SUBSTRING(REPLACE(p_doctor_id::text, '-', ''), 1, 8)),
+            '/book/QR-DOC-' || UPPER(SUBSTRING(REPLACE(p_doctor_id::text, '-', ''), 1, 8)),
+            'active',
+            true
+        ) RETURNING * INTO v_qr;
+    END IF;
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'onboarding_status', 'ACTIVE',
+        'qr_token', v_qr.token,
+        'booking_url', v_qr.booking_url
+    );
+END;
+$$;
+
+-- 6.15 ADMIN CREATE INDIVIDUAL DOCTOR RPC
+DROP FUNCTION IF EXISTS public.admin_create_individual_doctor CASCADE;
+CREATE OR REPLACE FUNCTION public.admin_create_individual_doctor(
+    p_doctor_name TEXT,
+    p_email TEXT,
+    p_password TEXT,
+    p_qualification TEXT DEFAULT 'MBBS, MD',
+    p_specialization TEXT DEFAULT 'General Physician',
+    p_phone TEXT DEFAULT NULL,
+    p_registration_number TEXT DEFAULT NULL,
+    p_clinic_name TEXT DEFAULT NULL,
+    p_clinic_address TEXT DEFAULT NULL,
+    p_city TEXT DEFAULT 'Mumbai',
+    p_state TEXT DEFAULT 'Maharashtra',
+    p_pincode TEXT DEFAULT '400001',
+    p_consultation_fee NUMERIC DEFAULT 500.00,
+    p_subscription_plan TEXT DEFAULT 'doctor_monthly'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_clean_email TEXT := LOWER(TRIM(p_email));
+    v_user_id UUID;
+    v_clinic_id UUID;
+    v_clinic_name TEXT;
+    v_qr_token TEXT;
+    v_doc_code TEXT;
+BEGIN
+    IF NOT (SELECT role = 'super_admin' FROM public.profiles WHERE id = auth.uid()) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Only Super Admin can provision individual doctors.');
+    END IF;
+
+    v_clinic_name := COALESCE(TRIM(p_clinic_name), TRIM(p_doctor_name) || ' Clinic');
+
+    SELECT id INTO v_user_id FROM auth.users WHERE LOWER(email) = v_clean_email LIMIT 1;
+
+    IF v_user_id IS NULL THEN
+        v_user_id := gen_random_uuid();
+        INSERT INTO auth.users (
+            id, instance_id, aud, role, email, encrypted_password, email_confirmed_at,
+            last_sign_in_at, raw_app_meta_data, raw_user_meta_data,
+            is_super_admin, is_anonymous, created_at, updated_at,
+            confirmation_token, recovery_token, email_change,
+            email_change_token_new, email_change_token_current,
+            phone_change, phone_change_token, reauthentication_token
+        ) VALUES (
+            v_user_id, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated',
+            v_clean_email, crypt(p_password, gen_salt('bf')), NOW(), NOW(),
+            '{"provider": "email", "providers": ["email"]}'::jsonb,
+            jsonb_build_object('role', 'doctor', 'client_type', 'individual_doctor', 'full_name', p_doctor_name),
+            false, false, NOW(), NOW(),
+            '', '', '', '', '', '', '', ''
+        );
+
+        INSERT INTO auth.identities (
+            id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at
+        ) VALUES (
+            gen_random_uuid(), v_user_id,
+            jsonb_build_object('sub', v_user_id::text, 'email', v_clean_email),
+            'email', v_clean_email, NOW(), NOW(), NOW()
+        );
+    ELSE
+        UPDATE auth.users SET
+            encrypted_password = crypt(p_password, gen_salt('bf')),
+            email_confirmed_at = COALESCE(email_confirmed_at, NOW()),
+            updated_at = NOW()
+        WHERE id = v_user_id;
+    END IF;
+
+    INSERT INTO public.hospitals (
+        name, slug, client_type, phone, email, address, city, state, pincode, plan, subscription_plan, doctor_limit, status
+    ) VALUES (
+        v_clinic_name,
+        'clinic-' || SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 8),
+        'individual_doctor',
+        p_phone,
+        v_clean_email,
+        p_clinic_address,
+        p_city,
+        p_state,
+        p_pincode,
+        p_subscription_plan,
+        p_subscription_plan,
+        1,
+        'active'
+    ) RETURNING id INTO v_clinic_id;
+
+    v_doc_code := 'DOC-' || UPPER(SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 6));
+
+    INSERT INTO public.profiles (
+        id, full_name, email, role, client_type, hospital_id, specialization, registration_number,
+        onboarding_status, is_active, account_status, doctor_code
+    ) VALUES (
+        v_user_id,
+        TRIM(p_doctor_name),
+        v_clean_email,
+        'doctor',
+        'individual_doctor',
+        v_clinic_id,
+        TRIM(p_specialization),
+        TRIM(p_registration_number),
+        'ACTIVE',
+        true,
+        'active',
+        v_doc_code
+    ) ON CONFLICT (id) DO UPDATE SET
+        full_name = EXCLUDED.full_name,
+        hospital_id = v_clinic_id,
+        client_type = 'individual_doctor',
+        onboarding_status = 'ACTIVE',
+        is_active = true,
+        account_status = 'active';
+
+    INSERT INTO public.doctor_details (
+        id, doctor_code, hospital_id, name, email, qualification, specialization, registration_number,
+        clinic_name, clinic_address, city, state, pincode, clinic_phone, consultation_fee,
+        onboarding_status, is_active
+    ) VALUES (
+        v_user_id,
+        v_doc_code,
+        v_clinic_id,
+        TRIM(p_doctor_name),
+        v_clean_email,
+        TRIM(p_qualification),
+        TRIM(p_specialization),
+        TRIM(p_registration_number),
+        v_clinic_name,
+        TRIM(p_clinic_address),
+        TRIM(p_city),
+        TRIM(p_state),
+        TRIM(p_pincode),
+        TRIM(p_phone),
+        COALESCE(p_consultation_fee, 500.00),
+        'ACTIVE',
+        true
+    ) ON CONFLICT (id) DO UPDATE SET
+        hospital_id = v_clinic_id,
+        clinic_name = EXCLUDED.clinic_name,
+        onboarding_status = 'ACTIVE',
+        is_active = true;
+
+    INSERT INTO public.user_credentials_vault (
+        hospital_id, user_id, doctor_code, role, full_name, email, initial_password
+    ) VALUES (
+        v_clinic_id, v_user_id, v_doc_code, 'doctor', TRIM(p_doctor_name), v_clean_email, p_password
+    );
+
+    INSERT INTO public.individual_doctor_subscriptions (
+        doctor_id, hospital_id, plan_id, plan_name, amount, status, started_at, expires_at
+    ) VALUES (
+        v_user_id, v_clinic_id, p_subscription_plan,
+        CASE WHEN p_subscription_plan = 'doctor_annual' THEN 'Annual Professional' ELSE 'Monthly Solo' END,
+        CASE WHEN p_subscription_plan = 'doctor_annual' THEN 9999.00 ELSE 999.00 END,
+        'active', NOW(), NOW() + INTERVAL '365 days'
+    );
+
+    v_qr_token := 'QR-DOC-' || UPPER(SUBSTRING(REPLACE(v_user_id::text, '-', ''), 1, 8));
+    INSERT INTO public.qr_codes (
+        hospital_id, token, booking_url, intake_url, status, is_active
+    ) VALUES (
+        v_clinic_id,
+        v_qr_token,
+        '/book/' || v_qr_token,
+        '/book/' || v_qr_token,
+        'active',
+        true
+    ) ON CONFLICT (token) DO UPDATE SET is_active = true, status = 'active';
+
+    RETURN jsonb_build_object(
+        'success', true,
+        'doctor_id', v_user_id,
+        'clinic_id', v_clinic_id,
+        'doctor_code', v_doc_code,
+        'qr_token', v_qr_token,
+        'booking_url', '/book/' || v_qr_token
+    );
+END;
+$$;
+
+-- 6.16 FUNCTION PERMISSIONS (Universal Schema Grants)
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT EXECUTE ON FUNCTIONS TO anon, authenticated, service_role;
 

@@ -4,7 +4,7 @@ import {
   Clock, CheckCircle2, MapPin, Stethoscope, ShieldAlert,
   Building2, User, Calendar, Search, ArrowRight, ArrowLeft,
   AlertCircle, FileText, Phone, Activity, Sparkles, Check,
-  Printer, Copy
+  Printer, Copy, ShieldCheck
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { useSEO } from '../hooks/useSEO'
@@ -52,6 +52,7 @@ export default function IntakePage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [hospital, setHospital] = useState<HospitalInfo | null>(null)
+  const [isIndividualDoctor, setIsIndividualDoctor] = useState(false)
   const [departments, setDepartments] = useState<Department[]>([])
   const [doctors, setDoctors] = useState<Doctor[]>([])
 
@@ -138,18 +139,39 @@ export default function IntakePage() {
           throw new Error(data?.error || 'Invalid or inactive hospital QR booking code.')
         }
 
-        setHospital(data.hospital)
-        const depts: Department[] = data.departments || []
-        setDepartments(depts)
-        const docs: Doctor[] = data.doctors || []
-        setDoctors(docs)
-
-        // Set default selected department if available
-        if (depts.length > 0) {
-          const opdDept = depts.find(d => d.is_opd || d.name.toLowerCase().includes('opd'))
-          setSelectedDept(opdDept ? opdDept.name : depts[0].name)
+        if (data.is_individual_doctor) {
+          setIsIndividualDoctor(true)
+          const clinicInfo = data.clinic || data.hospital
+          setHospital({
+            id: clinicInfo?.id,
+            name: clinicInfo?.name || "Doctor's Clinic",
+            address: clinicInfo?.address,
+            phone: clinicInfo?.phone,
+            email: clinicInfo?.email,
+            license: clinicInfo?.license,
+          })
+          const docList = data.doctors || (data.doctor ? [data.doctor] : [])
+          setDoctors(docList)
+          if (docList.length > 0) {
+            setSelectedDoctor(docList[0])
+            setSelectedDept(docList[0].department || docList[0].specialization || 'Consultation')
+          }
+          setDepartments([])
         } else {
-          setSelectedDept('')
+          setIsIndividualDoctor(false)
+          setHospital(data.hospital)
+          const depts: Department[] = data.departments || []
+          setDepartments(depts)
+          const docs: Doctor[] = data.doctors || []
+          setDoctors(docs)
+
+          // Set default selected department if available
+          if (depts.length > 0) {
+            const opdDept = depts.find(d => d.is_opd || d.name.toLowerCase().includes('opd'))
+            setSelectedDept(opdDept ? opdDept.name : depts[0].name)
+          } else {
+            setSelectedDept('')
+          }
         }
       } catch (err: any) {
         console.warn('QR Booking Info Load Notice:', err.message)
@@ -313,19 +335,19 @@ export default function IntakePage() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans pb-16 antialiased selection:bg-emerald-500 selection:text-white">
-      {/* ─── TOP CLINICAL BAR: RESOLVED HOSPITAL IDENTITY ───── */}
+      {/* ─── TOP CLINICAL BAR: RESOLVED HOSPITAL / CLINIC IDENTITY ───── */}
       <header className="bg-white border-b border-slate-200/90 sticky top-0 z-30 shadow-sm">
         <div className="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center font-black text-white text-lg shadow-md shadow-emerald-500/20">
-              <Building2 size={20} />
+              {isIndividualDoctor ? <Stethoscope size={20} /> : <Building2 size={20} />}
             </div>
             <div>
               <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider block">
-                Official OPD Booking Portal
+                {isIndividualDoctor ? "Official Clinic Booking Portal" : "Official OPD Booking Portal"}
               </span>
               <h1 className="text-sm sm:text-base font-black text-slate-900 uppercase tracking-tight leading-tight">
-                {hospital?.name || 'City Care Hospital'}
+                {hospital?.name || (isIndividualDoctor ? "Doctor's Clinic" : "City Care Hospital")}
               </h1>
             </div>
           </div>
@@ -342,45 +364,92 @@ export default function IntakePage() {
       {/* ─── MAIN CONTAINER ─────────────────────────────────── */}
       <main className="max-w-3xl mx-auto px-4 pt-6 space-y-6">
 
-        {/* Step Indicator Tracker (1 to 3) */}
+        {/* Step Indicator Tracker */}
         {step < 4 && (
           <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm flex items-center justify-between text-xs">
-            <div className={`flex items-center gap-2 font-bold ${step >= 1 ? 'text-emerald-700' : 'text-slate-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 1 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
-                1
-              </div>
-              <span className="hidden sm:inline">Date & Specialty</span>
-            </div>
+            {isIndividualDoctor ? (
+              <>
+                <div className={`flex items-center gap-2 font-bold ${step === 1 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step === 1 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
+                    1
+                  </div>
+                  <span>Select Date</span>
+                </div>
 
-            <div className="w-8 h-[2px] bg-slate-200" />
+                <div className="w-8 h-[2px] bg-slate-200" />
 
-            <div className={`flex items-center gap-2 font-bold ${step >= 2 ? 'text-emerald-700' : 'text-slate-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 2 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
-                2
-              </div>
-              <span className="hidden sm:inline">Select Doctor</span>
-            </div>
+                <div className={`flex items-center gap-2 font-bold ${step === 3 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step === 3 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
+                    2
+                  </div>
+                  <span>Patient & Medical Details</span>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={`flex items-center gap-2 font-bold ${step >= 1 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 1 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
+                    1
+                  </div>
+                  <span className="hidden sm:inline">Date & Specialty</span>
+                </div>
 
-            <div className="w-8 h-[2px] bg-slate-200" />
+                <div className="w-8 h-[2px] bg-slate-200" />
 
-            <div className={`flex items-center gap-2 font-bold ${step >= 3 ? 'text-emerald-700' : 'text-slate-400'}`}>
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 3 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
-                3
-              </div>
-              <span className="hidden sm:inline">Patient & Medical Details</span>
-            </div>
+                <div className={`flex items-center gap-2 font-bold ${step >= 2 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 2 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
+                    2
+                  </div>
+                  <span className="hidden sm:inline">Select Doctor</span>
+                </div>
+
+                <div className="w-8 h-[2px] bg-slate-200" />
+
+                <div className={`flex items-center gap-2 font-bold ${step >= 3 ? 'text-emerald-700' : 'text-slate-400'}`}>
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] ${step >= 3 ? 'bg-emerald-600 text-white font-black' : 'bg-slate-100 text-slate-400'}`}>
+                    3
+                  </div>
+                  <span className="hidden sm:inline">Patient & Medical Details</span>
+                </div>
+              </>
+            )}
           </div>
         )}
 
-        {/* ─── STEP 1: DATE & DEPARTMENT SELECTION ────────────── */}
+        {/* ─── STEP 1: DATE SELECTION (+ DEPT FOR HOSPITALS) ────────────── */}
         {step === 1 && (
           <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200/90 shadow-xl shadow-slate-200/50 space-y-6">
+            {/* Individual Doctor Profile Banner */}
+            {isIndividualDoctor && selectedDoctor && (
+              <div className="p-5 rounded-2xl bg-emerald-50/70 border border-emerald-200 space-y-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800 block">
+                      Direct Consultation With
+                    </span>
+                    <h3 className="text-base sm:text-lg font-black text-slate-900">
+                      {selectedDoctor.name}
+                    </h3>
+                    <p className="text-xs font-semibold text-emerald-700">
+                      {selectedDoctor.specialization || selectedDoctor.department}
+                    </p>
+                  </div>
+                  <div className="text-right shrink-0 bg-white px-3 py-1.5 rounded-xl border border-emerald-300">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block">Fee</span>
+                    <span className="text-base font-black text-emerald-700">₹{selectedDoctor.fee}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div>
               <h2 className="text-xl font-black text-slate-900 tracking-tight">
-                1. Select Desired Appointment Date
+                {isIndividualDoctor ? "1. Select Consultation Date" : "1. Select Desired Appointment Date"}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Choose the consultation date to view doctor schedules and active queue slots.
+                {isIndividualDoctor
+                  ? `Choose your preferred date to book consultation with ${selectedDoctor?.name || 'the doctor'}.`
+                  : "Choose the consultation date to view doctor schedules and active queue slots."}
               </p>
             </div>
 
@@ -415,57 +484,59 @@ export default function IntakePage() {
               />
             </div>
 
-            {/* Department Selection (OPD Top & Default) */}
-            <div className="pt-4 border-t border-slate-100 space-y-3">
-              <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
-                Select Department / Specialty
-              </label>
+            {/* Department Selection (ONLY FOR MULTI-SPECIALTY HOSPITALS) */}
+            {!isIndividualDoctor && (
+              <div className="pt-4 border-t border-slate-100 space-y-3">
+                <label className="text-xs font-black text-slate-800 uppercase tracking-wider block">
+                  Select Department / Specialty
+                </label>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {departments.length === 0 ? (
-                  <div className="sm:col-span-2 p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl">
-                    <p className="text-xs font-bold text-slate-600">No departments currently configured for this hospital.</p>
-                  </div>
-                ) : (
-                  departments.map(dept => {
-                    const isSelected = selectedDept.toLowerCase() === dept.name.toLowerCase()
-                    return (
-                      <button
-                        key={dept.id}
-                        type="button"
-                        onClick={() => setSelectedDept(dept.name)}
-                        className={`p-4 rounded-2xl border text-left transition-all ${
-                          isSelected
-                            ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
-                            : 'bg-white border-slate-200 hover:bg-slate-50'
-                        }`}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-black text-slate-900">{dept.name}</span>
-                          {dept.is_opd && (
-                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black rounded-full uppercase">
-                              Default OPD
-                            </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {departments.length === 0 ? (
+                    <div className="sm:col-span-2 p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl">
+                      <p className="text-xs font-bold text-slate-600">No departments currently configured for this hospital.</p>
+                    </div>
+                  ) : (
+                    departments.map(dept => {
+                      const isSelected = selectedDept.toLowerCase() === dept.name.toLowerCase()
+                      return (
+                        <button
+                          key={dept.id}
+                          type="button"
+                          onClick={() => setSelectedDept(dept.name)}
+                          className={`p-4 rounded-2xl border text-left transition-all ${
+                            isSelected
+                              ? 'bg-emerald-50 border-emerald-500 ring-2 ring-emerald-500/20 shadow-sm'
+                              : 'bg-white border-slate-200 hover:bg-slate-50'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-black text-slate-900">{dept.name}</span>
+                            {dept.is_opd && (
+                              <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[9px] font-black rounded-full uppercase">
+                                Default OPD
+                              </span>
+                            )}
+                          </div>
+                          {dept.description && (
+                            <p className="text-[11px] text-slate-500 mt-1 leading-tight">{dept.description}</p>
                           )}
-                        </div>
-                        {dept.description && (
-                          <p className="text-[11px] text-slate-500 mt-1 leading-tight">{dept.description}</p>
-                        )}
-                      </button>
-                    )
-                  })
-                )}
+                        </button>
+                      )
+                    })
+                  )}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Next Button */}
             <div className="pt-4 flex justify-end">
               <button
                 type="button"
-                onClick={() => setStep(2)}
+                onClick={() => setStep(isIndividualDoctor ? 3 : 2)}
                 className="w-full sm:w-auto px-8 py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs uppercase tracking-wider rounded-xl shadow-lg shadow-emerald-600/20 flex items-center justify-center gap-2 transition"
               >
-                <span>View Available Doctors</span>
+                <span>{isIndividualDoctor ? "Continue to Patient Details" : "View Available Doctors"}</span>
                 <ArrowRight size={15} />
               </button>
             </div>
@@ -751,7 +822,7 @@ export default function IntakePage() {
               <div className="pt-4 flex items-center justify-between border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(isIndividualDoctor ? 1 : 2)}
                   className="px-5 py-3 text-slate-600 font-bold text-xs rounded-xl hover:bg-slate-100 transition"
                 >
                   ← Back
@@ -807,33 +878,37 @@ export default function IntakePage() {
             {/* PRIMARY GLASS BOXES: PATIENT ID & QUEUE NUMBER */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Permanent Patient ID Box */}
-              <div className="p-5 rounded-2xl bg-gradient-to-b from-emerald-50/80 to-teal-50/40 border border-emerald-200/80 shadow-sm text-left flex flex-col justify-between">
+              <div className="p-5 rounded-2xl bg-gradient-to-tr from-emerald-50 via-teal-50/50 to-emerald-50/30 border-2 border-emerald-500/30 shadow-sm text-left flex flex-col justify-between">
                 <div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
-                      Permanent Patient ID
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <ShieldCheck size={14} className="text-emerald-600" />
+                      <span className="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                        Permanent Patient ID
+                      </span>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
-                        if (confirmedBooking.patient_number) {
-                          navigator.clipboard.writeText(confirmedBooking.patient_number)
-                          setCopiedId(true)
-                          setTimeout(() => setCopiedId(false), 2500)
+                        const pid = confirmedBooking.patient_number || confirmedBooking.patient_id;
+                        if (pid) {
+                          navigator.clipboard.writeText(pid);
+                          setCopiedId(true);
+                          setTimeout(() => setCopiedId(false), 2500);
                         }
                       }}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-white text-emerald-700 hover:text-emerald-900 rounded-md border border-emerald-200 text-[10px] font-bold shadow-xs transition"
+                      className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-300 text-[10px] font-bold shadow-xs transition active:scale-95"
                     >
                       {copiedId ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
-                      <span>{copiedId ? 'Copied' : 'Copy'}</span>
+                      <span>{copiedId ? 'Copied!' : 'Copy ID'}</span>
                     </button>
                   </div>
                   <div className="mt-2 text-2xl sm:text-3xl font-black text-emerald-950 font-mono tracking-tight">
-                    {confirmedBooking.patient_number || '—'}
+                    {confirmedBooking.patient_number || confirmedBooking.patient_id || '—'}
                   </div>
                 </div>
-                <p className="text-[10px] text-emerald-700/80 mt-2 font-medium">
-                  Permanent record ID for this hospital. Retained across all visits.
+                <p className="text-[11px] text-emerald-700 mt-2 font-medium leading-tight">
+                  Permanent record ID. Save this for instant lookup on future visits & follow-ups.
                 </p>
               </div>
 

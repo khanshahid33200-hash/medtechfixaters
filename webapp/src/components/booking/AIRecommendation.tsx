@@ -15,6 +15,7 @@ import { DoctorRecommendation, DoctorItem } from "../../types/booking";
 interface AIRecommendationProps {
   recommendation: DoctorRecommendation;
   matchedDoctor?: DoctorItem;
+  isIndividualDoctor?: boolean;
   onConfirm: () => void;
   onChangeDoctor: () => void;
   onSwitchManual: () => void;
@@ -24,6 +25,7 @@ interface AIRecommendationProps {
 export const AIRecommendation: React.FC<AIRecommendationProps> = ({
   recommendation,
   matchedDoctor,
+  isIndividualDoctor = false,
   onConfirm,
   onChangeDoctor,
   onSwitchManual,
@@ -45,15 +47,15 @@ export const AIRecommendation: React.FC<AIRecommendationProps> = ({
           </div>
           <div>
             <h3 className="text-base font-bold text-[#1D1D1F]">
-              AI Clinical Recommendation
+              {isIndividualDoctor ? "Consultation Summary" : "AI Clinical Recommendation"}
             </h3>
             <p className="text-xs text-[#6E6E73]">
-              Based on your reported symptoms
+              {isIndividualDoctor ? "Scheduled based on your reported concern" : "Based on your reported symptoms"}
             </p>
           </div>
         </div>
         <span className="px-3 py-1 rounded-full text-xs font-semibold bg-[#34C759]/10 text-[#34C759] flex items-center gap-1">
-          <CheckCircle className="w-3.5 h-3.5" /> High Match
+          <CheckCircle className="w-3.5 h-3.5" /> Confirmed Match
         </span>
       </div>
 
@@ -106,11 +108,11 @@ export const AIRecommendation: React.FC<AIRecommendationProps> = ({
         {/* AI Rationale / Explanation Box */}
         <div className="p-4 rounded-2xl bg-[#007AFF]/5 border border-[#007AFF]/15 text-xs text-[#1D1D1F] leading-relaxed space-y-1">
           <p className="font-semibold text-[#007AFF] flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5" /> Why this doctor was chosen
+            <Sparkles className="w-3.5 h-3.5" /> Appointment Intake Note
           </p>
           <p className="text-[#6E6E73]">
             {recommendation.explanation ||
-              "Matched based on primary complaint and hospital OPD roster availability for immediate evaluation."}
+              "Appointment scheduled for clinical consultation and immediate OPD queue allocation."}
           </p>
         </div>
 
@@ -118,7 +120,9 @@ export const AIRecommendation: React.FC<AIRecommendationProps> = ({
         <div className="flex items-center gap-2 text-[11px] text-[#6E6E73] bg-slate-50 p-2.5 rounded-xl border border-slate-100">
           <ShieldAlert className="w-4 h-4 text-amber-500 shrink-0" />
           <span>
-            AI recommendations are for OPD triage assistance only, not a formal diagnosis.
+            {isIndividualDoctor
+              ? "AI intake collects appointment details for clinical routing. Diagnosis will be done directly by the doctor."
+              : "AI recommendations are for OPD triage assistance only, not a formal diagnosis."}
           </span>
         </div>
 
@@ -136,29 +140,33 @@ export const AIRecommendation: React.FC<AIRecommendationProps> = ({
             ) : (
               <>
                 <CheckCircle className="w-4.5 h-4.5" />
-                <span>Confirm & Book OPD Token</span>
+                <span>Confirm & Book Appointment</span>
               </>
             )}
           </button>
 
           {/* Secondary Actions */}
           <div className="grid grid-cols-2 gap-2">
-            <button
-              type="button"
-              onClick={onChangeDoctor}
-              className="py-2.5 px-3 rounded-xl bg-white/60 hover:bg-white border border-slate-200 text-xs font-semibold text-[#1D1D1F] flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <RefreshCw className="w-3.5 h-3.5 text-[#007AFF]" />
-              <span>Change Doctor</span>
-            </button>
+            {!isIndividualDoctor && (
+              <button
+                type="button"
+                onClick={onChangeDoctor}
+                className="py-2.5 px-3 rounded-xl bg-white/60 hover:bg-white border border-slate-200 text-xs font-semibold text-[#1D1D1F] flex items-center justify-center gap-1.5 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-[#007AFF]" />
+                <span>Change Doctor</span>
+              </button>
+            )}
 
             <button
               type="button"
               onClick={onSwitchManual}
-              className="py-2.5 px-3 rounded-xl bg-white/60 hover:bg-white border border-slate-200 text-xs font-semibold text-[#1D1D1F] flex items-center justify-center gap-1.5 transition-colors"
+              className={`py-2.5 px-3 rounded-xl bg-white/60 hover:bg-white border border-slate-200 text-xs font-semibold text-[#1D1D1F] flex items-center justify-center gap-1.5 transition-colors ${
+                isIndividualDoctor ? 'col-span-2' : ''
+              }`}
             >
               <Sliders className="w-3.5 h-3.5 text-slate-600" />
-              <span>Book Manually</span>
+              <span>{isIndividualDoctor ? "Edit Details Manually" : "Book Manually"}</span>
             </button>
           </div>
         </div>

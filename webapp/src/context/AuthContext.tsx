@@ -15,6 +15,8 @@ export interface DoctorProfile {
   role: 'doctor' | 'hospital_admin' | 'super_admin' | 'staff'
   account_status: 'active' | 'suspended' | 'blocked' | 'banned' | 'deleted'
   status: 'active' | 'inactive' | 'on_leave'
+  client_type?: 'hospital' | 'individual_doctor'
+  onboarding_status?: 'PROFILE_INCOMPLETE' | 'PAYMENT_PENDING' | 'ACTIVE' | 'SUSPENDED' | 'CANCELLED'
 }
 
 interface AuthContextType {
@@ -44,6 +46,7 @@ interface AuthContextType {
   ) => Promise<any>
   logout: () => Promise<void>
   validateActiveSession: () => Promise<boolean>
+  refreshDoctorProfile: () => Promise<boolean>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -73,9 +76,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const hospObj = profileData.hospitals
         const hospStatus = hospObj?.status || 'active'
         const accStatus = profileData.account_status || (profileData.is_active ? 'active' : 'blocked')
+        const clientType = profileData.client_type || hospObj?.client_type || 'hospital'
+        const onboardingStatus = profileData.onboarding_status || 'ACTIVE'
 
         // Check Layer 1: Individual Profile Active Status
-        if (!profileData.is_active || accStatus !== 'active') {
+        // Note: Individual doctors undergoing onboarding are allowed to access onboarding wizard
+        if (clientType === 'individual_doctor' && (onboardingStatus === 'PROFILE_INCOMPLETE' || onboardingStatus === 'PAYMENT_PENDING')) {
+          // Allowed for onboarding
+        } else if (!profileData.is_active || accStatus !== 'active') {
           console.warn('Account is inactive or blocked:', accStatus)
           await supabase.auth.signOut()
           setCurrentUser(null)
@@ -94,12 +102,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return false
         }
 
-        const hospName = hospObj?.name || user.user_metadata?.hospital_name || 'Hospital Facility'
+        const hospName = hospObj?.name || user.user_metadata?.hospital_name || (clientType === 'individual_doctor' ? 'Doctor Clinic' : 'Hospital Facility')
         const hospId = profileData.hospital_id || user.user_metadata?.hospital_id || null
 
         // Never default to a shared tenant bucket — a hospital-less non-admin
         // session must be rejected, not silently pooled with other hospitals.
-        if (role !== 'super_admin' && !hospId) {
+        if (role !== 'super_admin' && !hospId && clientType !== 'individual_doctor') {
           console.warn('Profile has no hospital_id linked; rejecting session.')
           await supabase.auth.signOut()
           setCurrentUser(null)
@@ -124,6 +132,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role: role,
           account_status: accStatus,
           status: 'active',
+          client_type: clientType,
+          onboarding_status: onboardingStatus,
         }
 
         setCurrentUser(user)
@@ -134,6 +144,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('hospital_name', hospName)
         localStorage.setItem('doctor_id', user.id)
         localStorage.setItem('doctor_code', docCode)
+        localStorage.setItem('client_type', clientType)
+        localStorage.setItem('onboarding_status', onboardingStatus)
         return true
       }
       return false
@@ -277,8 +289,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(`Wrong portal. This account belongs to ${portalName}. Please use the ${portalName} login.`)
       }
 
+      const clientType = profileData?.client_type || hospObj?.client_type || 'hospital'
+      const onboardingStatus = profileData?.onboarding_status || 'ACTIVE'
+
       // Layer 1 Check: Individual Profile Status
-      if (profileData && (!profileData.is_active || accStatus !== 'active')) {
+      if (clientType === 'individual_doctor' && (onboardingStatus === 'PROFILE_INCOMPLETE' || onboardingStatus === 'PAYMENT_PENDING')) {
+        // Allowed for onboarding
+      } else if (profileData && (!profileData.is_active || accStatus !== 'active')) {
         await supabase.auth.signOut()
         setIsLoading(false)
         throw new Error('Access Denied: Your account is currently restricted. Please contact your facility administrator.')
@@ -288,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (role !== 'super_admin' && hospStatus !== 'active') {
         await supabase.auth.signOut()
         setIsLoading(false)
-        throw new Error('Access Denied: Your hospital facility account is currently unavailable. Please contact the platform administrator.')
+        throw new Error('Access Denied: Your facility account is currently unavailable. Please contact the platform administrator.')
       }
 
       const hospId = profileData?.hospital_id || user.user_metadata?.hospital_id || null
@@ -297,10 +314,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // resolve to a real hospital — never silently default to a shared
       // tenant bucket (that was the 'hosp-001' bug: any broken session
       // collapsed onto one shared hospital and could see its data).
-      if (role !== 'super_admin' && !hospId) {
+      if (role !== 'super_admin' && !hospId && clientType !== 'individual_doctor') {
         await supabase.auth.signOut()
         setIsLoading(false)
-        throw new Error('Account setup incomplete: no hospital is linked to this account. Please contact your platform administrator on /mrshahidbabu.')
+        throw new Error('Account setup incomplete: no clinic/hospital is linked to this account. Please contact your platform administrator on /mrshahidbabu.')
       }
 
       // Mandatory Hospital Registration Verification (/mrshahidbabu)
@@ -362,7 +379,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      const hospName = hospObj?.name || user.user_metadata?.hospital_name || 'Hospital Facility'
+      const hospName = hospObj?.name || user.user_metadata?.hospital_name || (clientType === 'individual_doctor' ? 'Doctor Clinic' : 'Hospital Facility')
       const docCode = profileData?.doctor_code || user.user_metadata?.doctor_code || cleanId.toUpperCase()
 
       const profile: DoctorProfile = {
@@ -379,18 +396,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: role as any,
         account_status: accStatus,
         status: 'active',
+        client_type: clientType,
+        onboarding_status: onboardingStatus,
       }
 
       setCurrentUser(user)
       setUserRole(role as any)
       setDoctorProfile(profile)
       localStorage.setItem('user_role', role)
-      localStorage.setItem('hospital_id', hospId)
+      localStorage.setItem('hospital_id', hospId || '')
       localStorage.setItem('hospital_name', hospName)
       localStorage.setItem('doctor_id', user.id)
       localStorage.setItem('doctor_code', docCode)
+      localStorage.setItem('client_type', clientType)
+      localStorage.setItem('onboarding_status', onboardingStatus)
       setIsLoading(false)
-      return { user, profile, role }
+      return { user, profile, role, client_type: clientType, onboarding_status: onboardingStatus }
     } catch (err: any) {
       setIsLoading(false)
       setError(err.message || 'Login failed')
@@ -740,6 +761,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         registerUserInSupabase,
         logout,
         validateActiveSession,
+        refreshDoctorProfile: validateActiveSession,
       }}
     >
       {children}

@@ -7,6 +7,7 @@ import { AIBookingFlow } from "./AIBookingFlow";
 import { AIRecommendation } from "./AIRecommendation";
 import { ManualBookingFlow } from "./ManualBookingFlow";
 import { BookingSuccess } from "./BookingSuccess";
+import { HospitalTrackView } from "./HospitalTrackView";
 import {
   BookingScreen,
   HospitalWorkspace,
@@ -35,6 +36,7 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
 
   // Screen State Machine
   const [screen, setScreen] = useState<BookingScreen>("home");
+  const [trackInitialToken, setTrackInitialToken] = useState<string>("");
 
   // Temporary Flow States
   const [patientIntake, setPatientIntake] = useState<PatientIntake | null>(null);
@@ -56,10 +58,56 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
       const resolvedHospital = await getHospitalByTokenOrId(tokenOrId);
       const hospId = resolvedHospital?.id || tokenOrId || "default-hosp";
 
-      const [docsData, deptsData] = await Promise.all([
-        getHospitalDoctors(hospId),
-        getHospitalDepartments(hospId),
-      ]);
+      let docsData: DoctorItem[] = [];
+      let deptsData: DepartmentItem[] = [];
+
+      if (
+        resolvedHospital?.is_individual_doctor &&
+        (resolvedHospital.doctor || (resolvedHospital.doctors && resolvedHospital.doctors.length > 0))
+      ) {
+        const rawDoc: any = resolvedHospital.doctor || resolvedHospital.doctors?.[0];
+        if (rawDoc) {
+          const singleDoc: DoctorItem = {
+            id: rawDoc.id,
+            hospital_id: hospId,
+            doctor_code: rawDoc.doctor_code || `DOC-${rawDoc.id?.slice(0, 4).toUpperCase() || '01'}`,
+            name: rawDoc.name || "Doctor Specialist",
+            department_id: rawDoc.department_id || rawDoc.department || "dept-practice",
+            department: rawDoc.department || rawDoc.specialization || "Consultation",
+            specialty: rawDoc.specialization || rawDoc.department || "Consultant Practitioner",
+            qualification: rawDoc.qualification,
+            registration_number: rawDoc.registration_number,
+            fee: rawDoc.fee || 500,
+            room_number: rawDoc.room || "Consultation Room",
+            active: true,
+            accepting_appointments: true,
+            clinic_name: rawDoc.clinic_name || resolvedHospital.name,
+            clinic_address: rawDoc.clinic_address || resolvedHospital.address,
+            available_days: rawDoc.available_days,
+            available_hours: rawDoc.available_hours,
+            slot_duration: rawDoc.slot_duration,
+          };
+          docsData = [singleDoc];
+          deptsData = [
+            {
+              id: singleDoc.department_id || "dept-practice",
+              hospital_id: hospId,
+              name: singleDoc.specialty || singleDoc.department || "Consultation",
+              description: `Direct consultation with ${singleDoc.name}`,
+              is_opd: true,
+              avg_wait_mins: 15,
+            },
+          ];
+          setSelectedDoctor(singleDoc);
+        }
+      } else {
+        const [dList, deptList] = await Promise.all([
+          getHospitalDoctors(hospId),
+          getHospitalDepartments(hospId),
+        ]);
+        docsData = dList;
+        deptsData = deptList;
+      }
 
       if (isMounted) {
         setHospital(
@@ -128,10 +176,14 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
         doctor_name: newAppt.doctor_name,
         department_name: newAppt.department_name,
         hospital_name: newAppt.hospital_name || hospital.name,
+        patient_id: newAppt.patient_id,
+        patient_number: newAppt.patient_number,
         patient_name: newAppt.patient_name,
         patient_phone: newAppt.patient_phone,
         booking_method: "AI",
         token_number: newAppt.token_number,
+        queue_number: newAppt.queue_number,
+        tracking_token: newAppt.tracking_token,
         queue_position: newAppt.queue_position,
         patients_ahead: newAppt.patients_ahead,
         estimated_wait_mins: newAppt.estimated_wait_mins,
@@ -177,10 +229,14 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
         doctor_name: newAppt.doctor_name || doc.name,
         department_name: newAppt.department_name || dept?.name || doc.department || "General OPD",
         hospital_name: newAppt.hospital_name || hospital.name,
+        patient_id: newAppt.patient_id,
+        patient_number: newAppt.patient_number,
         patient_name: newAppt.patient_name,
         patient_phone: newAppt.patient_phone,
         booking_method: "Manual",
         token_number: newAppt.token_number,
+        queue_number: newAppt.queue_number,
+        tracking_token: newAppt.tracking_token,
         queue_position: newAppt.queue_position,
         patients_ahead: newAppt.patients_ahead,
         estimated_wait_mins: newAppt.estimated_wait_mins,
@@ -202,7 +258,9 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
   const handleBookAnother = () => {
     setPatientIntake(null);
     setAiRecommendation(null);
-    setSelectedDoctor(null);
+    if (!hospital?.is_individual_doctor) {
+      setSelectedDoctor(null);
+    }
     setBookingResult(null);
     setScreen("home");
   };
@@ -214,7 +272,7 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
 
       {/* Main Glass Booking Shell (520px - 620px max-width) */}
       <main className="w-full max-w-[620px] mx-auto flex flex-col items-center">
-        {/* Hospital Standalone Header */}
+        {/* Hospital / Clinic Standalone Header */}
         <HospitalHeader hospital={hospital} loading={loading} />
 
         {/* Content Container */}
@@ -227,6 +285,10 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
                 doctors={doctors}
                 onSelectAI={() => setScreen("ai-chat")}
                 onSelectManual={() => setScreen("manual-details")}
+                onTrackStatus={() => {
+                  setTrackInitialToken("");
+                  setScreen("track");
+                }}
               />
             )}
 
@@ -246,6 +308,7 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
                 key="ai-recommendation"
                 recommendation={aiRecommendation}
                 matchedDoctor={selectedDoctor || undefined}
+                isIndividualDoctor={Boolean(hospital?.is_individual_doctor)}
                 loading={submitting}
                 onConfirm={handleConfirmAIRecommendation}
                 onChangeDoctor={() => setScreen("manual-doctor")}
@@ -274,6 +337,19 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
                 key="success"
                 result={bookingResult}
                 onBookAnother={handleBookAnother}
+                onTrackAppointment={(token) => {
+                  setTrackInitialToken(token);
+                  setScreen("track");
+                }}
+              />
+            )}
+
+            {screen === "track" && (
+              <HospitalTrackView
+                key="track"
+                hospital={hospital}
+                initialTrackingToken={trackInitialToken}
+                onBackToBooking={() => setScreen("home")}
               />
             )}
           </AnimatePresence>

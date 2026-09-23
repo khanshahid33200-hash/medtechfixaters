@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
@@ -9,18 +9,33 @@ import {
   RotateCcw,
   Sparkles,
   Calendar,
+  Copy,
+  Check,
+  ShieldCheck,
 } from "lucide-react";
 import { BookingResult } from "../../types/booking";
 
 interface BookingSuccessProps {
   result: BookingResult;
   onBookAnother: () => void;
+  onTrackAppointment?: (token: string) => void;
 }
 
 export const BookingSuccess: React.FC<BookingSuccessProps> = ({
   result,
   onBookAnother,
+  onTrackAppointment,
 }) => {
+  const [copiedId, setCopiedId] = useState(false);
+
+  const handleCopyId = () => {
+    if (result.patient_number) {
+      navigator.clipboard.writeText(result.patient_number);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2500);
+    }
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -43,14 +58,48 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
           Appointment Confirmed!
         </h2>
         <p className="text-xs sm:text-sm text-[#6E6E73]">
-          Your OPD token has been generated at {result.hospital_name}
+          Your appointment has been registered at {result.hospital_name}
         </p>
       </div>
 
-      {/* Main Token Reward Glass Card */}
-      <div className="rounded-3xl bg-white/85 backdrop-blur-2xl border border-white shadow-[0_16px_48px_rgba(0,122,255,0.12)] p-6 space-y-6 text-center relative overflow-hidden">
+      {/* Main Token & Permanent Patient ID Glass Card */}
+      <div className="rounded-3xl bg-white/95 backdrop-blur-2xl border border-white shadow-[0_16px_48px_rgba(0,122,255,0.12)] p-6 space-y-5 text-center relative overflow-hidden">
         {/* Ambient Top Light */}
         <div className="absolute -top-16 -right-16 w-36 h-36 rounded-full bg-[#007AFF]/15 blur-3xl pointer-events-none" />
+
+        {/* PROMINENT PERMANENT PATIENT ID HERO BOX */}
+        {result.patient_number && (
+          <div className="p-4 rounded-2xl bg-gradient-to-tr from-emerald-50 via-teal-50/60 to-emerald-50/30 border-2 border-emerald-500/30 shadow-sm text-left relative">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <ShieldCheck size={15} className="text-emerald-600" />
+                <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800">
+                  Your Permanent Patient ID
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={handleCopyId}
+                className="inline-flex items-center gap-1 px-2.5 py-1 bg-white hover:bg-emerald-50 text-emerald-800 rounded-lg border border-emerald-300 text-[11px] font-bold shadow-xs transition active:scale-95"
+              >
+                {copiedId ? <Check size={12} className="text-emerald-600" /> : <Copy size={12} />}
+                <span>{copiedId ? "Copied!" : "Copy ID"}</span>
+              </button>
+            </div>
+
+            <div className="mt-2 flex items-baseline justify-between">
+              <span className="text-2xl sm:text-3xl font-black font-mono tracking-tight text-emerald-950">
+                {result.patient_number}
+              </span>
+              <span className="text-[10px] uppercase font-bold text-emerald-700 bg-emerald-100/70 px-2 py-0.5 rounded-full">
+                Saved to Records
+              </span>
+            </div>
+            <p className="text-[11px] text-emerald-700 mt-1 font-medium leading-tight">
+              Please save this Patient ID. Use it for instant lookup on future visits and follow-ups.
+            </p>
+          </div>
+        )}
 
         {/* Token Badge */}
         <div className="space-y-1">
@@ -119,21 +168,32 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
 
         {/* Actions */}
         <div className="space-y-2.5 pt-1">
-          <a
-            href={`/track?t=${result.tracking_token || result.queue_number || result.appointment_id}`}
-            className="w-full py-3.5 px-4 rounded-2xl bg-orange-500 hover:bg-orange-600 active:scale-[0.99] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition-all duration-200"
-          >
-            <span>Track Live Queue Status →</span>
-            <ExternalLink className="w-4 h-4" />
-          </a>
+          {onTrackAppointment ? (
+            <button
+              type="button"
+              onClick={() => onTrackAppointment(result.tracking_token || result.patient_number || result.queue_number || result.id)}
+              className="w-full py-3.5 px-4 rounded-2xl bg-[#007AFF] hover:bg-[#0062D6] active:scale-[0.99] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all duration-200 cursor-pointer"
+            >
+              <Clock className="w-4 h-4" />
+              <span>Track Live Queue Status →</span>
+            </button>
+          ) : (
+            <a
+              href={`/track?t=${result.tracking_token || result.queue_number || result.id}&hospital=${result.hospital_id}`}
+              className="w-full py-3.5 px-4 rounded-2xl bg-[#007AFF] hover:bg-[#0062D6] active:scale-[0.99] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-blue-500/25 transition-all duration-200"
+            >
+              <Clock className="w-4 h-4" />
+              <span>Track Live Queue Status →</span>
+            </a>
+          )}
 
           <button
             type="button"
             onClick={onBookAnother}
-            className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-[#1D1D1F] font-semibold text-xs flex items-center justify-center gap-2 transition-colors"
+            className="w-full py-3 px-4 rounded-2xl bg-white hover:bg-slate-100 border border-slate-200 text-[#1D1D1F] font-semibold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            <span>Book Another Appointment</span>
+            <span>Done / Book Another</span>
           </button>
         </div>
       </div>
