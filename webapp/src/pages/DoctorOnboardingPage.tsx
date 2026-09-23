@@ -15,6 +15,7 @@ import {
   ExternalLink,
   CheckCircle2,
   AlertCircle,
+  ShieldCheck,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
@@ -89,7 +90,7 @@ const fadeUp = {
 
 export default function DoctorOnboardingPage() {
   useSEO({
-    title: "Doctor Onboarding & Practice Setup — MedTech Fixaters",
+    title: "Doctor Onboarding & Practice Setup — MedTechFixaters",
     description: "Complete your professional clinic setup and activate your patient booking portal.",
   });
 
@@ -98,7 +99,10 @@ export default function DoctorOnboardingPage() {
 
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
+  const [statusPhase, setStatusPhase] = useState<
+    "signing_in" | "checking_account" | "welcome_back" | "suspended" | "ready_to_onboard"
+  >("signing_in");
+  const [welcomeDoctorName, setWelcomeDoctorName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState("");
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
@@ -136,18 +140,26 @@ export default function DoctorOnboardingPage() {
     endHour: "05:00 PM",
   });
 
-  // Pre-fill from Google Sign-In & Supabase Auth metadata
+  // Check authenticated Google identity & account status
   useEffect(() => {
-    async function loadAuthDoctor() {
+    let isMounted = true;
+
+    async function checkAccountAndLoadDoctor() {
       try {
-        setInitialLoading(true);
+        setStatusPhase("signing_in");
+
+        // 1. Get authenticated Supabase Auth user
         const {
           data: { user },
         } = await supabase.auth.getUser();
 
         if (!user) {
-          navigate("/doctor/login");
+          if (isMounted) navigate("/doctor/login");
           return;
+        }
+
+        if (isMounted) {
+          setStatusPhase("checking_account");
         }
 
         const email = user.email || "";
@@ -157,40 +169,75 @@ export default function DoctorOnboardingPage() {
           "";
         const avatar = user.user_metadata?.avatar_url || user.user_metadata?.picture || null;
 
-        setUserEmail(email);
-        setAvatarUrl(avatar);
+        if (isMounted) {
+          setUserEmail(email);
+          setAvatarUrl(avatar);
+        }
 
-        // Check if profile exists in database
+        // 2. Discover existing doctor account (by auth user ID or pre-created email by Admin)
         let { data: prof } = await supabase
           .from("profiles")
           .select("*, doctor_details(*), hospitals(*)")
-          .eq("id", user.id)
+          .or(`id.eq.${user.id},email.eq.${email}`)
           .maybeSingle();
 
-        if (!prof) {
-          // Initialize doctor profile record
-          await supabase.rpc("doctor_self_signup", {
-            p_email: email,
-            p_full_name: fullName || "Doctor",
-            p_auth_user_id: user.id,
-          });
+        // 3. If account exists, evaluate account and onboarding status
+        if (prof) {
+          const accStatus = prof.account_status || (prof.is_active ? "active" : "blocked");
+          const onboardingStatus = prof.onboarding_status || "ACTIVE";
 
-          const { data: refetched } = await supabase
-            .from("profiles")
-            .select("*, doctor_details(*), hospitals(*)")
-            .eq("id", user.id)
-            .maybeSingle();
-          prof = refetched;
+          // Suspended or inactive account check
+          if (accStatus === "suspended" || accStatus === "blocked" || accStatus === "banned") {
+            if (isMounted) {
+              setStatusPhase("suspended");
+              setError("Your doctor account has been suspended or deactivated. Please contact MedTechFixaters support.");
+            }
+            return;
+          }
+
+          // Existing active doctor: skip onboarding & open Doctor Dashboard immediately
+          if (onboardingStatus === "ACTIVE") {
+            if (isMounted) {
+              setWelcomeDoctorName(prof.full_name || fullName || "Doctor");
+              setStatusPhase("welcome_back");
+            }
+            if (refreshDoctorProfile) {
+              await refreshDoctorProfile();
+            }
+            setTimeout(() => {
+              navigate("/dashboard");
+            }, 1200);
+            return;
+          }
+        } else {
+          // New Doctor: initialize doctor profile shell tied to Supabase auth user
+          try {
+            await supabase.rpc("doctor_self_signup", {
+              p_email: email,
+              p_full_name: fullName || "Doctor",
+              p_auth_user_id: user.id,
+            });
+
+            const { data: refetched } = await supabase
+              .from("profiles")
+              .select("*, doctor_details(*), hospitals(*)")
+              .eq("id", user.id)
+              .maybeSingle();
+            prof = refetched;
+          } catch (rpcErr) {
+            console.warn("Auto-signup shell notice:", rpcErr);
+          }
         }
 
-        if (prof) {
-          const doc = prof.doctor_details || {};
-          const hosp = prof.hospitals || {};
+        // 4. Pre-fill onboarding form with Google metadata and profile defaults
+        const doc = prof?.doctor_details || {};
+        const hosp = prof?.hospitals || {};
 
+        if (isMounted) {
           setFormData((prev) => ({
             ...prev,
             doctorName:
-              prof.full_name ||
+              prof?.full_name ||
               fullName ||
               prev.doctorName ||
               "Dr. Specialist",
@@ -198,9 +245,9 @@ export default function DoctorOnboardingPage() {
             phone: doc.clinic_phone || user.phone || prev.phone,
             qualification: doc.qualification || prev.qualification,
             specialization:
-              prof.specialization || doc.specialization || prev.specialization,
+              prof?.specialization || doc.specialization || prev.specialization,
             registrationNumber:
-              prof.registration_number ||
+              prof?.registration_number ||
               doc.registration_number ||
               prev.registrationNumber,
             clinicName:
@@ -224,29 +271,22 @@ export default function DoctorOnboardingPage() {
               : prev.availableDays,
           }));
 
-          if (prof.onboarding_status === "ACTIVE") {
-            const { data: qr } = await supabase
-              .from("qr_codes")
-              .select("token, booking_url")
-              .eq("hospital_id", prof.hospital_id)
-              .maybeSingle();
-            if (qr) {
-              setActivatedResult({
-                qrToken: qr.token,
-                bookingUrl: `${window.location.origin}${qr.booking_url || `/book/${qr.token}`}`,
-              });
-            }
-          }
+          setStatusPhase("ready_to_onboard");
         }
-      } catch (err) {
-        console.warn("Doctor data load notice:", err);
-      } finally {
-        setInitialLoading(false);
+      } catch (err: any) {
+        console.warn("Doctor account check notice:", err);
+        if (isMounted) {
+          setStatusPhase("ready_to_onboard");
+        }
       }
     }
 
-    loadAuthDoctor();
-  }, [navigate]);
+    checkAccountAndLoadDoctor();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigate, refreshDoctorProfile]);
 
   const nextStep = () => {
     setError(null);
@@ -293,7 +333,7 @@ export default function DoctorOnboardingPage() {
     if (step > 1) setStep((prev) => prev - 1);
   };
 
-  // Complete Activation RPC
+  // Complete Activation RPC & Auto-Onboard
   const handleCompleteActivation = async () => {
     setLoading(true);
     setError(null);
@@ -302,7 +342,7 @@ export default function DoctorOnboardingPage() {
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) throw new Error("Authentication session expired.");
+      if (!user) throw new Error("Authentication session expired. Please sign in again.");
 
       // 1. Save complete doctor & clinic profile
       const { data: saveRes, error: saveErr } = await supabase.rpc(
@@ -332,7 +372,7 @@ export default function DoctorOnboardingPage() {
 
       if (saveErr) throw saveErr;
       if (!saveRes?.success) {
-        throw new Error(saveRes?.error || "Failed to save profile.");
+        throw new Error(saveRes?.error || "Failed to save doctor profile.");
       }
 
       // 2. Activate subscription & generate unique QR portal
@@ -353,7 +393,7 @@ export default function DoctorOnboardingPage() {
         throw new Error(actRes?.error || "Failed to activate practice.");
       }
 
-      const generatedToken = actRes.qr_token || "QR-PORTAL";
+      const generatedToken = actRes.qr_token || `QR-DOC-${user.id.slice(0, 8).toUpperCase()}`;
       const generatedUrl = `${window.location.origin}/book/${generatedToken}`;
 
       setActivatedResult({
@@ -398,27 +438,100 @@ export default function DoctorOnboardingPage() {
     });
   };
 
-  if (initialLoading) {
+  // PHASE: SIGNING IN / CHECKING ACCOUNT
+  if (statusPhase === "signing_in" || statusPhase === "checking_account") {
     return (
       <div className="min-h-screen bg-[#F6F8FB] flex flex-col items-center justify-center p-4">
-        <div className="w-10 h-10 rounded-2xl bg-[#EEF5FF] flex items-center justify-center text-[#1677FF] animate-spin mb-3">
-          <RefreshCw size={20} />
-        </div>
-        <p className="text-xs font-semibold text-gray-500">
-          Loading your Google profile...
-        </p>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="bg-white rounded-3xl border border-black/[0.06] shadow-xl p-8 max-w-sm w-full text-center space-y-4"
+        >
+          <div className="w-12 h-12 rounded-2xl bg-[#EEF5FF] flex items-center justify-center text-[#1677FF] mx-auto animate-spin">
+            <RefreshCw size={24} />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-gray-900">
+              {statusPhase === "signing_in" ? "Signing you in..." : "Checking your account..."}
+            </h3>
+            <p className="text-xs text-gray-500 mt-1">
+              Verifying your Google authentication identity
+            </p>
+          </div>
+        </motion.div>
       </div>
     );
   }
 
-  // SUCCESS ACTIVATED VIEW
+  // PHASE: EXISTING DOCTOR WELCOME BACK & DIRECT DASHBOARD REDIRECT
+  if (statusPhase === "welcome_back") {
+    return (
+      <div className="min-h-screen bg-[#F6F8FB] flex flex-col items-center justify-center p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 10 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+          className="bg-white rounded-3xl border border-black/[0.06] shadow-xl p-8 max-w-md w-full text-center space-y-4"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center mx-auto shadow-sm">
+            <CheckCircle2 size={30} />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-lg font-bold text-gray-900">
+              Welcome back, {welcomeDoctorName}!
+            </h3>
+            <p className="text-xs text-gray-500">
+              Opening your Doctor Dashboard...
+            </p>
+          </div>
+          <div className="w-6 h-6 border-2 border-[#1677FF] border-t-transparent rounded-full animate-spin mx-auto pt-2" />
+        </motion.div>
+      </div>
+    );
+  }
+
+  // PHASE: SUSPENDED ACCOUNT
+  if (statusPhase === "suspended") {
+    return (
+      <div className="min-h-screen bg-[#F6F8FB] flex flex-col items-center justify-center p-4">
+        <div className="bg-white rounded-3xl border border-red-100 shadow-xl p-8 max-w-md w-full text-center space-y-4">
+          <div className="w-14 h-14 rounded-2xl bg-red-50 text-red-600 border border-red-100 flex items-center justify-center mx-auto">
+            <AlertCircle size={30} />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900">
+            Account Inactive / Suspended
+          </h3>
+          <p className="text-xs text-gray-600 leading-relaxed">
+            {error || "This doctor account has been suspended or deactivated. Please reach out to our platform support team for assistance."}
+          </p>
+          <div className="pt-2 flex gap-3">
+            <Link
+              to="/contact"
+              className="flex-1 py-3 bg-[#1677FF] text-white text-xs font-semibold rounded-xl hover:bg-blue-600 transition text-center"
+            >
+              Contact Support
+            </Link>
+            <Link
+              to="/doctor/login"
+              className="px-4 py-3 bg-gray-100 text-gray-700 text-xs font-semibold rounded-xl hover:bg-gray-200 transition text-center"
+            >
+              Back to Login
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // PHASE: SUCCESS ACTIVATED VIEW
   if (activatedResult) {
     return (
       <div className="min-h-screen bg-[#F6F8FB] text-[#111827] flex flex-col items-center justify-center p-6">
         <motion.div
           initial={{ opacity: 0, scale: 0.95, y: 15 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
-          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
           className="max-w-xl w-full bg-white rounded-[32px] border border-black/[0.06] shadow-[0_20px_70px_rgba(0,0,0,0.08)] p-8 sm:p-10 text-center space-y-6"
         >
           <div className="w-16 h-16 rounded-3xl bg-emerald-50 text-emerald-600 border border-emerald-100 flex items-center justify-center mx-auto shadow-md shadow-emerald-500/10">
@@ -430,10 +543,10 @@ export default function DoctorOnboardingPage() {
               Practice Activated
             </span>
             <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900 mt-2">
-              Welcome, {formData.doctorName}!
+              Your account is ready!
             </h2>
             <p className="text-xs sm:text-sm text-gray-500">
-              Your clinic <strong>{formData.clinicName}</strong> is live and ready to accept appointments.
+              Welcome, <strong>{formData.doctorName}</strong>. Your clinic <strong>{formData.clinicName}</strong> is live and ready to accept patient bookings.
             </p>
           </div>
 
@@ -475,7 +588,7 @@ export default function DoctorOnboardingPage() {
 
           <div className="pt-2 flex flex-col sm:flex-row gap-3">
             <Link
-              to="/doctor"
+              to="/dashboard"
               className="flex-1 py-3.5 bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-xs rounded-xl shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2 transition"
             >
               <span>Go to Doctor Dashboard</span>
@@ -497,6 +610,7 @@ export default function DoctorOnboardingPage() {
     );
   }
 
+  // PHASE: 4-STEP ONBOARDING WIZARD
   return (
     <div className="min-h-screen bg-[#F6F8FB] text-[#111827]">
       {/* HEADER */}
@@ -517,7 +631,7 @@ export default function DoctorOnboardingPage() {
 
           <div>
             <h1 className="font-semibold text-[18px] tracking-[-0.02em] leading-tight">
-              MedTech Fixaters
+              MedTechFixaters
             </h1>
 
             <p className="text-[11px] text-gray-500">
@@ -573,200 +687,129 @@ export default function DoctorOnboardingPage() {
           >
             <motion.div variants={fadeUp} className="mb-8">
               <p className="text-xs uppercase tracking-[0.16em] text-[#1677FF] font-semibold mb-2">
-                Welcome to
+                PRACTICE ONBOARDING
               </p>
 
-              <h2 className="text-2xl font-semibold tracking-tight">
-                MedTech Fixaters
+              <h2 className="text-[22px] font-semibold tracking-tight text-gray-900 leading-snug">
+                Complete Your Doctor Profile
               </h2>
 
-              <p className="text-sm text-gray-500 mt-2 leading-6">
-                Let&apos;s set up your clinic and get you
-                started in a few simple steps.
+              <p className="text-xs text-gray-500 mt-2">
+                Set up your clinic details, consultation fees and hours to activate your patient booking portal.
               </p>
             </motion.div>
 
-            {/* STEPS */}
-            <div className="relative">
-              {/* Vertical line */}
-              <div className="absolute left-[18px] top-5 bottom-5 w-px bg-gray-200" />
-
-              {steps.map((item) => {
-                const active = step === item.id;
-                const completed = step > item.id;
+            {/* STEPS LIST */}
+            <div className="space-y-3">
+              {steps.map((s) => {
+                const isCurrent = step === s.id;
+                const isCompleted = step > s.id;
 
                 return (
                   <motion.div
-                    key={item.id}
+                    key={s.id}
                     variants={fadeUp}
-                    className="relative flex gap-4 mb-7 cursor-pointer"
-                    onClick={() => {
-                      if (completed) setStep(item.id);
-                    }}
+                    className={`
+                      p-4 rounded-2xl border transition-all duration-300 text-left
+                      ${
+                        isCurrent
+                          ? "bg-white border-[#1677FF]/30 shadow-[0_4px_20px_rgba(22,119,255,0.08)] ring-1 ring-[#1677FF]/20"
+                          : "bg-transparent border-transparent hover:bg-white/60"
+                      }
+                    `}
                   >
-                    <motion.div
-                      animate={{
-                        scale: active ? 1.08 : 1,
-                        backgroundColor:
-                          active || completed
-                            ? "#1677FF"
-                            : "#E8EDF3",
-                      }}
-                      transition={{
-                        type: "spring",
-                        stiffness: 300,
-                        damping: 20,
-                      }}
-                      className="relative z-10 w-9 h-9 rounded-full flex items-center justify-center shrink-0 shadow-xs"
-                    >
-                      {completed ? (
-                        <Check size={16} className="text-white" />
-                      ) : (
-                        <span
-                          className={`text-sm font-semibold ${
-                            active
-                              ? "text-white"
+                    <div className="flex items-center gap-3.5">
+                      <div
+                        className={`
+                          w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold shrink-0 transition-all
+                          ${
+                            isCompleted
+                              ? "bg-[#1677FF] text-white shadow-sm"
+                              : isCurrent
+                              ? "border-2 border-[#1677FF] text-[#1677FF] bg-blue-50/50"
+                              : "border border-gray-300 text-gray-400"
+                          }
+                        `}
+                      >
+                        {isCompleted ? <Check size={14} /> : s.id}
+                      </div>
+
+                      <div>
+                        <p
+                          className={`text-xs font-semibold transition-colors ${
+                            isCurrent
+                              ? "text-[#1677FF]"
+                              : isCompleted
+                              ? "text-gray-900"
                               : "text-gray-500"
                           }`}
                         >
-                          {item.id}
-                        </span>
-                      )}
-                    </motion.div>
+                          {s.title}
+                        </p>
 
-                    <div className="pt-0.5 text-left">
-                      <p
-                        className={`text-sm font-semibold ${
-                          active
-                            ? "text-[#1677FF]"
-                            : "text-gray-800"
-                        }`}
-                      >
-                        {item.title}
-                      </p>
-
-                      <p className="text-xs text-gray-500 mt-1 leading-5">
-                        {item.subtitle}
-                      </p>
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          {s.subtitle}
+                        </p>
+                      </div>
                     </div>
                   </motion.div>
                 );
               })}
             </div>
 
-            {/* BENEFITS CARD */}
+            {/* GOOGLE AUTH BADGE */}
             <motion.div
               variants={fadeUp}
-              className="mt-auto rounded-2xl border border-black/[0.06] bg-white p-5 shadow-[0_10px_40px_rgba(0,0,0,0.04)] text-left"
+              className="mt-8 p-4 rounded-2xl bg-[#EEF5FF] border border-blue-100 flex items-center gap-3"
             >
-              <div className="w-11 h-11 rounded-xl bg-[#EFF6FF] flex items-center justify-center mb-4">
-                <Sparkles
-                  size={20}
-                  className="text-[#1677FF]"
-                />
+              <div className="w-8 h-8 rounded-xl bg-white flex items-center justify-center text-[#1677FF] shadow-xs shrink-0">
+                <ShieldCheck size={16} />
               </div>
-
-              <h3 className="font-semibold text-sm">
-                You&apos;re one step away from
-                a smarter practice.
-              </h3>
-
-              <div className="mt-4 space-y-3">
-                {[
-                  "Online appointment booking",
-                  "Live queue management",
-                  "Patient history & follow-ups",
-                  "All in one secure platform",
-                ].map((text) => (
-                  <div
-                    key={text}
-                    className="flex items-center gap-2 text-xs text-gray-600"
-                  >
-                    <Check
-                      size={14}
-                      className="text-emerald-500 shrink-0"
-                    />
-                    <span>{text}</span>
-                  </div>
-                ))}
+              <div className="text-left">
+                <p className="text-xs font-semibold text-blue-900">
+                  Google Authenticated
+                </p>
+                <p className="text-[10px] text-blue-700 truncate max-w-[170px]">
+                  {userEmail}
+                </p>
               </div>
             </motion.div>
           </motion.aside>
 
-          {/* FORM */}
+          {/* RIGHT CONTENT PANEL */}
           <motion.main
-            initial={{ opacity: 0, x: 25 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{
-              duration: 0.6,
-              delay: 0.1,
-              ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
-            }}
-            className="bg-white rounded-[28px] border border-black/[0.06] shadow-[0_20px_70px_rgba(0,0,0,0.06)] overflow-hidden text-left"
+            variants={staggerContainer}
+            initial="hidden"
+            animate="show"
+            className="flex flex-col"
           >
-            <div className="p-6 sm:p-8 lg:p-10">
-              {/* TOP */}
-              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 mb-8">
-                <div>
-                  <p className="text-xs font-medium text-[#1677FF] mb-2">
-                    Step {step} of 4
-                  </p>
-
-                  <h2 className="text-2xl sm:text-3xl font-semibold tracking-[-0.035em]">
-                    {steps[step - 1].title}
-                  </h2>
-
-                  <p className="text-sm text-gray-500 mt-1">
-                    {steps[step - 1].subtitle}
-                  </p>
-                </div>
-
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  className="flex items-center gap-2.5 bg-emerald-50 border border-emerald-100 rounded-xl px-4 py-2.5 self-start"
-                >
-                  <Check
-                    size={16}
-                    className="text-emerald-600 shrink-0"
-                  />
-
-                  <div>
-                    <p className="text-xs font-semibold text-emerald-800">
-                      Signed in with Google
-                    </p>
-
-                    <p className="text-[11px] text-emerald-700">
-                      Your basic information is pre-filled.
-                    </p>
-                  </div>
-                </motion.div>
+            {/* MOBILE PROGRESS */}
+            <div className="lg:hidden mb-6 bg-white p-4 rounded-2xl border border-black/[0.06] shadow-sm">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-semibold text-gray-500 uppercase">
+                  Step {step} of 4: {steps[step - 1].title}
+                </span>
+                <span className="text-xs font-bold text-[#1677FF]">
+                  {Math.round((step / 4) * 100)}%
+                </span>
               </div>
-
-              {/* PROGRESS */}
-              <div className="mb-9">
-                <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                  <motion.div
-                    className="h-full bg-[#1677FF] rounded-full"
-                    animate={{
-                      width: `${(step / 4) * 100}%`,
-                    }}
-                    transition={{
-                      duration: 0.5,
-                      ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
-                    }}
-                  />
-                </div>
+              <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-[#1677FF] transition-all duration-300 rounded-full"
+                  style={{ width: `${(step / 4) * 100}%` }}
+                />
               </div>
+            </div>
 
+            {/* MAIN CARD */}
+            <div className="bg-white rounded-[32px] border border-black/[0.06] shadow-[0_20px_70px_rgba(0,0,0,0.04)] p-6 sm:p-10 flex-1 flex flex-col justify-between">
               {error && (
-                <div className="mb-6 p-4 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-3">
                   <AlertCircle size={16} className="shrink-0" />
                   <span>{error}</span>
                 </div>
               )}
 
-              {/* CONTENT */}
               <AnimatePresence mode="wait">
                 {step === 1 && (
                   <motion.div
@@ -910,9 +953,9 @@ function DoctorInformation({
       className="space-y-6"
     >
       <motion.div variants={fadeUp}>
-        <h3 className="text-lg font-semibold">Basic Information</h3>
+        <h3 className="text-lg font-semibold">Doctor Information</h3>
         <p className="text-sm text-gray-500 mt-1">
-          Tell us about yourself and your professional medical details.
+          Tell us about yourself and your professional medical credentials.
         </p>
       </motion.div>
 
@@ -934,18 +977,17 @@ function DoctorInformation({
             </div>
           )}
 
-          <button
-            type="button"
-            className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-white border shadow-sm flex items-center justify-center hover:scale-105 transition"
+          <div
+            className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-white border shadow-sm flex items-center justify-center"
           >
             <Camera size={14} className="text-gray-600" />
-          </button>
+          </div>
         </div>
 
         <div>
           <p className="text-sm font-medium">Profile Photo</p>
           <p className="text-xs text-gray-500 mt-1">
-            Imported from your Google account. This will be visible to your patients.
+            Imported directly from your Google account. This will appear on your patient booking page.
           </p>
         </div>
       </motion.div>
@@ -968,7 +1010,7 @@ function DoctorInformation({
         />
 
         <Field
-          label="Email Address"
+          label="Google Email Address"
           required
           value={formData.email}
           locked
@@ -1252,6 +1294,11 @@ function Review({ formData }: { formData: any }) {
           value: `${formData.doctorName} · ${formData.qualification} · ${formData.specialization}`,
         },
         {
+          icon: ShieldCheck,
+          title: "Google Identity",
+          value: `${formData.email} · Google Authenticated (Primary Login Identity)`,
+        },
+        {
           icon: Building2,
           title: "Clinic Practice",
           value: `${formData.clinicName} · ${formData.city}, ${formData.state}`,
@@ -1295,7 +1342,7 @@ function Review({ formData }: { formData: any }) {
 
 /* =====================================================
    FIELD COMPONENTS
-===================================================== */
+==================================================== */
 
 function Field({
   label,
@@ -1304,6 +1351,7 @@ function Field({
   onChange,
   placeholder,
   locked,
+  type = "text",
   className = "",
 }: {
   label: string;
@@ -1312,6 +1360,7 @@ function Field({
   onChange?: (val: string) => void;
   placeholder?: string;
   locked?: boolean;
+  type?: string;
   className?: string;
 }) {
   return (
@@ -1323,6 +1372,7 @@ function Field({
 
       <div className="relative">
         <input
+          type={type}
           value={value || ""}
           onChange={(e) => onChange && onChange(e.target.value)}
           placeholder={placeholder}
@@ -1335,7 +1385,7 @@ function Field({
             placeholder:text-gray-300
             focus:border-[#1677FF]
             focus:ring-4 focus:ring-blue-500/10
-            ${locked ? "bg-gray-50 text-gray-500 pr-10 cursor-not-allowed" : ""}
+            ${locked ? "bg-gray-50 text-gray-600 pr-10 cursor-not-allowed" : ""}
           `}
         />
 

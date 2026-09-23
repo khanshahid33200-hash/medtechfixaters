@@ -179,6 +179,14 @@ function App() {
           }
         />
         <Route
+          path="/doctordashboard"
+          element={
+            <ProtectedRoute requiredRole="doctor">
+              <Dashboard initialTab="dashboard" />
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/queue"
           element={
             <ProtectedRoute requiredRole="doctor">
