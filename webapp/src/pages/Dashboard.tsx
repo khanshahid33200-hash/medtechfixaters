@@ -8,7 +8,8 @@ import {
   X, UserCheck, Stethoscope, Layers, Phone,
   Clock, Volume2, FileText, CheckCircle,
   Star, Upload, Edit3, Trash2, DollarSign, Send, Eye, ShieldCheck,
-  Check, QrCode, Download, Copy, Share2, ExternalLink, CalendarDays
+  Check, QrCode, Download, Copy, Share2, ExternalLink, CalendarDays,
+  FlaskConical, Sparkles, Paperclip, Shield, Tag, FilePlus2, Building2
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
@@ -545,6 +546,327 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
   })
   const [workflowBusy, setWorkflowBusy] = useState(false)
 
+  // ─── QUICK ACTIONS: MEDICAL CERTIFICATE STATE ───
+  const [certForm, setCertForm] = useState({
+    certType: 'Sick Leave' as 'Sick Leave' | 'Medical Fitness' | 'Medical Recovery' | 'Rest Certificate',
+    patientName: '',
+    age: 30,
+    gender: 'Male',
+    diagnosis: 'Acute Viral Syndrome & Physical Fatigue',
+    startDate: new Date().toISOString().split('T')[0],
+    endDate: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+    restDays: 3,
+    remarks: 'The patient is advised complete bed rest and medically unfit to attend work/classes during this period.',
+    isFitFrom: new Date(Date.now() + 3 * 86400000).toISOString().split('T')[0],
+  })
+
+  useEffect(() => {
+    if (showCertModal && (selectedPatientRecord || currentPatient)) {
+      const p = selectedPatientRecord || currentPatient
+      setCertForm(prev => ({
+        ...prev,
+        patientName: p.patient_name || '',
+        age: p.age || 30,
+        gender: p.gender || 'Male',
+        diagnosis: p.chief_complaint && p.chief_complaint !== 'General consultation' ? p.chief_complaint : 'Acute Viral Infection & Physical Fatigue',
+      }))
+    }
+  }, [showCertModal, selectedPatientRecord, currentPatient])
+
+  const handleSaveCertificate = () => {
+    setNotice(`✓ Medical Certificate issued for ${certForm.patientName || 'Patient'}.`)
+    setShowCertModal(false)
+    setTimeout(() => setNotice(null), 3500)
+  }
+
+  // ─── QUICK ACTIONS: LAB TEST ADVICE STATE ───
+  const LAB_TEST_CATEGORIES = {
+    'Pathology': ['Complete Blood Count (CBC)', 'ESR (Westergren)', 'Blood Group & Rh Type', 'Peripheral Blood Smear', 'Absolute Eosinophil Count'],
+    'Biochemistry': ['Fasting Blood Sugar (FBS)', 'Post Prandial Blood Sugar (PPBS)', 'HbA1c (Glycated Hb)', 'Lipid Profile (Full)', 'Liver Function Test (LFT)', 'Kidney Function Test (KFT)', 'Serum Uric Acid', 'Thyroid Profile (T3, T4, TSH)', 'Serum Electrolytes'],
+    'Radiology': ['Chest X-Ray (PA View)', 'Ultrasound Whole Abdomen (USG)', 'X-Ray Lumbo-Sacral Spine', 'CT Brain Plain', 'MRI Lumbar Spine'],
+    'Cardiology': ['12-Lead Electrocardiogram (ECG)', '2D Echocardiography', 'Treadmill Test (TMT)'],
+    'Microbiology': ['Urine Routine & Microscopic', 'Stool Routine Examination', 'Sputum AFB for MTB', 'Blood Culture & Sensitivity'],
+  }
+
+  const [labForm, setLabForm] = useState<{
+    patientName: string
+    patientId: string
+    selectedCategory: keyof typeof LAB_TEST_CATEGORIES
+    selectedTests: string[]
+    customTest: string
+    clinicalNotes: string
+    isUrgent: boolean
+  }>({
+    patientName: '',
+    patientId: '',
+    selectedCategory: 'Pathology',
+    selectedTests: ['Complete Blood Count (CBC)'],
+    customTest: '',
+    clinicalNotes: '',
+    isUrgent: false,
+  })
+
+  useEffect(() => {
+    if (showLabModal && (selectedPatientRecord || currentPatient)) {
+      const p = selectedPatientRecord || currentPatient
+      setLabForm(prev => ({
+        ...prev,
+        patientName: p.patient_name || '',
+        patientId: p.patient_id || p.id || '',
+        clinicalNotes: p.chief_complaint ? `Indications: ${p.chief_complaint}` : '',
+      }))
+    }
+  }, [showLabModal, selectedPatientRecord, currentPatient])
+
+  const toggleLabTest = (test: string) => {
+    setLabForm(prev => ({
+      ...prev,
+      selectedTests: prev.selectedTests.includes(test)
+        ? prev.selectedTests.filter(t => t !== test)
+        : [...prev.selectedTests, test]
+    }))
+  }
+
+  const handleSaveLabAdvice = async () => {
+    const allTests = [...labForm.selectedTests, ...(labForm.customTest.trim() ? [labForm.customTest.trim()] : [])]
+    if (allTests.length === 0) {
+      alert('Please select or specify at least one lab test.')
+      return
+    }
+
+    const apptId = currentPatient?.id || selectedPatientRecord?.id
+    if (hospitalId && doctorId && apptId) {
+      try {
+        await createTestRequest({
+          hospitalId,
+          doctorId,
+          appointmentId: apptId,
+          patientId: currentPatient?.patient_id || selectedPatientRecord?.patient_id || undefined,
+          tests: allTests,
+          instructions: `${labForm.clinicalNotes} ${labForm.isUrgent ? '[URGENT/STAT]' : ''}`.trim(),
+        })
+      } catch (e) {
+        console.warn('Lab advice save note:', e)
+      }
+    }
+
+    setNotice(`✓ Lab advice for ${allTests.length} tests dispatched for ${labForm.patientName || 'Patient'}.`)
+    setShowLabModal(false)
+    setTimeout(() => setNotice(null), 3500)
+  }
+
+  // ─── QUICK ACTIONS: QUICK FOLLOW UP STATE ───
+  const [quickFollowUpForm, setQuickFollowUpForm] = useState({
+    patientName: '',
+    patientId: '',
+    date: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+    time: '10:30 AM',
+    reason: 'Routine clinical checkup & review',
+    notes: '',
+    sendSms: true,
+  })
+
+  useEffect(() => {
+    if (showFollowUpModal && (selectedPatientRecord || currentPatient)) {
+      const p = selectedPatientRecord || currentPatient
+      setQuickFollowUpForm(prev => ({
+        ...prev,
+        patientName: p.patient_name || '',
+        patientId: p.patient_id || p.id || '',
+      }))
+    }
+  }, [showFollowUpModal, selectedPatientRecord, currentPatient])
+
+  const handleSaveQuickFollowUp = async () => {
+    if (!quickFollowUpForm.date) {
+      alert('Please select a valid follow-up date.')
+      return
+    }
+
+    const apptId = currentPatient?.id || selectedPatientRecord?.id
+    if (apptId) {
+      try {
+        await createFollowUp({
+          parentAppointmentId: apptId,
+          followUpDate: quickFollowUpForm.date,
+          reason: quickFollowUpForm.reason,
+          instructions: quickFollowUpForm.notes,
+          preferredTime: quickFollowUpForm.time,
+        })
+        loadFollowUps()
+      } catch (e: any) {
+        console.warn('Quick follow up notice:', e)
+      }
+    }
+
+    setNotice(`✓ Follow-up scheduled on ${quickFollowUpForm.date} for ${quickFollowUpForm.patientName || 'Patient'}.`)
+    setShowFollowUpModal(false)
+    setTimeout(() => setNotice(null), 3500)
+  }
+
+  // ─── QUICK ACTIONS: SOAP CLINICAL NOTES STATE ───
+  const [notesForm, setNotesForm] = useState({
+    patientName: '',
+    subjective: '',
+    objective: 'BP: 120/80 mmHg, Pulse: 74 bpm, Temp: 98.4 F, SpO2: 99%',
+    assessment: '',
+    plan: '',
+    tags: [] as string[],
+  })
+
+  useEffect(() => {
+    if (showNotesModal && (selectedPatientRecord || currentPatient)) {
+      const p = selectedPatientRecord || currentPatient
+      setNotesForm(prev => ({
+        ...prev,
+        patientName: p.patient_name || '',
+        subjective: p.chief_complaint ? `Chief Complaint: ${p.chief_complaint}` : 'Patient presents for OPD consultation.',
+        assessment: p.chief_complaint || 'Provisional evaluation pending.',
+        plan: 'Advised symptomatic treatment, hydration, and review SOS.',
+      }))
+    }
+  }, [showNotesModal, selectedPatientRecord, currentPatient])
+
+  const handleSaveNotes = () => {
+    setNotice(`✓ SOAP Clinical Notes saved to ${notesForm.patientName || 'Patient'}'s electronic health record.`)
+    setShowNotesModal(false)
+    setTimeout(() => setNotice(null), 3500)
+  }
+
+  // ─── QUICK ACTIONS: UPLOAD REPORT STATE ───
+  const [uploadReportForm, setUploadReportForm] = useState({
+    patientName: '',
+    patientId: '',
+    reportTitle: '',
+    category: 'Pathology / Blood Test' as 'Pathology / Blood Test' | 'Radiology / X-Ray / Scan' | 'Discharge Summary' | 'ECG / Cardiology' | 'Prescription / External Rx' | 'Other',
+    reportDate: new Date().toISOString().split('T')[0],
+    fileName: '',
+    notes: '',
+    isUploading: false,
+  })
+
+  useEffect(() => {
+    if (showUploadModal && (selectedPatientRecord || currentPatient)) {
+      const p = selectedPatientRecord || currentPatient
+      setUploadReportForm(prev => ({
+        ...prev,
+        patientName: p.patient_name || '',
+        patientId: p.patient_id || p.id || '',
+      }))
+    }
+  }, [showUploadModal, selectedPatientRecord, currentPatient])
+
+  const handleSaveUploadReport = () => {
+    if (!uploadReportForm.reportTitle.trim()) {
+      alert('Please enter a Document / Report title.')
+      return
+    }
+    setUploadReportForm(prev => ({ ...prev, isUploading: true }))
+    setTimeout(() => {
+      setUploadReportForm(prev => ({ ...prev, isUploading: false, fileName: '' }))
+      setShowUploadModal(false)
+      setNotice(`✓ Report "${uploadReportForm.reportTitle}" attached to ${uploadReportForm.patientName || 'Patient'} successfully.`)
+      setTimeout(() => setNotice(null), 3500)
+    }, 600)
+  }
+
+  // ─── QUICK ACTIONS: 1-CLICK CLINICAL TEMPLATES ───
+  const CLINICAL_TEMPLATES = [
+    {
+      id: 'viral-uri',
+      title: 'Viral Fever & Acute Upper Respiratory Infection',
+      category: 'General Medicine',
+      diagnosis: 'Acute Upper Respiratory Tract Infection (Viral URI)',
+      medicines: [
+        { name: 'Tab Paracetamol 650mg', dosage: '1-0-1', duration: '3 Days', instruction: 'After food (SOS for temp > 99°F)' },
+        { name: 'Tab Levocetirizine 5mg', dosage: '0-0-1', duration: '5 Days', instruction: 'Night after dinner' },
+        { name: 'Syrup Dextromethorphan + Chlorpheniramine', dosage: '10ml TDS', duration: '5 Days', instruction: 'After meals' },
+      ],
+      advice: 'Warm saline gargles thrice daily. Steam inhalation twice daily. Adequate warm fluid intake. Avoid cold/chilled beverages.',
+      tests: ['Complete Blood Count (CBC) (if fever persists > 3 days)'],
+    },
+    {
+      id: 'type2-dm',
+      title: 'Type 2 Diabetes Mellitus — Routine OPD Control',
+      category: 'Endocrinology',
+      diagnosis: 'Type 2 Diabetes Mellitus (Uncomplicated)',
+      medicines: [
+        { name: 'Tab Metformin 500mg SR', dosage: '1-0-1', duration: '30 Days', instruction: 'With or after main meals' },
+        { name: 'Tab Glimepiride 1mg', dosage: '1-0-0', duration: '30 Days', instruction: '15 mins before breakfast' },
+      ],
+      advice: 'Strict diabetic diet. 30 min daily brisk walking. Regular fasting and post-meal glucose charting.',
+      tests: ['HbA1c', 'Fasting Blood Sugar (FBS)', 'Post Prandial Blood Sugar (PPBS)', 'Serum Creatinine'],
+    },
+    {
+      id: 'hypertension-st1',
+      title: 'Essential Hypertension — Stage 1 Management',
+      category: 'Cardiology',
+      diagnosis: 'Essential Hypertension - Stage 1',
+      medicines: [
+        { name: 'Tab Telmisartan 40mg', dosage: '1-0-0', duration: '30 Days', instruction: 'Morning after breakfast' },
+        { name: 'Tab Amlodipine 5mg', dosage: '0-0-1', duration: '30 Days', instruction: 'Night after dinner' },
+      ],
+      advice: 'Low sodium diet (< 2g salt/day). Regular home blood pressure monitoring. Avoid tobacco and excessive alcohol.',
+      tests: ['Lipid Profile (Full)', 'Kidney Function Test (KFT)', '12-Lead Electrocardiogram (ECG)'],
+    },
+    {
+      id: 'acute-gastro',
+      title: 'Acute Gastroenteritis & Acid Peptic Disease',
+      category: 'Gastroenterology',
+      diagnosis: 'Acute Gastroenteritis & Dyspepsia',
+      medicines: [
+        { name: 'Cap Pantoprazole 40mg', dosage: '1-0-0', duration: '7 Days', instruction: 'Empty stomach (30 mins before breakfast)' },
+        { name: 'Tab Ofloxacin 200mg + Ornidazole 500mg', dosage: '1-0-1', duration: '3 Days', instruction: 'After food' },
+        { name: 'Probiotic Sachet (Lactobacillus)', dosage: '1-0-1', duration: '5 Days', instruction: 'Mix in room temp water' },
+        { name: 'ORS Solution Sachets', dosage: 'As needed', duration: '3 Days', instruction: '1 sachet in 1 liter boiled & cooled water' },
+      ],
+      advice: 'Bland soft diet (khichdi, curd rice, coconut water). Avoid oily, deep fried, and spicy foods. Maintain good hydration.',
+      tests: ['Stool Routine Examination', 'Serum Electrolytes'],
+    },
+    {
+      id: 'allergic-rhinitis',
+      title: 'Allergic Rhinitis & Mild Bronchospasm',
+      category: 'Pulmonology',
+      diagnosis: 'Allergic Rhinitis with Hyper-reactive Airway',
+      medicines: [
+        { name: 'Tab Montelukast 10mg + Levocetirizine 5mg', dosage: '0-0-1', duration: '10 Days', instruction: 'At bedtime' },
+        { name: 'Nasal Saline Spray', dosage: '2 Puffs BD', duration: '14 Days', instruction: 'Both nostrils twice daily' },
+      ],
+      advice: 'Avoid dust exposure, pollen, and pet dander. Wear mask in polluted environments. Keep bedroom clean.',
+      tests: ['Absolute Eosinophil Count', 'Total Serum IgE'],
+    },
+    {
+      id: 'lumbar-strain',
+      title: 'Acute Mechanical Lumbar Muscle Strain',
+      category: 'Orthopedics',
+      diagnosis: 'Acute Lumbar Muscular Strain & Spasm',
+      medicines: [
+        { name: 'Tab Aceclofenac 100mg + Paracetamol 325mg', dosage: '1-0-1', duration: '5 Days', instruction: 'After food' },
+        { name: 'Cap Rabeprazole 20mg', dosage: '1-0-0', duration: '5 Days', instruction: 'Before breakfast' },
+        { name: 'Diclofenac Gel (Local Application)', dosage: 'TDS', duration: '7 Days', instruction: 'Gently apply on affected lumbar area' },
+      ],
+      advice: 'Avoid forward bending and lifting heavy weights. Use firm mattress. Warm fomentation for 15 mins twice daily.',
+      tests: ['X-Ray Lumbo-Sacral Spine (AP & Lat View)'],
+    }
+  ]
+
+  const handleApplyTemplate = (template: typeof CLINICAL_TEMPLATES[0]) => {
+    setRxForm({
+      diagnosis: template.diagnosis,
+      medicines: template.medicines.map(m => ({ ...m })),
+      labTests: template.tests.join(', '),
+      advice: template.advice,
+      followUp: new Date(Date.now() + 7 * 86400000).toISOString().split('T')[0],
+      followUpReason: `Review response to ${template.diagnosis} treatment`,
+      testRequests: template.tests.map(t => t.split(' (')[0]),
+      customTest: '',
+    })
+    setShowTemplatesModal(false)
+    setShowRxModal(true)
+    setNotice(`✓ Template "${template.title}" applied to active prescription builder.`)
+    setTimeout(() => setNotice(null), 3500)
+  }
+
   // Doctor OPD Profile & Settings Form State
   const [profileForm, setProfileForm] = useState({
     name: doctorName,
@@ -1079,14 +1401,25 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     <h3 className="font-black text-sm text-slate-900">Quick Actions</h3>
                     <div className="grid grid-cols-4 gap-3 pt-1">
                       {[
-                        { label: 'New Consultation', icon: '+', bg: 'bg-indigo-50 text-indigo-600', action: () => { setActiveNav('consultations'); navigate('/consultations', { replace: true }); } },
+                        { 
+                          label: 'New Consultation', 
+                          icon: '+', 
+                          bg: 'bg-indigo-50 text-indigo-600', 
+                          action: () => {
+                            if (currentPatient) {
+                              openRxModalForCurrentPatient()
+                            } else {
+                              setShowAddWalkinModal(true)
+                            }
+                          } 
+                        },
                         { label: 'Prescription', icon: 'Rx', bg: 'bg-emerald-50 text-emerald-600', action: () => openRxModalForCurrentPatient() },
                         { label: 'Medical Certificate', icon: '🛡️', bg: 'bg-blue-50 text-blue-600', action: () => setShowCertModal(true) },
                         { label: 'Lab Test Advice', icon: '🧪', bg: 'bg-amber-50 text-amber-600', action: () => setShowLabModal(true) },
-                        { label: 'Follow Up', icon: '📅', bg: 'bg-rose-50 text-rose-600', action: () => { setActiveNav('follow-ups'); navigate('/follow-ups', { replace: true }); } },
+                        { label: 'Follow Up', icon: '📅', bg: 'bg-rose-50 text-rose-600', action: () => setShowFollowUpModal(true) },
                         { label: 'Patient Notes', icon: '📝', bg: 'bg-orange-50 text-orange-600', action: () => setShowNotesModal(true) },
                         { label: 'Upload Report', icon: '⬆️', bg: 'bg-violet-50 text-violet-600', action: () => setShowUploadModal(true) },
-                        { label: 'Templates', icon: '📄', bg: 'bg-sky-50 text-sky-600', action: () => { setActiveNav('templates'); navigate('/templates', { replace: true }); } },
+                        { label: 'Templates', icon: '📄', bg: 'bg-sky-50 text-sky-600', action: () => setShowTemplatesModal(true) },
                       ].map((act, i) => (
                         <button
                           key={i}
@@ -3210,6 +3543,851 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                 className="px-5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow"
               >
                 Confirm Slot
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: MEDICAL CERTIFICATE GENERATOR ─── */}
+      {showCertModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <Shield size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Medical Certificate & Fitness Generator</h3>
+                  <p className="text-[11px] text-slate-400 font-medium">Generate, preview, and print official hospital-authenticated medical certificates.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowCertModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-xs overflow-y-auto pr-1">
+              {/* Left Column: Form Configuration (5 cols) */}
+              <div className="lg:col-span-5 space-y-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Certificate Type</label>
+                  <select
+                    value={certForm.certType}
+                    onChange={e => setCertForm(p => ({ ...p, certType: e.target.value as any }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  >
+                    <option value="Sick Leave">Medical Sick Leave Certificate</option>
+                    <option value="Medical Fitness">Medical Fitness Certificate</option>
+                    <option value="Medical Recovery">Post-Illness Recovery Certificate</option>
+                    <option value="Rest Certificate">Bed Rest Advice Certificate</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Patient Full Name *</label>
+                  <input
+                    type="text"
+                    value={certForm.patientName}
+                    onChange={e => setCertForm(p => ({ ...p, patientName: e.target.value }))}
+                    placeholder="Patient name"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Age</label>
+                    <input
+                      type="number"
+                      value={certForm.age}
+                      onChange={e => setCertForm(p => ({ ...p, age: Number(e.target.value) }))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">Gender</label>
+                    <select
+                      value={certForm.gender}
+                      onChange={e => setCertForm(p => ({ ...p, gender: e.target.value }))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                    >
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Clinical Diagnosis / Reason *</label>
+                  <input
+                    type="text"
+                    value={certForm.diagnosis}
+                    onChange={e => setCertForm(p => ({ ...p, diagnosis: e.target.value }))}
+                    placeholder="e.g. Acute Bronchitis & Viral Fever"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">From Date</label>
+                    <input
+                      type="date"
+                      value={certForm.startDate}
+                      onChange={e => setCertForm(p => ({ ...p, startDate: e.target.value }))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-700">To Date / Fit From</label>
+                    <input
+                      type="date"
+                      value={certForm.endDate}
+                      onChange={e => setCertForm(p => ({ ...p, endDate: e.target.value, isFitFrom: e.target.value }))}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700">Doctor Remarks / Advice</label>
+                  <textarea
+                    rows={2}
+                    value={certForm.remarks}
+                    onChange={e => setCertForm(p => ({ ...p, remarks: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+              </div>
+
+              {/* Right Column: Live Official Letterhead Preview (7 cols) */}
+              <div className="lg:col-span-7 bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-inner flex flex-col justify-between space-y-4">
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4 font-serif text-slate-800 relative overflow-hidden">
+                  <div className="absolute right-4 top-4 opacity-10 pointer-events-none font-sans font-black text-6xl text-indigo-900">
+                    CERTIFIED
+                  </div>
+
+                  {/* Header */}
+                  <div className="flex items-center justify-between border-b pb-3 border-slate-200">
+                    <div className="flex items-center gap-2.5">
+                      <img src="/assets/brand-icon.png" alt="Logo" className="w-8 h-8 object-contain" />
+                      <div>
+                        <h4 className="font-bold font-sans text-xs text-slate-900">{selectedHospital}</h4>
+                        <p className="text-[10px] font-sans text-slate-500 font-medium">Department of Clinical OPD • MedTechFixaters Verified</p>
+                      </div>
+                    </div>
+                    <div className="text-right font-sans text-[10px] text-slate-400">
+                      <span>Ref: MED-CERT-{Math.floor(100000 + Math.random() * 900000)}</span><br />
+                      <span>Date: {new Date().toLocaleDateString('en-GB')}</span>
+                    </div>
+                  </div>
+
+                  {/* Certificate Title */}
+                  <div className="text-center py-1">
+                    <h3 className="text-base font-bold tracking-wider uppercase underline font-sans text-slate-900">
+                      {certForm.certType}
+                    </h3>
+                  </div>
+
+                  {/* Body Text */}
+                  <div className="text-xs leading-relaxed space-y-2 text-justify">
+                    <p>
+                      This is to certify that <strong>{certForm.patientName || '[Patient Name]'}</strong>, aged <strong>{certForm.age}</strong> years, <strong>{certForm.gender}</strong>, was examined and treated at our OPD clinic on <strong>{certForm.startDate}</strong>.
+                    </p>
+                    <p>
+                      The patient was diagnosed with <strong>{certForm.diagnosis || '[Diagnosis]'}</strong> and is under medical care.
+                    </p>
+                    {certForm.certType === 'Medical Fitness' ? (
+                      <p>
+                        Upon comprehensive clinical evaluation, the patient is found to be in good health, physically and mentally fit to resume all official duties and academic responsibilities effective from <strong>{certForm.isFitFrom}</strong>.
+                      </p>
+                    ) : (
+                      <p>
+                        In our professional medical judgment, the patient is advised complete bed rest and is medically unfit to perform work/study duties from <strong>{certForm.startDate}</strong> to <strong>{certForm.endDate}</strong>.
+                      </p>
+                    )}
+                    <p className="italic text-slate-600 text-[11px]">
+                      Remarks: {certForm.remarks}
+                    </p>
+                  </div>
+
+                  {/* Sign-off */}
+                  <div className="pt-6 flex justify-between items-end border-t border-slate-100 font-sans text-xs">
+                    <div>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold">
+                        <CheckCircle2 size={11} /> Digitally Verified
+                      </span>
+                    </div>
+                    <div className="text-right space-y-0.5">
+                      <div className="w-28 border-b border-dashed border-slate-400 mb-1 ml-auto" />
+                      <p className="font-bold text-slate-900">{doctorName}</p>
+                      <p className="text-[10px] text-slate-500">{doctorSpecialty} • {doctorDegree}</p>
+                      <p className="text-[9px] text-slate-400">Reg No: {profileForm.registration_number}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-[10px] text-slate-400 text-center font-medium">
+                  This electronic certificate meets clinical documentation compliance standards.
+                </p>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
+              >
+                <Printer size={14} /> Print Certificate (A4)
+              </button>
+              <button
+                onClick={handleSaveCertificate}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+              >
+                <Check size={14} /> Save & Issue Certificate
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: LAB TEST ADVICE / REQUISITION ─── */}
+      {showLabModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
+                  <FlaskConical size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Diagnostic & Lab Test Advice</h3>
+                  <span className="text-xs font-semibold text-slate-500">Patient: <strong>{labForm.patientName || currentPatient?.patient_name || 'Active Patient'}</strong></span>
+                </div>
+              </div>
+              <button onClick={() => setShowLabModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4 text-xs overflow-y-auto pr-1">
+              {/* Category Filter Tabs */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {(Object.keys(LAB_TEST_CATEGORIES) as Array<keyof typeof LAB_TEST_CATEGORIES>).map(cat => (
+                  <button
+                    key={cat}
+                    onClick={() => setLabForm(p => ({ ...p, selectedCategory: cat }))}
+                    className={`px-3 py-1.5 rounded-xl font-bold text-xs shrink-0 transition ${
+                      labForm.selectedCategory === cat ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
+
+              {/* Test Catalog Pills */}
+              <div className="space-y-1.5">
+                <label className="font-bold text-slate-700">Select Required Tests ({labForm.selectedCategory})</label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {LAB_TEST_CATEGORIES[labForm.selectedCategory].map(test => {
+                    const isSelected = labForm.selectedTests.includes(test)
+                    return (
+                      <button
+                        key={test}
+                        type="button"
+                        onClick={() => toggleLabTest(test)}
+                        className={`p-2.5 rounded-xl border text-left font-bold text-[11px] transition flex items-center justify-between gap-1 ${
+                          isSelected
+                            ? 'bg-amber-50 border-amber-400 text-amber-900 shadow-xs'
+                            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                        }`}
+                      >
+                        <span className="truncate">{test}</span>
+                        {isSelected && <Check size={14} className="text-amber-600 shrink-0" />}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* Custom Test Entry */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Other / Custom Investigation</label>
+                <input
+                  type="text"
+                  value={labForm.customTest}
+                  onChange={e => setLabForm(p => ({ ...p, customTest: e.target.value }))}
+                  placeholder="e.g. Vitamin D3, Serum Ferritin, Troponin-I"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+              </div>
+
+              {/* Selected Tests Summary */}
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-black text-slate-800 text-[11px] uppercase tracking-wider">
+                    Tests Ordered ({labForm.selectedTests.length + (labForm.customTest.trim() ? 1 : 0)})
+                  </span>
+                  {labForm.selectedTests.length > 0 && (
+                    <button
+                      onClick={() => setLabForm(p => ({ ...p, selectedTests: [] }))}
+                      className="text-[10px] text-rose-500 font-bold hover:underline"
+                    >
+                      Clear All
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {labForm.selectedTests.map(t => (
+                    <span key={t} className="inline-flex items-center gap-1 px-2.5 py-1 bg-white border border-slate-300 rounded-lg text-[10.5px] font-bold text-slate-800">
+                      {t}
+                      <button onClick={() => toggleLabTest(t)} className="text-slate-400 hover:text-rose-500"><X size={12} /></button>
+                    </span>
+                  ))}
+                  {labForm.customTest.trim() && (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-amber-100 border border-amber-300 rounded-lg text-[10.5px] font-bold text-amber-900">
+                      {labForm.customTest.trim()} (Custom)
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Clinical Notes & Urgent Flag */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700">Clinical Indication & Specimen Instructions</label>
+                <textarea
+                  rows={2}
+                  value={labForm.clinicalNotes}
+                  onChange={e => setLabForm(p => ({ ...p, clinicalNotes: e.target.value }))}
+                  placeholder="e.g. Fasting sample required, evaluate for recurrent fever spikes"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-amber-50/60 border border-amber-200/80 rounded-xl">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-slate-900 block">STAT / Urgent Requisition</span>
+                  <span className="text-[11px] text-slate-500">Flags priority processing for hospital in-house diagnostic lab</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={labForm.isUrgent}
+                  onChange={e => setLabForm(p => ({ ...p, isUrgent: e.target.checked }))}
+                  className="w-5 h-5 rounded text-amber-600 focus:ring-amber-500 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
+              >
+                <Printer size={14} /> Print Requisition Slip
+              </button>
+              <button
+                onClick={handleSaveLabAdvice}
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+              >
+                <Check size={14} /> Send to Lab & Record Advice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: QUICK FOLLOW UP SCHEDULER ─── */}
+      {showFollowUpModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <CalendarDays size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Schedule Patient Follow-Up</h3>
+                  <span className="text-xs font-semibold text-slate-500">Patient: <strong>{quickFollowUpForm.patientName || currentPatient?.patient_name || 'Active Patient'}</strong></span>
+                </div>
+              </div>
+              <button onClick={() => setShowFollowUpModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              {/* Quick Date Shortcuts */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Quick Follow-Up Timeline</label>
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[
+                    { label: '+3 Days', days: 3 },
+                    { label: '+7 Days', days: 7 },
+                    { label: '+14 Days', days: 14 },
+                    { label: '+1 Month', days: 30 },
+                  ].map(sc => (
+                    <button
+                      key={sc.label}
+                      type="button"
+                      onClick={() => setQuickFollowUpForm(p => ({ ...p, date: new Date(Date.now() + sc.days * 86400000).toISOString().split('T')[0] }))}
+                      className="px-2.5 py-2 bg-slate-50 hover:bg-rose-50 hover:text-rose-600 hover:border-rose-300 border border-slate-200 rounded-xl font-bold text-center transition"
+                    >
+                      {sc.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Follow-Up Date *</label>
+                  <input
+                    type="date"
+                    min={new Date().toISOString().split('T')[0]}
+                    value={quickFollowUpForm.date}
+                    onChange={e => setQuickFollowUpForm(p => ({ ...p, date: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Preferred Time Slot</label>
+                  <select
+                    value={quickFollowUpForm.time}
+                    onChange={e => setQuickFollowUpForm(p => ({ ...p, time: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  >
+                    <option>09:30 AM</option>
+                    <option>10:30 AM</option>
+                    <option>11:30 AM</option>
+                    <option>01:30 PM</option>
+                    <option>03:00 PM</option>
+                    <option>04:30 PM</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Clinical Reason *</label>
+                <input
+                  type="text"
+                  value={quickFollowUpForm.reason}
+                  onChange={e => setQuickFollowUpForm(p => ({ ...p, reason: e.target.value }))}
+                  placeholder="e.g. Review lab test reports & treatment response"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Doctor's Private Note</label>
+                <textarea
+                  rows={2}
+                  value={quickFollowUpForm.notes}
+                  onChange={e => setQuickFollowUpForm(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="e.g. Check BP recovery, evaluate dosage adjustment"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+              </div>
+
+              <div className="flex items-center justify-between p-3 bg-rose-50/50 border border-rose-100 rounded-xl">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-slate-900 block">WhatsApp / SMS Reminder</span>
+                  <span className="text-[11px] text-slate-500">Auto-sends 24h prior notification to patient</span>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={quickFollowUpForm.sendSms}
+                  onChange={e => setQuickFollowUpForm(p => ({ ...p, sendSms: e.target.checked }))}
+                  className="w-5 h-5 rounded text-rose-600 focus:ring-rose-500 cursor-pointer"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex items-center justify-between border-t border-slate-100">
+              <button
+                onClick={() => {
+                  setShowFollowUpModal(false)
+                  setActiveNav('follow-ups')
+                  navigate('/follow-ups', { replace: true })
+                }}
+                className="text-xs font-bold text-indigo-600 hover:underline"
+              >
+                Open Follow-Up CRM →
+              </button>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFollowUpModal(false)}
+                  className="px-4 py-2 bg-slate-100 font-bold text-xs rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveQuickFollowUp}
+                  className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow"
+                >
+                  Save Follow-Up
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: SOAP CLINICAL NOTES ─── */}
+      {showNotesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-2xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-orange-50 text-orange-600 flex items-center justify-center">
+                  <Edit3 size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">SOAP Clinical Progress Notes</h3>
+                  <span className="text-xs font-semibold text-slate-500">Patient: <strong>{notesForm.patientName || currentPatient?.patient_name || 'Active Patient'}</strong></span>
+                </div>
+              </div>
+              <button onClick={() => setShowNotesModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs overflow-y-auto pr-1">
+              {/* Quick Tags */}
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Quick Condition Tags</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {['Hypertension Review', 'Diabetic Checkup', 'Viral Prodrome', 'Gastritis / APD', 'Post-Op Follow-up', 'Allergic Rhinitis', 'Anxiety / Stress'].map(tag => {
+                    const isSelected = notesForm.tags.includes(tag)
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setNotesForm(p => ({
+                          ...p,
+                          tags: isSelected ? p.tags.filter(t => t !== tag) : [...p.tags, tag],
+                          assessment: p.assessment ? `${p.assessment}, ${tag}` : tag
+                        }))}
+                        className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold transition ${
+                          isSelected ? 'bg-orange-500 text-white border-orange-500' : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {tag}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+
+              {/* SOAP 4-Quadrant Inputs */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                {/* Subjective */}
+                <div className="space-y-1 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="flex items-center gap-1.5 font-black text-xs text-orange-700 uppercase tracking-wider">
+                    <span className="w-5 h-5 rounded-full bg-orange-200 text-orange-900 flex items-center justify-center text-[10px]">S</span>
+                    Subjective (Symptoms & History)
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={notesForm.subjective}
+                    onChange={e => setNotesForm(p => ({ ...p, subjective: e.target.value }))}
+                    placeholder="Chief complaints, onset, duration, severity, history of present illness..."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium"
+                  />
+                </div>
+
+                {/* Objective */}
+                <div className="space-y-1 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="flex items-center gap-1.5 font-black text-xs text-blue-700 uppercase tracking-wider">
+                    <span className="w-5 h-5 rounded-full bg-blue-200 text-blue-900 flex items-center justify-center text-[10px]">O</span>
+                    Objective (Vitals & Examination)
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={notesForm.objective}
+                    onChange={e => setNotesForm(p => ({ ...p, objective: e.target.value }))}
+                    placeholder="BP, Pulse, Temp, SpO2, Systemic examination findings..."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium"
+                  />
+                </div>
+
+                {/* Assessment */}
+                <div className="space-y-1 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="flex items-center gap-1.5 font-black text-xs text-emerald-700 uppercase tracking-wider">
+                    <span className="w-5 h-5 rounded-full bg-emerald-200 text-emerald-900 flex items-center justify-center text-[10px]">A</span>
+                    Assessment (Clinical Diagnosis)
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={notesForm.assessment}
+                    onChange={e => setNotesForm(p => ({ ...p, assessment: e.target.value }))}
+                    placeholder="Provisional diagnosis, differential diagnosis, status of chronic illness..."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium"
+                  />
+                </div>
+
+                {/* Plan */}
+                <div className="space-y-1 p-3 bg-slate-50 border border-slate-200 rounded-2xl">
+                  <div className="flex items-center gap-1.5 font-black text-xs text-purple-700 uppercase tracking-wider">
+                    <span className="w-5 h-5 rounded-full bg-purple-200 text-purple-900 flex items-center justify-center text-[10px]">P</span>
+                    Plan (Treatment & Lifestyle)
+                  </div>
+                  <textarea
+                    rows={3}
+                    value={notesForm.plan}
+                    onChange={e => setNotesForm(p => ({ ...p, plan: e.target.value }))}
+                    placeholder="Therapeutic plan, investigations advised, dietary instructions, review timeline..."
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-medium"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setRxForm(p => ({
+                    ...p,
+                    diagnosis: notesForm.assessment || p.diagnosis,
+                    advice: notesForm.plan ? `${notesForm.plan}` : p.advice,
+                  }))
+                  setShowNotesModal(false)
+                  setShowRxModal(true)
+                  setNotice('✓ Notes copied into active prescription draft.')
+                  setTimeout(() => setNotice(null), 3000)
+                }}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs rounded-xl flex items-center gap-1.5 transition"
+              >
+                <FileText size={14} /> Copy to Prescription
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveNotes}
+                className="px-5 py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+              >
+                <Check size={14} /> Save to Patient Chart
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: UPLOAD REPORT & DOCUMENT ─── */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-violet-50 text-violet-600 flex items-center justify-center">
+                  <Upload size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">Upload Patient Document</h3>
+                  <span className="text-xs font-semibold text-slate-500">Patient: <strong>{uploadReportForm.patientName || currentPatient?.patient_name || 'Active Patient'}</strong></span>
+                </div>
+              </div>
+              <button onClick={() => setShowUploadModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3.5 text-xs">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Document Category *</label>
+                <select
+                  value={uploadReportForm.category}
+                  onChange={e => setUploadReportForm(p => ({ ...p, category: e.target.value as any }))}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                >
+                  <option value="Pathology / Blood Test">Pathology / Blood Test Report</option>
+                  <option value="Radiology / X-Ray / Scan">Radiology / X-Ray / CT / MRI</option>
+                  <option value="Discharge Summary">Hospital Discharge Summary</option>
+                  <option value="ECG / Cardiology">ECG / Echo / Cardiology Report</option>
+                  <option value="Prescription / External Rx">Prior External Prescription</option>
+                  <option value="Other">Other Medical Record</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Document Title *</label>
+                  <input
+                    type="text"
+                    value={uploadReportForm.reportTitle}
+                    onChange={e => setUploadReportForm(p => ({ ...p, reportTitle: e.target.value }))}
+                    placeholder="e.g. CBC & LFT Report"
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-700 block">Report Date</label>
+                  <input
+                    type="date"
+                    value={uploadReportForm.reportDate}
+                    onChange={e => setUploadReportForm(p => ({ ...p, reportDate: e.target.value }))}
+                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                  />
+                </div>
+              </div>
+
+              {/* Drag & Drop File Zone */}
+              <div className="p-6 border-2 border-dashed border-violet-200 hover:border-violet-400 bg-violet-50/40 rounded-2xl text-center space-y-2 cursor-pointer transition relative">
+                <input
+                  type="file"
+                  accept=".pdf,.png,.jpg,.jpeg,.dicom"
+                  onChange={e => {
+                    const file = e.target.files?.[0]
+                    if (file) {
+                      setUploadReportForm(p => ({
+                        ...p,
+                        fileName: file.name,
+                        reportTitle: p.reportTitle || file.name.replace(/\.[^/.]+$/, '')
+                      }))
+                    }
+                  }}
+                  className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                />
+                <div className="w-10 h-10 rounded-2xl bg-white shadow-xs text-violet-600 flex items-center justify-center mx-auto">
+                  <Paperclip size={20} />
+                </div>
+                {uploadReportForm.fileName ? (
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-slate-900 text-xs truncate max-w-xs mx-auto">
+                      📎 {uploadReportForm.fileName}
+                    </p>
+                    <p className="text-[10px] text-emerald-600 font-bold">File attached ready for upload</p>
+                  </div>
+                ) : (
+                  <div className="space-y-0.5">
+                    <p className="font-bold text-slate-800 text-xs">Click to browse or drag file here</p>
+                    <p className="text-[10px] text-slate-400 font-medium">Supports PDF, PNG, JPG, DICOM (Max 15MB)</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-700 block">Clinical Findings / Summary Note</label>
+                <textarea
+                  rows={2}
+                  value={uploadReportForm.notes}
+                  onChange={e => setUploadReportForm(p => ({ ...p, notes: e.target.value }))}
+                  placeholder="e.g. Hb 11.2, Platelets normal, normal sinus rhythm on ECG"
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold"
+                />
+              </div>
+            </div>
+
+            <div className="pt-2 flex justify-end gap-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowUploadModal(false)}
+                className="px-4 py-2 bg-slate-100 font-bold text-xs rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={uploadReportForm.isUploading}
+                onClick={handleSaveUploadReport}
+                className="px-5 py-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow flex items-center gap-1.5 transition"
+              >
+                {uploadReportForm.isUploading ? (
+                  'Uploading…'
+                ) : (
+                  <>
+                    <Upload size={14} /> Attach & Save Document
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: 1-CLICK CLINICAL TEMPLATES DRAWER ─── */}
+      {showTemplatesModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white border border-slate-200 rounded-3xl max-w-4xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto flex flex-col">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-600 flex items-center justify-center">
+                  <Sparkles size={18} />
+                </div>
+                <div>
+                  <h3 className="font-black text-base text-slate-900">1-Click Clinical Rx Templates</h3>
+                  <p className="text-[11px] text-slate-400 font-medium">Select a validated condition protocol to instantly populate prescription, advice, and recommended tests.</p>
+                </div>
+              </div>
+              <button onClick={() => setShowTemplatesModal(false)} className="text-slate-400 hover:text-slate-700">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs overflow-y-auto pr-1">
+              {CLINICAL_TEMPLATES.map(template => (
+                <div
+                  key={template.id}
+                  className="p-4 bg-slate-50/70 hover:bg-white border border-slate-200 hover:border-sky-300 hover:shadow-md rounded-2xl transition flex flex-col justify-between space-y-3"
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="px-2.5 py-0.5 bg-sky-100 text-sky-800 rounded-full font-black text-[10px] uppercase tracking-wider">
+                        {template.category}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-bold">Protocol Presets</span>
+                    </div>
+
+                    <div>
+                      <h4 className="font-black text-sm text-slate-900 leading-snug">{template.title}</h4>
+                      <p className="text-slate-500 font-medium text-[11px]">🩺 {template.diagnosis}</p>
+                    </div>
+
+                    {/* Medicines preview */}
+                    <div className="space-y-1 bg-white p-2.5 rounded-xl border border-slate-200/80">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Rx Medicines</span>
+                      <ul className="space-y-1 text-[11px]">
+                        {template.medicines.map((m, i) => (
+                          <li key={i} className="flex items-center justify-between text-slate-700 font-semibold">
+                            <span className="truncate max-w-[180px]">• {m.name}</span>
+                            <span className="text-indigo-600 text-[10px] font-bold">{m.dosage}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    {/* Advice preview */}
+                    <p className="text-[11px] text-slate-600 italic line-clamp-2">
+                      💡 {template.advice}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleApplyTemplate(template)}
+                    className="w-full py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-xs flex items-center justify-center gap-1.5 transition"
+                  >
+                    <Check size={14} /> Apply to Consultation & Open Rx
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="pt-3 border-t border-slate-100 flex items-center justify-between shrink-0">
+              <span className="text-[11px] text-slate-500">
+                Applying a template auto-fills the 30-Second Rx engine for <strong>{currentPatient?.patient_name || 'the active patient'}</strong>.
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowTemplatesModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 font-bold text-xs rounded-xl"
+              >
+                Close
               </button>
             </div>
           </div>
