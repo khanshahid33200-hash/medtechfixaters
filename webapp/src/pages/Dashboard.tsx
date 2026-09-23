@@ -15,6 +15,7 @@ import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 import { supabase } from '../lib/supabase'
 import DoctorDashboardLayout from '../components/doctordashboard/DoctorDashboardLayout'
+import PatientDetailsModal, { PatientModalData } from '../components/PatientDetailsModal'
 import { useDoctorDashboardStats, resolveRange } from '../hooks/useDoctorDashboardStats'
 import type { DateRangeKey } from '../hooks/useDashboardStats'
 import { createTestRequest, createFollowUp, createDoctorRequest, createEmergencyRequest, DoctorRequestType, fetchFollowUps, updateFollowUpStatus, FollowUpRow } from '../services/consultationWorkflowService'
@@ -545,6 +546,31 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
     notes: '',
   })
   const [workflowBusy, setWorkflowBusy] = useState(false)
+
+  // ─── PATIENT DETAILS MODAL STATE ───
+  const [patientDetailsTarget, setPatientDetailsTarget] = useState<PatientModalData | null>(null)
+
+  const openPatientDetails = (target: any) => {
+    const p = target || currentPatient
+    if (!p) return
+    setPatientDetailsTarget({
+      id: p.id,
+      patient_id: p.patient_id || p.patient?.id || null,
+      patient_number: p.patient_number || p.patient?.patient_number || null,
+      patient_name: p.patient_name || p.patient?.name || 'Patient',
+      phone: p.phone || p.patient?.phone || '',
+      age: p.age ?? p.patient?.age ?? undefined,
+      gender: p.gender || p.patient?.gender || undefined,
+      chief_complaint: p.chief_complaint || p.symptoms || '',
+      allergies: p.allergies || p.patient?.allergies || '',
+      vitals: p.vitals || undefined,
+      lastVisit: p.lastVisit || undefined,
+      token_number: p.token_number,
+      queue_number: p.queue_number,
+      status: p.status,
+    })
+    setShowPatientDetailsModal(true)
+  }
 
   // ─── QUICK ACTIONS: MEDICAL CERTIFICATE STATE ───
   const [certForm, setCertForm] = useState({
@@ -1321,10 +1347,18 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                                 <td className="py-2.5 font-bold text-slate-400">{idx + 1}</td>
                                 <td className="py-2.5 font-black text-indigo-600">{item.queue_number || `Token #${item.token_number}`}</td>
                                 <td className="py-2.5">
-                                  <span className="font-extrabold text-slate-800 block">{item.patient_name}</span>
-                                  {item.patient_number && (
-                                    <span className="text-[10px] font-medium text-slate-400 block">ID: {item.patient_number}</span>
-                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={() => openPatientDetails(item)}
+                                    className="text-left group cursor-pointer"
+                                  >
+                                    <span className="font-extrabold text-slate-800 group-hover:text-indigo-600 group-hover:underline block transition">
+                                      {item.patient_name}
+                                    </span>
+                                    {item.patient_number && (
+                                      <span className="text-[10px] font-medium text-slate-400 block">ID: {item.patient_number}</span>
+                                    )}
+                                  </button>
                                 </td>
                                 <td className="py-2.5 text-slate-500">{item.age} / {item.gender}</td>
                                 <td className="py-2.5">
@@ -1493,7 +1527,12 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                         {currentPatient.patient_number && (
                           <span className="text-[11px] font-bold text-indigo-600 block mt-0.5">Patient ID: {currentPatient.patient_number}</span>
                         )}
-                        <h4 className="font-extrabold text-base text-slate-800 mt-1">{currentPatient.patient_name}</h4>
+                        <h4
+                          onClick={() => openPatientDetails(currentPatient)}
+                          className="font-extrabold text-base text-slate-800 mt-1 hover:text-indigo-600 hover:underline cursor-pointer transition"
+                        >
+                          {currentPatient.patient_name}
+                        </h4>
                         <p className="text-xs text-slate-500 font-semibold">{currentPatient.age} Yrs, {currentPatient.gender} • {currentPatient.chief_complaint}</p>
                       </div>
                     ) : (
@@ -1504,9 +1543,9 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     )}
 
                     <button
-                      onClick={() => setShowPatientDetailsModal(true)}
+                      onClick={() => openPatientDetails(currentPatient)}
                       disabled={!currentPatient}
-                      className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition"
+                      className="w-full py-2.5 bg-slate-50 hover:bg-slate-100 disabled:opacity-40 disabled:cursor-not-allowed border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition cursor-pointer"
                     >
                       View Patient Details
                     </button>
@@ -1516,7 +1555,12 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                         <>
                           <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider block">Next Patient</span>
                           <span className="text-lg font-black text-slate-800 block">{nextPatient.queue_number || `Token #${nextPatient.token_number}`}</span>
-                          <p className="text-xs font-extrabold text-slate-700">{nextPatient.patient_name}</p>
+                          <p
+                            onClick={() => openPatientDetails(nextPatient)}
+                            className="text-xs font-extrabold text-slate-700 hover:text-indigo-600 hover:underline cursor-pointer transition"
+                          >
+                            {nextPatient.patient_name}
+                          </p>
                           <p className="text-[11px] text-slate-400 font-medium">{nextPatient.age} Yrs, {nextPatient.gender} • {nextPatient.chief_complaint}</p>
                         </>
                       ) : (
@@ -1530,7 +1574,7 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                     <button
                       onClick={() => handleCallNextPatient()}
                       disabled={!nextPatient}
-                      className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5"
+                      className="w-full py-3.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/25 flex items-center justify-center gap-2 transition transform hover:-translate-y-0.5 cursor-pointer"
                     >
                       <Volume2 size={16} />
                       <span>Call Next Patient</span>
@@ -1555,7 +1599,12 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
                       className="w-12 h-12 rounded-2xl object-cover ring-2 ring-indigo-500/20"
                     />
                     <div>
-                      <h4 className="font-black text-sm text-slate-900 leading-tight">{currentPatient.patient_name}</h4>
+                      <h4
+                        onClick={() => openPatientDetails(currentPatient)}
+                        className="font-black text-sm text-slate-900 leading-tight hover:text-indigo-600 hover:underline cursor-pointer transition"
+                      >
+                        {currentPatient.patient_name}
+                      </h4>
                       <p className="text-xs text-slate-500">{currentPatient.age} Yrs, {currentPatient.gender}</p>
                       <span className="text-[10px] font-black text-indigo-600">{currentPatient.queue_number || `Token #${currentPatient.token_number}`}</span>
                     </div>
@@ -4416,6 +4465,30 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
           </div>
         </div>
       )}
+
+      {/* ─── MODAL: PATIENT DETAILS ─── */}
+      <PatientDetailsModal
+        isOpen={showPatientDetailsModal}
+        onClose={() => setShowPatientDetailsModal(false)}
+        patient={patientDetailsTarget}
+        doctorId={doctorId}
+        hospitalName={selectedHospital}
+        onStartConsultation={(p) => {
+          openRxModalForCurrentPatient()
+        }}
+        onIssueCertificate={(p) => {
+          setSelectedPatientRecord(p as any)
+          setShowCertModal(true)
+        }}
+        onLabAdvice={(p) => {
+          setSelectedPatientRecord(p as any)
+          setShowLabModal(true)
+        }}
+        onScheduleFollowUp={(p) => {
+          setSelectedPatientRecord(p as any)
+          setShowFollowUpModal(true)
+        }}
+      />
 
     </DoctorDashboardLayout>
   )

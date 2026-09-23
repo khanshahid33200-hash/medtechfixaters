@@ -20,6 +20,7 @@ import {
 import Layout from '../components/Layout'
 import { Card, CardContent, CardHeader } from '../components/Card'
 import Button from '../components/Button'
+import PatientDetailsModal, { PatientModalData } from '../components/PatientDetailsModal'
 import { useAuth } from '../context/AuthContext'
 import { QueueItem, ClinicalPrescription, MedicinePrescription } from '../utils/doctorStore'
 import {
@@ -76,6 +77,26 @@ export default function Queue() {
 
   const [queueItems, setQueueItems] = useState<DoctorQueueItem[]>([])
   const [announcedToken, setAnnouncedToken] = useState<string | null>(null)
+
+  // Patient Details Modal State
+  const [selectedPatientForDetails, setSelectedPatientForDetails] = useState<PatientModalData | null>(null)
+  const [showPatientDetailsModal, setShowPatientDetailsModal] = useState(false)
+
+  const openPatientDetails = (item: DoctorQueueItem) => {
+    setSelectedPatientForDetails({
+      id: item.id,
+      patient_id: item.patient_id,
+      patient_name: item.patient_name,
+      phone: item.phone,
+      age: item.age,
+      gender: item.gender,
+      chief_complaint: item.symptoms,
+      allergies: item.allergies,
+      token_number: item.token_number,
+      status: item.status,
+    })
+    setShowPatientDetailsModal(true)
+  }
 
   // Consultation & Prescription Modal State
   const [activeConsultationPatient, setActiveConsultationPatient] = useState<DoctorQueueItem | null>(null)
@@ -317,7 +338,12 @@ export default function Queue() {
             <CardContent className="py-5">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-900">{activeDoctorPatient.patient_name}</h3>
+                  <h3
+                    onClick={() => openPatientDetails(activeDoctorPatient)}
+                    className="text-2xl font-bold text-gray-900 hover:text-blue-600 hover:underline cursor-pointer transition"
+                  >
+                    {activeDoctorPatient.patient_name}
+                  </h3>
                   <p className="text-sm text-gray-600 mt-1">
                     Phone: {activeDoctorPatient.phone} • Check-in: {activeDoctorPatient.check_in_time}
                     {activeDoctorPatient.symptoms && ` • Symptoms: ${activeDoctorPatient.symptoms}`}
@@ -372,8 +398,16 @@ export default function Queue() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-gray-900 font-bold text-base">
-                          {item.patient_name}
-                          <p className="text-xs text-gray-400 font-normal">{item.phone}</p>
+                          <button
+                            type="button"
+                            onClick={() => openPatientDetails(item)}
+                            className="text-left group cursor-pointer"
+                          >
+                            <span className="group-hover:text-blue-600 group-hover:underline block transition">
+                              {item.patient_name}
+                            </span>
+                            <p className="text-xs text-gray-400 font-normal">{item.phone}</p>
+                          </button>
                         </td>
                         <td className="px-6 py-4 text-gray-700 text-xs max-w-xs truncate">
                           {item.symptoms || 'General Checkup'}
@@ -691,6 +725,19 @@ export default function Queue() {
             </div>
           </div>
         )}
+
+        {/* Patient Details Modal */}
+        <PatientDetailsModal
+          isOpen={showPatientDetailsModal}
+          onClose={() => setShowPatientDetailsModal(false)}
+          patient={selectedPatientForDetails}
+          doctorId={doctorId}
+          hospitalName={hospitalName}
+          onStartConsultation={(p) => {
+            const match = queueItems.find(q => q.id === p.id)
+            if (match) handleOpenConsultationModal(match)
+          }}
+        />
       </div>
     </Layout>
   )

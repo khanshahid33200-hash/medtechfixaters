@@ -3,6 +3,7 @@ import { Plus, X, Calendar, Clock, Ticket, Receipt, CheckCircle, XCircle } from 
 import Layout from '../components/Layout'
 import { Card, CardContent } from '../components/Card'
 import Button from '../components/Button'
+import PatientDetailsModal, { PatientModalData } from '../components/PatientDetailsModal'
 import { useAuth } from '../context/AuthContext'
 import {
   getDoctorAppointments,
@@ -21,6 +22,28 @@ export default function Appointments() {
   const [filterTab, setFilterTab] = useState<'todays' | 'upcoming' | 'completed' | 'cancelled'>('todays')
   const [showBookingModal, setShowBookingModal] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Patient Details Modal State
+  const [selectedPatientForDetails, setSelectedPatientForDetails] = useState<PatientModalData | null>(null)
+  const [showPatientDetailsModal, setShowPatientDetailsModal] = useState(false)
+
+  const openPatientDetails = (apt: DoctorAppointment) => {
+    setSelectedPatientForDetails({
+      id: apt.id,
+      patient_id: apt.patient?.id || null,
+      patient_number: apt.patient?.patient_number || null,
+      patient_name: apt.patient?.name || 'Unnamed Patient',
+      phone: apt.patient?.phone || '',
+      age: apt.patient?.age ?? undefined,
+      gender: apt.patient?.gender ?? undefined,
+      chief_complaint: apt.symptoms || '',
+      allergies: apt.patient?.allergies || '',
+      token_number: apt.token_number ?? undefined,
+      queue_number: apt.queue_number ?? undefined,
+      status: apt.status,
+    })
+    setShowPatientDetailsModal(true)
+  }
   const [bookingForm, setBookingForm] = useState({
     patient_name: '',
     phone: '',
@@ -167,12 +190,20 @@ export default function Appointments() {
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                       {/* Patient Info & Token / Receipt */}
                       <div className="flex items-start gap-4">
-                        <div className="w-12 h-12 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-lg border border-blue-100 flex-shrink-0">
+                        <div
+                          onClick={() => openPatientDetails(apt)}
+                          className="w-12 h-12 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center font-bold text-lg border border-blue-100 flex-shrink-0 cursor-pointer transition"
+                        >
                           {patientName.charAt(0)}
                         </div>
                         <div>
                           <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="font-bold text-gray-900 text-base">{patientName}</h3>
+                            <h3
+                              onClick={() => openPatientDetails(apt)}
+                              className="font-bold text-gray-900 hover:text-blue-600 hover:underline text-base cursor-pointer transition"
+                            >
+                              {patientName}
+                            </h3>
                             <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-blue-50 text-blue-700 font-bold text-xs rounded-lg border border-blue-200">
                               <Ticket size={12} /> {apt.queue_number || (apt.token_number ? `Token #${apt.token_number}` : 'Token')}
                             </span>
@@ -294,6 +325,15 @@ export default function Appointments() {
             </div>
           </div>
         )}
+
+        {/* Patient Details Modal */}
+        <PatientDetailsModal
+          isOpen={showPatientDetailsModal}
+          onClose={() => setShowPatientDetailsModal(false)}
+          patient={selectedPatientForDetails}
+          doctorId={doctorId}
+          hospitalName={doctorProfile?.hospital_name || 'Hospital Facility'}
+        />
       </div>
     </Layout>
   )
