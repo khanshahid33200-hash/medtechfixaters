@@ -1,991 +1,881 @@
-import React, { useState } from 'react'
-import { useNavigate, useLocation, Link } from 'react-router-dom'
+import React, { useState } from "react";
+import { useNavigate, useLocation, Link } from "react-router-dom";
+import { motion, AnimatePresence } from "motion/react";
 import {
-  AnimatePresence,
-  motion,
-  useMotionValue,
-  useSpring,
-  useTransform,
-} from 'motion/react'
-import {
-  ArrowLeft,
+  ArrowRight,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
   Eye,
   EyeOff,
   LockKeyhole,
   Mail,
+  MessageCircle,
   ShieldCheck,
-  Sparkles,
-  ArrowRight,
   Stethoscope,
-  Building2,
-  AlertCircle,
-  PhoneCall,
-} from 'lucide-react'
-import { useAuth } from '../context/AuthContext'
-import { useSEO } from '../hooks/useSEO'
-import { supabase } from '../lib/supabase'
+  Users,
+  XCircle,
+  Sparkles,
+  ChevronLeft,
+} from "lucide-react";
+
+import { supabase } from "../lib/supabase";
+import { useAuth } from "../context/AuthContext";
+import { useSEO } from "../hooks/useSEO";
+
+type LoginType = "doctor" | "hospital";
+type AuthTab = "login" | "signup";
 
 interface LoginProps {
-  // When set, this is a dedicated single-role portal (e.g.
-  // /login/doctordashboard, /login/hospitaladministration) — the role
-  // toggle is hidden and every login attempt is checked against exactly
-  // this role, rejecting a correctly-authenticated-but-wrong-role account
-  // instead of silently landing it on its own real dashboard.
-  lockedRole?: 'doctor' | 'hospital_admin'
+  lockedRole?: "doctor" | "hospital_admin";
 }
 
 export default function Login({ lockedRole }: LoginProps) {
   useSEO({
-    title: 'Sign In — MedTech Fixaters Clinical OS',
-    description: 'Secure Doctor and Hospital Administrator sign-in portal for MedTech Fixaters Clinical OS.',
-  })
+    title: "Sign In — MedTechFixaters",
+    description:
+      "Secure Doctor and Hospital Administrator authentication portal for MedTechFixaters.",
+  });
 
-  const navigate = useNavigate()
-  const location = useLocation()
-  const { loginWithSupabase, sendSupabaseOtp, verifySupabaseOtp } = useAuth()
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { loginWithSupabase } = useAuth();
 
-  const [selectedRole, setSelectedRole] = useState<'doctor' | 'hospital_admin'>(lockedRole || 'doctor')
-  const [authMethod, setAuthMethod] = useState<'password' | 'otp'>('password')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [rememberMe, setRememberMe] = useState(true)
+  const [tab, setTab] = useState<AuthTab>("login");
+  const [loginType, setLoginType] = useState<LoginType>(
+    lockedRole === "hospital_admin" ? "hospital" : "doctor"
+  );
 
-  // OTP State
-  const [otpSent, setOtpSent] = useState(false)
-  const [otpCode, setOtpCode] = useState('')
-  const [resolvedOtpEmail, setResolvedOtpEmail] = useState('')
-  const [notice, setNotice] = useState<string | null>(null)
-  const [otpTimer, setOtpTimer] = useState(0)
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  React.useEffect(() => {
-    let interval: any = null
-    if (otpTimer > 0) {
-      interval = setInterval(() => setOtpTimer((prev) => prev - 1), 1000)
+  const deniedState = (location.state as { message?: string } | null)?.message;
+  const [message, setMessage] = useState("");
+  const [error, setError] = useState(deniedState || "");
+
+  const [forgotMode, setForgotMode] = useState(false);
+
+  const clearMessages = () => {
+    setMessage("");
+    setError("");
+  };
+
+  const handleEmailLogin = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    clearMessages();
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPass = password.trim();
+
+    if (!cleanEmail || !cleanPass) {
+      setError("Please enter your registered Email and Password.");
+      return;
     }
-    return () => clearInterval(interval)
-  }, [otpTimer])
 
-  const deniedState = (location.state as { message?: string } | null)?.message
-  const [error, setError] = useState(deniedState || '')
-  const [loading, setLoading] = useState(false)
-  const [showForgotModal, setShowForgotModal] = useState(false)
+    setLoading(true);
 
-  // Mouse reactive glow coordinates
-  const mouseX = useMotionValue(0)
-  const mouseY = useMotionValue(0)
+    try {
+      const expectedRole = loginType === "hospital" ? "hospital_admin" : "doctor";
+      const res = await loginWithSupabase(cleanEmail, cleanPass, expectedRole);
 
-  const springX = useSpring(mouseX, { stiffness: 50, damping: 20 })
-  const springY = useSpring(mouseY, { stiffness: 50, damping: 20 })
+      const actualRole = res?.role || expectedRole;
+      const clientType = res?.client_type || localStorage.getItem("client_type");
+      const onboardingStatus =
+        res?.onboarding_status || localStorage.getItem("onboarding_status");
 
-  const glowX = useTransform(springX, [-500, 500], [-80, 80])
-  const glowY = useTransform(springY, [-500, 500], [-50, 50])
-
-  function handleMouseMove(event: React.MouseEvent<HTMLDivElement>) {
-    const rect = event.currentTarget.getBoundingClientRect()
-    mouseX.set(event.clientX - rect.left - rect.width / 2)
-    mouseY.set(event.clientY - rect.top - rect.height / 2)
-  }
+      if (actualRole === "hospital_admin") {
+        navigate("/hospitaldashboard/dashboard");
+      } else if (actualRole === "super_admin") {
+        navigate("/mrshahidbabu");
+      } else if (
+        actualRole === "doctor" &&
+        clientType === "individual_doctor" &&
+        (onboardingStatus === "PROFILE_INCOMPLETE" ||
+          onboardingStatus === "PAYMENT_PENDING")
+      ) {
+        navigate("/doctor/onboarding");
+      } else {
+        navigate("/dashboard");
+      }
+    } catch (err: any) {
+      console.error("Login authentication error:", err);
+      setError(err.message || "Unable to sign in. Please verify your credentials.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
-    setError('')
-    setLoading(true)
+    clearMessages();
+    setLoading(true);
+
     try {
-      const redirectUrl = `${window.location.origin}/doctor/onboarding`
+      const redirectUrl = `${window.location.origin}/doctor/onboarding`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
+        provider: "google",
         options: {
           redirectTo: redirectUrl,
           queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+            access_type: "offline",
+            prompt: "consent",
           },
         },
-      })
-      if (oauthError) throw oauthError
+      });
+
+      if (oauthError) throw oauthError;
     } catch (err: any) {
-      setError(err.message || 'Google sign-in could not be initiated. Please try again or use email.')
-      setLoading(false)
+      console.error("Google sign-in error:", err);
+      setError(err.message || "Unable to continue with Google. Please try again.");
+      setLoading(false);
     }
-  }
+  };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setNotice(null)
-    setLoading(true)
+  const handleForgotPassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    clearMessages();
 
-    const cleanEmail = email.trim().toLowerCase()
-    const cleanPass = password.trim()
-
-    if (!cleanEmail || !cleanPass) {
-      setLoading(false)
-      setError('Please enter your registered Doctor ID / Email and password.')
-      return
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail) {
+      setError("Please enter your email address first.");
+      return;
     }
+
+    setLoading(true);
 
     try {
-      const res = await loginWithSupabase(cleanEmail, cleanPass, selectedRole)
-      const actualRole = res?.role || selectedRole
-      const clientType = res?.client_type || localStorage.getItem('client_type')
-      const onboardingStatus = res?.onboarding_status || localStorage.getItem('onboarding_status')
+      const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
+        cleanEmail,
+        {
+          redirectTo: `${window.location.origin}/doctor/onboarding`,
+        }
+      );
 
-      if (actualRole === 'hospital_admin') {
-        navigate('/hospitaldashboard/dashboard')
-      } else if (actualRole === 'super_admin') {
-        navigate('/mrshahidbabu')
-      } else if (actualRole === 'doctor' && clientType === 'individual_doctor' && (onboardingStatus === 'PROFILE_INCOMPLETE' || onboardingStatus === 'PAYMENT_PENDING')) {
-        navigate('/doctor/onboarding')
-      } else {
-        navigate('/dashboard')
-      }
+      if (resetErr) throw resetErr;
+
+      setMessage("Password reset link sent. Please check your email inbox.");
     } catch (err: any) {
-      setError(err.message || 'Invalid credentials. Please verify your email/Doctor ID and password.')
+      setError(err.message || "Unable to send reset email. Please try again.");
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const handleRequestOtp = async (e?: React.FormEvent) => {
-    if (e) e.preventDefault()
-    setError('')
-    setNotice(null)
-    setLoading(true)
-
-    const cleanId = email.trim()
-    if (!cleanId) {
-      setLoading(false)
-      setError('Please enter your registered Doctor ID or Email first.')
-      return
-    }
-
-    try {
-      const res = await sendSupabaseOtp(cleanId)
-      setResolvedOtpEmail(res.email)
-      setOtpSent(true)
-      setOtpTimer(60)
-      setNotice(`✓ Mail OTP code sent to your registered email (${res.email})!`)
-    } catch (err: any) {
-      setError(err.message || 'Could not send Mail OTP. Please verify your Doctor ID or Email.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleVerifyOtpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setError('')
-    setNotice(null)
-    setLoading(true)
-
-    if (!otpCode.trim() || otpCode.trim().length < 6 || otpCode.trim().length > 8) {
-      setLoading(false)
-      setError('Please enter the valid OTP code (6 to 8 digits) sent to your email.')
-      return
-    }
-
-    try {
-      const res = await verifySupabaseOtp(resolvedOtpEmail, otpCode, selectedRole)
-      const actualRole = res?.role || selectedRole
-      const clientType = res?.client_type || localStorage.getItem('client_type')
-      const onboardingStatus = res?.onboarding_status || localStorage.getItem('onboarding_status')
-
-      if (actualRole === 'hospital_admin') {
-        navigate('/hospitaldashboard/dashboard')
-      } else if (actualRole === 'super_admin') {
-        navigate('/mrshahidbabu')
-      } else if (actualRole === 'doctor' && clientType === 'individual_doctor' && (onboardingStatus === 'PROFILE_INCOMPLETE' || onboardingStatus === 'PAYMENT_PENDING')) {
-        navigate('/doctor/onboarding')
-      } else {
-        navigate('/dashboard')
-      }
-    } catch (err: any) {
-      setError(err.message || 'OTP verification failed. Please check the OTP code.')
-    } finally {
-      setLoading(false)
-    }
-  }
+  const selectTab = (nextTab: AuthTab) => {
+    clearMessages();
+    setTab(nextTab);
+    setForgotMode(false);
+  };
 
   return (
-    <main
-      onMouseMove={handleMouseMove}
-      className="relative flex min-h-dvh items-center justify-center overflow-hidden bg-[#F7F8FC] px-4 py-6 font-sans text-slate-900 selection:bg-[#007AFF]/20 select-none"
-    >
-      {/* Background grid */}
-      <div
-        className="absolute inset-0 opacity-[0.35] pointer-events-none"
-        style={{
-          backgroundImage: 'radial-gradient(rgba(0,122,255,0.12) 1px, transparent 1px)',
-          backgroundSize: '32px 32px',
-        }}
-      />
+    <main className="min-h-screen bg-[#F6F8FB] text-[#111827] flex flex-col justify-between">
+      <div className="min-h-screen grid lg:grid-cols-[45%_55%]">
+        {/* ================= HERO (LEFT) ================= */}
+        <section className="relative hidden lg:flex flex-col justify-between p-12 xl:p-16 overflow-hidden border-r border-black/[0.06] bg-gradient-to-br from-[#EEF5FF] via-white to-[#F0F7FF]">
+          {/* Ambient Glows */}
+          <div className="absolute -top-32 -left-32 w-[550px] h-[550px] rounded-full bg-blue-300/25 blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 right-0 w-[500px] h-[500px] rounded-full bg-orange-200/25 blur-3xl pointer-events-none" />
 
-      {/* Animated blue liquid */}
-      <motion.div
-        style={{ x: glowX, y: glowY }}
-        className="absolute -left-40 -top-32 h-[520px] w-[520px] rounded-full bg-blue-300/30 blur-[120px] pointer-events-none"
-      />
-
-      <motion.div
-        className="absolute -left-20 top-10 h-[380px] w-[380px] rounded-full bg-[#5AC8FA]/20 blur-[100px] pointer-events-none"
-        animate={{
-          x: [0, 100, 30, 0],
-          y: [0, 80, 120, 0],
-          scale: [1, 1.12, 0.95, 1],
-        }}
-        transition={{
-          duration: 16,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-      />
-
-      {/* Animated orange liquid */}
-      <motion.div
-        className="absolute -bottom-48 -right-40 h-[620px] w-[620px] rounded-full bg-orange-300/30 blur-[140px] pointer-events-none"
-        animate={{
-          x: [0, -100, 30, 0],
-          y: [0, -70, 40, 0],
-          scale: [1, 0.9, 1.1, 1],
-        }}
-        transition={{
-          duration: 20,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-      />
-
-      {/* Floating glass particles */}
-      {[...Array(12)].map((_, index) => (
-        <motion.div
-          key={index}
-          className="absolute rounded-full border border-white/70 bg-white/30 backdrop-blur-md pointer-events-none"
-          style={{
-            width: `${6 + (index % 4) * 5}px`,
-            height: `${6 + (index % 4) * 5}px`,
-            left: `${(index * 17) % 100}%`,
-            top: `${(index * 23) % 100}%`,
-          }}
-          animate={{
-            y: [0, -30, 0],
-            opacity: [0.2, 0.7, 0.2],
-            scale: [1, 1.4, 1],
-          }}
-          transition={{
-            duration: 5 + index,
-            delay: index * 0.3,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
-
-      {/* Main glass container */}
-      <motion.div
-        initial={{
-          opacity: 0,
-          scale: 0.9,
-          y: 60,
-          filter: 'blur(24px)',
-        }}
-        animate={{
-          opacity: 1,
-          scale: 1,
-          y: 0,
-          filter: 'blur(0px)',
-        }}
-        transition={{
-          type: 'spring',
-          stiffness: 130,
-          damping: 20,
-          mass: 0.8,
-        }}
-        className="relative z-10 grid w-full max-w-6xl overflow-hidden rounded-[42px] border border-white/80 bg-white/45 shadow-[0_40px_120px_rgba(31,38,135,0.16)] backdrop-blur-[45px] lg:grid-cols-[1fr_1fr]"
-      >
-        {/* Moving glass reflection */}
-        <motion.div
-          animate={{
-            x: ['-120%', '180%'],
-          }}
-          transition={{
-            duration: 7,
-            repeat: Infinity,
-            repeatDelay: 4,
-            ease: 'easeInOut',
-          }}
-          className="pointer-events-none absolute inset-y-0 z-20 w-[30%] -skew-x-12 bg-gradient-to-r from-transparent via-white/25 to-transparent blur-2xl"
-        />
-
-        {/* LEFT SIDE */}
-        <section className="relative hidden min-h-[680px] overflow-hidden border-r border-white/60 p-10 lg:flex lg:flex-col lg:justify-between text-left">
-          {/* Top brand */}
-          <motion.div
-            initial={{ opacity: 0, x: -40 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{
-              delay: 0.3,
-              type: 'spring',
-              stiffness: 180,
-              damping: 20,
-            }}
-            className="relative z-10 flex items-center gap-4"
-          >
-            <Link to="/" className="flex items-center gap-3 group">
-              <motion.div
-                animate={{
-                  rotate: [0, 4, -4, 0],
-                  y: [0, -4, 0],
-                }}
-                transition={{
-                  duration: 5,
-                  repeat: Infinity,
-                  ease: 'easeInOut',
-                }}
-                className="flex h-14 w-14 items-center justify-center rounded-[20px] border border-white/80 bg-white/60 shadow-[0_15px_40px_rgba(0,122,255,0.12)] backdrop-blur-xl group-hover:scale-105 transition-transform"
-              >
-                <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="h-9 w-9 object-contain" />
-              </motion.div>
+          {/* Logo & Brand Header */}
+          <div className="relative z-10">
+            <Link to="/" className="inline-flex items-center gap-3 group">
+              <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-[#1677FF] to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/20 text-white font-black text-xl">
+                <Stethoscope size={22} className="text-white" />
+              </div>
 
               <div>
-                <p className="text-lg font-bold tracking-tight text-[#1D1D1F]">
-                  MedTech Fixaters
-                </p>
-                <p className="text-xs text-[#6E6E73] font-medium">
-                  Clinical Operating System
-                </p>
+                <div className="font-bold text-xl tracking-tight text-gray-900 group-hover:text-[#1677FF] transition-colors">
+                  MedTechFixaters
+                </div>
+
+                <div className="text-xs text-gray-500">
+                  Better Tools. Healthier Practices. Happier People.
+                </div>
               </div>
             </Link>
-          </motion.div>
-
-          {/* Center content */}
-          <div className="relative z-10">
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: 30,
-                filter: 'blur(12px)',
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-                filter: 'blur(0px)',
-              }}
-              transition={{
-                delay: 0.45,
-                duration: 0.8,
-              }}
-            >
-              <motion.div
-                animate={{
-                  opacity: [0.7, 1, 0.7],
-                }}
-                transition={{
-                  duration: 3,
-                  repeat: Infinity,
-                }}
-                className="mb-5 inline-flex items-center gap-2 rounded-full border border-blue-200/70 bg-blue-50/60 px-4 py-2 text-xs font-semibold tracking-[0.15em] text-[#007AFF] backdrop-blur-xl"
-              >
-                <span className="h-2 w-2 rounded-full bg-[#007AFF]" />
-                CLINICAL WORKSPACE
-              </motion.div>
-
-              <h1 className="max-w-md text-5xl font-semibold leading-[1.06] tracking-[-0.04em] text-[#1D1D1F]">
-                Healthcare
-                <br />
-                <span className="relative">
-                  connected.
-                  <motion.span
-                    className="absolute -bottom-2 left-0 h-[5px] rounded-full bg-gradient-to-r from-[#007AFF] to-[#5AC8FA]"
-                    initial={{ width: 0 }}
-                    animate={{ width: '100%' }}
-                    transition={{
-                      delay: 1.1,
-                      duration: 1,
-                      ease: 'easeOut',
-                    }}
-                  />
-                </span>
-              </h1>
-
-              <p className="mt-8 max-w-sm text-base leading-7 text-[#6E6E73]">
-                Access your assigned workspace to manage consultations, live tokens, digital prescriptions, and clinical operations.
-              </p>
-            </motion.div>
           </div>
 
-          {/* Floating security card */}
-          <motion.div
-            initial={{
-              opacity: 0,
-              y: 30,
-            }}
-            animate={{
-              opacity: 1,
-              y: [0, -8, 0],
-            }}
-            transition={{
-              opacity: {
-                delay: 0.8,
-                duration: 0.6,
-              },
-              y: {
-                duration: 5,
-                repeat: Infinity,
-                ease: 'easeInOut',
-              },
-            }}
-            className="relative z-10 rounded-[28px] border border-white/80 bg-white/50 p-5 shadow-[0_20px_60px_rgba(0,122,255,0.08)] backdrop-blur-[30px]"
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 to-white shadow-sm shrink-0">
-                <ShieldCheck className="h-6 w-6 text-[#007AFF]" />
+          {/* Main Hero Copy & Highlights */}
+          <div className="relative z-10 max-w-xl my-auto py-10">
+            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-xl border border-white shadow-sm text-xs font-semibold text-gray-700 mb-7">
+              <ShieldCheck size={16} className="text-[#1677FF]" />
+              <span>Connected Healthcare Operating System</span>
+            </div>
+
+            <h1 className="text-4xl xl:text-5xl font-bold tracking-[-0.04em] leading-[1.08] text-gray-900">
+              Smarter Healthcare
+              <br />
+              Starts <span className="text-[#1677FF]">Here.</span>
+            </h1>
+
+            <p className="mt-6 text-base xl:text-lg leading-relaxed text-gray-600 max-w-lg">
+              A connected platform for hospitals and individual doctors to manage
+              appointments, live queues, patients and healthcare workflows —
+              effortlessly.
+            </p>
+
+            <div className="mt-10 grid grid-cols-2 gap-3.5">
+              <Feature icon={<CalendarDays size={18} />} title="Online Appointments" />
+              <Feature icon={<Users size={18} />} title="Live Queue Management" />
+              <Feature icon={<Stethoscope size={18} />} title="Doctor Dashboard" />
+              <Feature icon={<ShieldCheck size={18} />} title="Secure Healthcare SaaS" />
+            </div>
+          </div>
+
+          {/* Footer Tagline */}
+          <div className="relative z-10 text-xs font-medium text-gray-500 flex items-center justify-between">
+            <span>Care. Simplified. For a Healthier Tomorrow.</span>
+            <span className="text-gray-400">v2.5 Production</span>
+          </div>
+        </section>
+
+        {/* ================= AUTH CARD (RIGHT) ================= */}
+        <section className="flex flex-col justify-between p-6 sm:p-10 lg:p-14">
+          <div className="w-full max-w-[580px] mx-auto my-auto">
+            {/* Mobile Header Logo */}
+            <div className="flex lg:hidden items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-[#1677FF] flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+                <Stethoscope size={20} />
               </div>
 
               <div>
-                <p className="font-semibold text-[#1D1D1F]">
-                  Secure workspace access
-                </p>
+                <div className="font-bold text-lg text-gray-900">
+                  MedTechFixaters
+                </div>
 
-                <p className="mt-1 text-xs text-[#6E6E73]">
-                  Protected by PostgreSQL Row-Level Security & HIPAA standards.
-                </p>
+                <div className="text-xs text-gray-500">
+                  Healthcare Technology
+                </div>
               </div>
             </div>
-          </motion.div>
-        </section>
 
-        {/* RIGHT SIDE */}
-        <section className="relative flex min-h-[680px] items-center justify-center p-6 sm:p-10 text-left">
-          {/* Small mobile brand */}
-          <div className="absolute left-6 top-6 flex items-center gap-3 lg:hidden">
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-white/80 bg-white/60 backdrop-blur-xl">
-              <img src="/assets/brand-icon.png" alt="MedTech Fixaters Logo" className="h-7 w-7 object-contain" />
-            </div>
-
-            <div>
-              <p className="font-semibold text-sm text-[#1D1D1F]">MedTech Fixaters</p>
-              <p className="text-xs text-[#6E6E73]">Clinical OS</p>
-            </div>
-          </div>
-
-          <div className="w-full max-w-md">
-            {/* Heading & Role Switcher */}
+            {/* Auth Glass Card */}
             <motion.div
-              initial={{
-                opacity: 0,
-                x: 30,
-                filter: 'blur(10px)',
-              }}
-              animate={{
-                opacity: 1,
-                x: 0,
-                filter: 'blur(0px)',
-              }}
-              transition={{
-                delay: 0.35,
-                type: 'spring',
-                stiffness: 180,
-                damping: 20,
-              }}
+              initial={{ opacity: 0, y: 20, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] as [number, number, number, number] }}
+              className="bg-white rounded-[32px] border border-black/[0.06] shadow-[0_20px_70px_rgba(0,0,0,0.06)] p-7 sm:p-10"
             >
-              <div className="flex items-center justify-between mb-8">
-                <Link
-                  to="/"
-                  className="group flex items-center gap-2 text-sm text-[#6E6E73] transition-colors hover:text-[#007AFF]"
+              {/* Card Header */}
+              <div className="mb-7 text-left">
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-gray-900">
+                  Welcome to MedTechFixaters
+                </h2>
+
+                <p className="mt-2 text-sm text-gray-500">
+                  {tab === "login"
+                    ? "Login to access your dashboard"
+                    : "Create your doctor or clinic account"}
+                </p>
+              </div>
+
+              {/* Tabs Switcher */}
+              <div className="flex p-1.5 bg-gray-100 rounded-2xl mb-7">
+                <button
+                  type="button"
+                  onClick={() => selectTab("login")}
+                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                    tab === "login"
+                      ? "bg-white shadow-sm text-[#1677FF]"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
                 >
-                  <motion.span
-                    whileHover={{ x: -4 }}
-                    transition={{
-                      type: 'spring',
-                      stiffness: 300,
-                      damping: 20,
-                    }}
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-                  </motion.span>
-                  <span>Back to Home</span>
-                </Link>
+                  Login
+                </button>
 
-                {/* Role indicator or switcher */}
-                {lockedRole ? (
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 text-[#007AFF] rounded-xl border border-blue-200/80 text-xs font-bold">
-                    {lockedRole === 'doctor' ? <Stethoscope size={14} /> : <Building2 size={14} />}
-                    <span>{lockedRole === 'doctor' ? 'Doctor Portal' : 'Hospital Admin'}</span>
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => selectTab("signup")}
+                  className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-semibold transition-all duration-200 ${
+                    tab === "signup"
+                      ? "bg-white shadow-sm text-[#1677FF]"
+                      : "text-gray-500 hover:text-gray-900"
+                  }`}
+                >
+                  Sign Up
+                </button>
+              </div>
+
+              <AnimatePresence mode="wait">
+                {tab === "login" ? (
+                  <motion.div
+                    key="login-tab"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.25 }}
+                  >
+                    {!forgotMode ? (
+                      <>
+                        {!lockedRole && (
+                          <>
+                            <p className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3 text-left">
+                              Login As
+                            </p>
+
+                            {/* Role Select Cards */}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
+                              <AccountType
+                                selected={loginType === "doctor"}
+                                icon={<Stethoscope size={20} />}
+                                title="Doctor / Clinic"
+                                subtitle="For individual doctors and clinics"
+                                onClick={() => {
+                                  clearMessages();
+                                  setLoginType("doctor");
+                                }}
+                              />
+
+                              <AccountType
+                                selected={loginType === "hospital"}
+                                icon={<Building2 size={20} />}
+                                title="Hospital"
+                                subtitle="For multi-specialty hospitals"
+                                onClick={() => {
+                                  clearMessages();
+                                  setLoginType("hospital");
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        {loginType === "doctor" ? (
+                          <DoctorLoginForm
+                            email={email}
+                            setEmail={setEmail}
+                            password={password}
+                            setPassword={setPassword}
+                            showPassword={showPassword}
+                            setShowPassword={setShowPassword}
+                            loading={loading}
+                            onLogin={handleEmailLogin}
+                            onGoogle={handleGoogleLogin}
+                            onForgot={() => {
+                              clearMessages();
+                              setForgotMode(true);
+                            }}
+                          />
+                        ) : (
+                          <HospitalLoginForm
+                            email={email}
+                            setEmail={setEmail}
+                            password={password}
+                            setPassword={setPassword}
+                            showPassword={showPassword}
+                            setShowPassword={setShowPassword}
+                            loading={loading}
+                            onLogin={handleEmailLogin}
+                          />
+                        )}
+                      </>
+                    ) : (
+                      <ForgotPassword
+                        email={email}
+                        setEmail={setEmail}
+                        loading={loading}
+                        message={message}
+                        error={error}
+                        onSubmit={handleForgotPassword}
+                        onBack={() => {
+                          clearMessages();
+                          setForgotMode(false);
+                        }}
+                      />
+                    )}
+                  </motion.div>
                 ) : (
-                  <div className="p-1 bg-white/60 backdrop-blur-md rounded-2xl border border-white/80 inline-flex items-center text-xs font-bold shadow-xs">
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('doctor')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                        selectedRole === 'doctor'
-                          ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      <Stethoscope size={13} />
-                      <span>Doctor</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedRole('hospital_admin')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all ${
-                        selectedRole === 'hospital_admin'
-                          ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
-                          : 'text-slate-500 hover:text-slate-900'
-                      }`}
-                    >
-                      <Building2 size={13} />
-                      <span>Hospital Admin</span>
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div className="mb-4 inline-flex rounded-full border border-orange-200/70 bg-orange-50/60 px-4 py-1.5 text-xs font-semibold tracking-[0.12em] text-[#FF9500] backdrop-blur-xl">
-                WELCOME BACK
-              </div>
-
-              <h2 className="text-3xl sm:text-4xl font-semibold tracking-[-0.04em] text-[#1D1D1F]">
-                {selectedRole === 'doctor' ? 'Doctor Sign In.' : 'Hospital Admin Sign In.'}
-              </h2>
-
-              <p className="mt-2 text-sm leading-6 text-[#6E6E73]">
-                {selectedRole === 'doctor'
-                  ? 'Enter your Doctor ID or practitioner email to open today’s OPD console.'
-                  : 'Enter your hospital admin credentials to access workspace settings.'}
-              </p>
-
-              {/* Google Sign In (Doctor Role) */}
-              {selectedRole === 'doctor' && (
-                <div className="mt-5 space-y-3">
-                  <button
-                    type="button"
-                    onClick={handleGoogleLogin}
-                    disabled={loading}
-                    className="w-full flex items-center justify-center gap-3 py-3.5 px-4 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-2xl shadow-xs transition-all text-xs font-bold text-slate-800 cursor-pointer disabled:opacity-50 group hover:border-slate-300 hover:shadow-sm"
+                  <motion.div
+                    key="signup-tab"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.25 }}
                   >
-                    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-                      <path
-                        fill="#4285F4"
-                        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                      />
-                      <path
-                        fill="#34A853"
-                        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                      />
-                      <path
-                        fill="#FBBC05"
-                        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                      />
-                      <path
-                        fill="#EA4335"
-                        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                      />
-                    </svg>
-                    <span>Continue with Google</span>
-                  </button>
+                    <SignupPanel
+                      loading={loading}
+                      onGoogle={handleGoogleLogin}
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
-                  <div className="flex items-center gap-3">
-                    <div className="h-px bg-slate-200/80 flex-1" />
-                    <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">or sign in with credentials</span>
-                    <div className="h-px bg-slate-200/80 flex-1" />
+              {/* Status / Error Alerts */}
+              {error && (
+                <div className="mt-5 flex gap-2.5 items-start rounded-2xl bg-red-50 border border-red-200/80 p-3.5 text-xs font-medium text-red-600 text-left">
+                  <XCircle size={16} className="mt-0.5 shrink-0" />
+                  <span>{error}</span>
+                </div>
+              )}
+
+              {message && !forgotMode && (
+                <div className="mt-5 flex gap-2.5 items-start rounded-2xl bg-emerald-50 border border-emerald-200/80 p-3.5 text-xs font-medium text-emerald-700 text-left">
+                  <CheckCircle2 size={16} className="mt-0.5 shrink-0" />
+                  <span>{message}</span>
+                </div>
+              )}
+
+              {/* Bottom Quick Card */}
+              {tab === "login" && !forgotMode && (
+                <div className="mt-7 rounded-2xl bg-blue-50/70 border border-blue-100 p-4 text-left">
+                  <div className="flex items-start gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-white flex items-center justify-center text-[#1677FF] shrink-0 shadow-xs">
+                      <MessageCircle size={18} />
+                    </div>
+
+                    <div className="text-xs">
+                      <div className="font-semibold text-gray-900">
+                        New to MedTechFixaters?
+                      </div>
+
+                      <div className="text-gray-500 mt-1 leading-relaxed">
+                        Individual doctors and clinics can create an account
+                        instantly using Google. Hospital accounts are created by
+                        administration.
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => selectTab("signup")}
+                        className="mt-2 text-[#1677FF] font-semibold hover:underline inline-flex items-center gap-1"
+                      >
+                        <span>Create Doctor Account</span>
+                        <ArrowRight size={13} />
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
             </motion.div>
 
-            {/* Auth Method Switcher (Password vs Mail OTP) */}
-            <div className="mt-6 p-1 bg-white/60 backdrop-blur-md rounded-2xl border border-white/80 flex items-center text-xs font-bold shadow-xs">
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('password')
-                  setError('')
-                  setNotice(null)
-                }}
-                className={`flex-1 py-2.5 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authMethod === 'password'
-                    ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <LockKeyhole size={14} />
-                <span>Password Sign In</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setAuthMethod('otp')
-                  setError('')
-                  setNotice(null)
-                }}
-                className={`flex-1 py-2.5 rounded-xl transition-all text-center flex items-center justify-center gap-1.5 cursor-pointer ${
-                  authMethod === 'otp'
-                    ? 'bg-white text-[#007AFF] shadow-sm font-extrabold'
-                    : 'text-slate-500 hover:text-slate-900'
-                }`}
-              >
-                <Sparkles size={14} className="text-amber-500" />
-                <span>Email Mail OTP</span>
-              </button>
-            </div>
+            {/* Bottom Links */}
+            <div className="flex justify-between items-center mt-6 px-2 text-xs text-gray-400">
+              <span>© 2026 MedTechFixaters</span>
 
-            {/* Error Banner */}
-            {error && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-4 p-4 rounded-2xl bg-rose-50/90 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-3 shadow-xs"
-              >
-                <AlertCircle size={18} className="shrink-0 text-rose-500" />
-                <span>{error}</span>
-              </motion.div>
-            )}
-
-            {/* Notice Banner */}
-            {notice && (
-              <motion.div
-                initial={{ opacity: 0, y: -10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="mt-4 p-4 rounded-2xl bg-emerald-50/90 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-3 shadow-xs"
-              >
-                <Sparkles size={18} className="shrink-0 text-emerald-600" />
-                <span>{notice}</span>
-              </motion.div>
-            )}
-
-            {/* Form */}
-            {authMethod === 'otp' ? (
-              <form onSubmit={otpSent ? handleVerifyOtpSubmit : handleRequestOtp} className="mt-6 space-y-5">
-                {/* Email / Doctor ID Input */}
-                <motion.div
-                  initial={{ opacity: 0, y: 15 }}
-                  animate={{ opacity: 1, y: 0 }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-[#1D1D1F]">
-                      {selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}
-                    </label>
-                    <span className="text-[11px] text-[#8E8E93]">
-                      Registered Mail
-                    </span>
-                  </div>
-
-                  <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80">
-                    <Mail className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
-                    <input
-                      type="text"
-                      required
-                      disabled={otpSent}
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
-                      className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm disabled:opacity-60"
-                    />
-                    {otpSent && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setOtpSent(false)
-                          setOtpCode('')
-                          setNotice(null)
-                        }}
-                        className="text-xs font-bold text-[#007AFF] hover:underline shrink-0"
-                      >
-                        Change
-                      </button>
-                    )}
-                  </div>
-                </motion.div>
-
-                {/* OTP Field (shown after OTP sent - supports 6 to 8 digits) */}
-                {otpSent && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 15 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <label className="text-sm font-medium text-[#1D1D1F]">
-                        Enter Mail OTP Code (6-8 Digits)
-                      </label>
-                      <span className="text-[11px] text-[#8E8E93]">Check email inbox</span>
-                    </div>
-
-                    <div className="group flex items-center rounded-[20px] border border-blue-300/80 bg-white/80 px-5 shadow-[0_15px_40px_rgba(0,122,255,0.1)] backdrop-blur-[25px]">
-                      <Sparkles className="h-5 w-5 text-[#007AFF]" />
-                      <input
-                        type="text"
-                        required
-                        maxLength={8}
-                        value={otpCode}
-                        onChange={(e) => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))}
-                        placeholder="12345678"
-                        className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-lg font-mono tracking-[0.25em] font-extrabold"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1 text-xs">
-                      <span className="text-[#8E8E93]">Didn't receive code?</span>
-                      {otpTimer > 0 ? (
-                        <span className="font-mono text-[#8E8E93]">Resend in {otpTimer}s</span>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => handleRequestOtp()}
-                          className="font-bold text-[#007AFF] hover:underline cursor-pointer"
-                        >
-                          Resend Mail OTP
-                        </button>
-                      )}
-                    </div>
-                  </motion.div>
-                )}
-
-                {/* OTP Submit button */}
-                <motion.button
-                  whileHover={{ scale: 1.015, y: -2 }}
-                  whileTap={{ scale: 0.97 }}
-                  type="submit"
-                  disabled={loading}
-                  className="relative mt-4 flex h-16 w-full items-center justify-center overflow-hidden rounded-[20px] bg-gradient-to-r from-[#007AFF] via-[#2588FF] to-[#5AC8FA] font-semibold text-white shadow-[0_20px_45px_rgba(0,122,255,0.28)] cursor-pointer disabled:opacity-50"
-                >
-                  <span className="relative z-10 flex items-center gap-2 font-bold text-sm">
-                    {loading ? (
-                      <span>{otpSent ? 'Verifying OTP…' : 'Sending Mail OTP…'}</span>
-                    ) : otpSent ? (
-                      <>
-                        <span>Verify & Unlock Console</span>
-                        <ArrowRight className="h-5 w-5" />
-                      </>
-                    ) : (
-                      <>
-                        <span>Send Mail OTP</span>
-                        <Sparkles className="h-5 w-5" />
-                      </>
-                    )}
-                  </span>
-                </motion.button>
-              </form>
-            ) : (
-              <form onSubmit={handleSubmit} className="mt-6 space-y-5">
-                {/* Identifier */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.5 }}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-sm font-medium text-[#1D1D1F]">
-                      {selectedRole === 'doctor' ? 'Doctor ID or Email' : 'Hospital Admin Email'}
-                    </label>
-                    <span className="text-[11px] text-[#8E8E93]">
-                      {selectedRole === 'doctor' ? 'e.g. H1-D-0001' : 'Supabase Auth'}
-                    </span>
-                  </div>
-
-                  <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80">
-                    <Mail className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
-                    <input
-                      type="text"
-                      required
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder={selectedRole === 'doctor' ? 'Doctor ID (e.g. H1-D-0001) or Email' : 'admin@hospital.com'}
-                      className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm"
-                    />
-                  </div>
-                </motion.div>
-
-                {/* Password */}
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.6 }}
-                >
-                  <div className="mb-2 flex items-center justify-between">
-                    <label className="text-sm font-medium text-[#1D1D1F]">
-                      Password
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setShowForgotModal(true)}
-                      className="text-sm font-medium text-[#007AFF] transition-opacity hover:opacity-70"
-                    >
-                      Forgot password?
-                    </button>
-                  </div>
-
-                  <div className="group flex items-center rounded-[20px] border border-white/90 bg-white/60 px-5 shadow-[0_10px_35px_rgba(31,38,135,0.06)] backdrop-blur-[25px] transition-all duration-300 focus-within:-translate-y-1 focus-within:border-blue-300 focus-within:bg-white/80">
-                    <LockKeyhole className="h-5 w-5 text-[#8E8E93] transition-colors group-focus-within:text-[#007AFF]" />
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      className="h-16 w-full bg-transparent px-4 text-[#1D1D1F] outline-none placeholder:text-[#AEAEB2] text-sm font-mono"
-                    />
-                    <motion.button
-                      type="button"
-                      whileTap={{ scale: 0.85 }}
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="flex h-10 w-10 items-center justify-center rounded-xl text-[#8E8E93] transition-colors hover:bg-black/5 hover:text-[#007AFF]"
-                    >
-                      <AnimatePresence mode="wait">
-                        {showPassword ? (
-                          <motion.div
-                            key="hidden"
-                            initial={{ opacity: 0, scale: 0.7, rotate: -30 }}
-                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                            exit={{ opacity: 0, scale: 0.7, rotate: 30 }}
-                          >
-                            <EyeOff className="h-5 w-5" />
-                          </motion.div>
-                        ) : (
-                          <motion.div
-                            key="visible"
-                            initial={{ opacity: 0, scale: 0.7, rotate: 30 }}
-                            animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                            exit={{ opacity: 0, scale: 0.7, rotate: -30 }}
-                          >
-                            <Eye className="h-5 w-5" />
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </motion.button>
-                  </div>
-                </motion.div>
-
-                {/* Remember */}
-                <motion.label
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ delay: 0.7 }}
-                  className="flex cursor-pointer items-center gap-3 pt-1 select-none"
-                >
-                  <input
-                    type="checkbox"
-                    checked={rememberMe}
-                    onChange={(e) => setRememberMe(e.target.checked)}
-                    className="h-4 w-4 accent-[#007AFF]"
-                  />
-                  <span className="text-sm text-[#6E6E73]">
-                    Keep me signed in on this workstation
-                  </span>
-                </motion.label>
-
-                {/* Login button */}
-                <motion.button
-                  type="submit"
-                  disabled={loading}
-                  whileHover={{ scale: 1.015, y: -2 }}
-                  whileTap={{ scale: 0.97 }}
-                  className="relative mt-3 flex h-16 w-full items-center justify-center overflow-hidden rounded-[20px] bg-gradient-to-r from-[#007AFF] via-[#2588FF] to-[#5AC8FA] font-semibold text-white shadow-[0_20px_45px_rgba(0,122,255,0.28)] cursor-pointer disabled:opacity-50"
-                >
-                  <span className="relative z-10 flex items-center gap-2 font-bold text-sm">
-                    {loading ? (
-                      <span>Signing in to workspace…</span>
-                    ) : (
-                      <>
-                        <span>Sign In to Workspace</span>
-                        <ArrowRight className="h-5 w-5" />
-                      </>
-                    )}
-                  </span>
-                </motion.button>
-              </form>
-            )}
-
-            {/* Individual Doctor Signup Prompt */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.75 }}
-              className="mt-6 pt-5 border-t border-slate-200/70 text-center"
-            >
-              <p className="text-xs text-slate-500 font-medium">
-                Running an individual clinic or solo practice?{' '}
-                <Link
-                  to="/signup/doctor"
-                  className="font-bold text-[#007AFF] hover:underline inline-flex items-center gap-1"
-                >
-                  <span>Sign up as Individual Doctor</span>
-                  <ArrowRight size={12} />
+              <div className="flex gap-4">
+                <Link to="/privacy" className="hover:text-gray-600 transition">
+                  Privacy
                 </Link>
-              </p>
-            </motion.div>
-
-            {/* Footer */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.85 }}
-              className="mt-6 flex items-center justify-center gap-2 text-center"
-            >
-              <ShieldCheck className="h-4 w-4 text-[#007AFF]" />
-              <p className="text-xs text-[#8E8E93]">
-                Your workspace access depends on your assigned account role.
-              </p>
-            </motion.div>
+                <Link to="/terms" className="hover:text-gray-600 transition">
+                  Terms
+                </Link>
+                <Link to="/contact" className="hover:text-gray-600 transition">
+                  Contact
+                </Link>
+              </div>
+            </div>
           </div>
         </section>
-      </motion.div>
-
-      {/* ─── MODAL: FORGOT PASSWORD RECOVERY ─── */}
-      <AnimatePresence>
-        {showForgotModal && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
-          >
-            <motion.div
-              initial={{ scale: 0.9, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              exit={{ scale: 0.9, y: 20 }}
-              className="bg-white/90 backdrop-blur-2xl border border-white/90 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl space-y-4 text-left"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 text-[#007AFF] flex items-center justify-center">
-                    <PhoneCall size={18} />
-                  </div>
-                  <h3 className="font-bold text-base text-[#1D1D1F]">Credential Recovery</h3>
-                </div>
-                <button
-                  onClick={() => setShowForgotModal(false)}
-                  className="text-slate-400 hover:text-slate-700 font-bold text-sm"
-                >
-                  ✕
-                </button>
-              </div>
-
-              <div className="space-y-3 text-xs text-slate-600 leading-relaxed">
-                <p>
-                  Clinical practitioner accounts and hospital admin credentials are cryptographically secured by Supabase Auth and provisioned by your facility or platform super administrator.
-                </p>
-                <div className="p-3 bg-blue-50/60 border border-blue-100 rounded-xl space-y-1 text-[11px] text-blue-900 font-medium">
-                  <strong className="text-[#007AFF] block font-bold">How to reset your password:</strong>
-                  <p>1. Contact your Hospital Administrator to trigger a password reset.</p>
-                  <p>2. For Master Hospital Admin access, request a key renewal from Super Admin at <code>/mrshahidbabu</code>.</p>
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  onClick={() => setShowForgotModal(false)}
-                  className="px-5 py-2.5 bg-[#007AFF] hover:bg-blue-600 text-white font-bold text-xs rounded-xl shadow-md transition cursor-pointer"
-                >
-                  Understood, Close
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      </div>
     </main>
-  )
+  );
+}
+
+/* ============================================================
+   SUBCOMPONENTS
+============================================================ */
+
+function DoctorLoginForm({
+  email,
+  setEmail,
+  password,
+  setPassword,
+  showPassword,
+  setShowPassword,
+  loading,
+  onLogin,
+  onGoogle,
+  onForgot,
+}: any) {
+  return (
+    <form onSubmit={onLogin} className="space-y-4 text-left">
+      <Field
+        icon={<Mail size={17} />}
+        label="Email Address"
+        type="email"
+        placeholder="doctor@example.com"
+        value={email}
+        onChange={setEmail}
+      />
+
+      <div>
+        <div className="flex justify-between items-center mb-1.5">
+          <label className="text-xs font-semibold text-gray-700">
+            Password
+          </label>
+
+          <button
+            type="button"
+            onClick={onForgot}
+            className="text-xs font-medium text-[#1677FF] hover:underline"
+          >
+            Forgot Password?
+          </button>
+        </div>
+
+        <div className="relative">
+          <LockKeyhole
+            size={17}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            className="w-full h-12 rounded-xl border border-gray-200 bg-white pl-11 pr-11 text-sm outline-none transition focus:border-[#1677FF] focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-300"
+          />
+
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full h-12 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-sm disabled:opacity-50 transition shadow-lg shadow-blue-500/15"
+      >
+        {loading ? "Signing in..." : "Login"}
+      </button>
+
+      <Divider />
+
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onGoogle}
+        className="w-full h-12 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 font-semibold text-sm text-gray-700 transition flex items-center justify-center gap-3 disabled:opacity-50 shadow-xs"
+      >
+        <GoogleIcon />
+        <span>Continue with Google</span>
+      </button>
+    </form>
+  );
+}
+
+function HospitalLoginForm({
+  email,
+  setEmail,
+  password,
+  setPassword,
+  showPassword,
+  setShowPassword,
+  loading,
+  onLogin,
+}: any) {
+  return (
+    <form onSubmit={onLogin} className="space-y-4 text-left">
+      <Field
+        icon={<Mail size={17} />}
+        label="Hospital Admin Email"
+        type="email"
+        placeholder="admin@hospital.com"
+        value={email}
+        onChange={setEmail}
+      />
+
+      <div>
+        <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+          Password
+        </label>
+
+        <div className="relative">
+          <LockKeyhole
+            size={17}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"
+          />
+
+          <input
+            type={showPassword ? "text" : "password"}
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your password"
+            className="w-full h-12 rounded-xl border border-gray-200 bg-white pl-11 pr-11 text-sm outline-none transition focus:border-[#1677FF] focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-300"
+          />
+
+          <button
+            type="button"
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 p-1"
+          >
+            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+          </button>
+        </div>
+      </div>
+
+      <div className="text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-xl p-3">
+        <strong className="text-gray-700 font-semibold">Forgot Password?</strong>
+        <p className="mt-0.5">Please contact your hospital administration or platform owner to reset your credentials.</p>
+      </div>
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full h-12 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-sm disabled:opacity-50 transition shadow-lg shadow-blue-500/15"
+      >
+        {loading ? "Signing in..." : "Login"}
+      </button>
+    </form>
+  );
+}
+
+function SignupPanel({ loading, onGoogle }: any) {
+  return (
+    <div className="text-left">
+      <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-indigo-50/30 p-5 mb-6">
+        <div className="flex gap-3.5 items-start">
+          <div className="w-10 h-10 rounded-xl bg-[#1677FF] text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
+            <Stethoscope size={20} />
+          </div>
+
+          <div>
+            <h3 className="font-semibold text-sm text-gray-900">
+              Doctor / Clinic / Individual Doctor
+            </h3>
+
+            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
+              Create an account for your clinic or individual medical practice.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        disabled={loading}
+        onClick={onGoogle}
+        className="w-full h-12 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-sm transition flex items-center justify-center gap-3 disabled:opacity-50 shadow-lg shadow-blue-500/15"
+      >
+        <GoogleIcon />
+        <span>Continue with Google</span>
+        <ArrowRight size={16} />
+      </button>
+
+      <p className="text-center text-xs text-gray-400 mt-3.5">
+        Google is the only self-signup method.
+      </p>
+
+      <div className="my-6 h-px bg-gray-100" />
+
+      <div className="text-center">
+        <h4 className="font-semibold text-xs text-gray-900">
+          Hospital Account?
+        </h4>
+
+        <p className="text-xs text-gray-500 mt-1">
+          Hospital accounts are created and provisioned by platform administration.
+        </p>
+
+        <Link
+          to="/contact"
+          className="mt-3 inline-block text-[#1677FF] font-semibold text-xs hover:underline"
+        >
+          Contact Administration →
+        </Link>
+      </div>
+    </div>
+  );
+}
+
+function ForgotPassword({
+  email,
+  setEmail,
+  loading,
+  message,
+  error,
+  onSubmit,
+  onBack,
+}: any) {
+  return (
+    <form onSubmit={onSubmit} className="text-left">
+      <button
+        type="button"
+        onClick={onBack}
+        className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#1677FF] mb-5 hover:underline"
+      >
+        <ChevronLeft size={15} />
+        <span>Back to Login</span>
+      </button>
+
+      <h3 className="text-lg font-bold text-gray-900">
+        Reset Your Password
+      </h3>
+
+      <p className="text-xs text-gray-500 mt-1 mb-5">
+        Enter your doctor account email and we will send you a secure password reset link.
+      </p>
+
+      <Field
+        icon={<Mail size={17} />}
+        label="Email Address"
+        type="email"
+        placeholder="doctor@example.com"
+        value={email}
+        onChange={setEmail}
+      />
+
+      <button
+        type="submit"
+        disabled={loading}
+        className="w-full h-12 mt-5 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-sm disabled:opacity-50 transition shadow-lg shadow-blue-500/15"
+      >
+        {loading ? "Sending..." : "Send Reset Link"}
+      </button>
+
+      {message && (
+        <div className="mt-4 p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200/80 text-emerald-700 text-xs flex items-start gap-2">
+          <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+          <span>{message}</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-4 p-3.5 rounded-2xl bg-red-50 border border-red-200/80 text-red-600 text-xs flex items-start gap-2">
+          <XCircle size={16} className="shrink-0 mt-0.5" />
+          <span>{error}</span>
+        </div>
+      )}
+    </form>
+  );
+}
+
+function Field({
+  icon,
+  label,
+  type,
+  placeholder,
+  value,
+  onChange,
+}: any) {
+  return (
+    <div>
+      <label className="block text-xs font-semibold text-gray-700 mb-1.5">
+        {label}
+      </label>
+
+      <div className="relative">
+        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+          {icon}
+        </div>
+
+        <input
+          type={type}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className="w-full h-12 rounded-xl border border-gray-200 bg-white pl-11 pr-4 text-sm outline-none transition focus:border-[#1677FF] focus:ring-4 focus:ring-blue-500/10 placeholder:text-gray-300"
+        />
+      </div>
+    </div>
+  );
+}
+
+function AccountType({
+  selected,
+  icon,
+  title,
+  subtitle,
+  onClick,
+}: any) {
+  return (
+    <motion.button
+      type="button"
+      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
+      className={`text-left p-4 rounded-2xl border transition-all duration-200 ${
+        selected
+          ? "border-[#1677FF] bg-blue-50/60 shadow-xs ring-1 ring-[#1677FF]/20"
+          : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50/50"
+      }`}
+    >
+      <div className="flex items-center gap-3">
+        <div
+          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
+            selected
+              ? "bg-[#1677FF] text-white shadow-xs"
+              : "bg-gray-100 text-gray-500"
+          }`}
+        >
+          {icon}
+        </div>
+
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-xs sm:text-sm text-gray-900 truncate">
+            {title}
+          </div>
+
+          <div className="text-[11px] text-gray-500 mt-0.5 line-clamp-1">
+            {subtitle}
+          </div>
+        </div>
+
+        <div
+          className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${
+            selected ? "border-[#1677FF]" : "border-gray-300"
+          }`}
+        >
+          {selected && (
+            <div className="w-2 h-2 rounded-full bg-[#1677FF]" />
+          )}
+        </div>
+      </div>
+    </motion.button>
+  );
+}
+
+function Feature({ icon, title }: any) {
+  return (
+    <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/70 backdrop-blur-md border border-white shadow-xs">
+      <div className="w-8 h-8 rounded-xl bg-blue-50 text-[#1677FF] flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+
+      <span className="text-xs font-semibold text-gray-800">
+        {title}
+      </span>
+    </div>
+  );
+}
+
+function Divider() {
+  return (
+    <div className="flex items-center gap-3 my-4">
+      <div className="flex-1 h-px bg-gray-200" />
+      <span className="text-xs uppercase font-medium text-gray-400">
+        or
+      </span>
+      <div className="flex-1 h-px bg-gray-200" />
+    </div>
+  );
+}
+
+function GoogleIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" className="shrink-0">
+      <path
+        fill="#4285F4"
+        d="M21.35 12.27c0-.73-.07-1.43-.2-2.1H12v3.98h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.27Z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 21.67c2.63 0 4.84-.87 6.45-2.36l-3.14-2.45c-.87.58-1.98.92-3.31.92-2.54 0-4.69-1.72-5.46-4.03H3.3v2.53A9.75 9.75 0 0 0 12 21.67Z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M6.54 13.75A5.86 5.86 0 0 1 6.23 12c0-.61.11-1.2.31-1.75V7.72H3.3A9.75 9.75 0 0 0 2.25 12c0 1.57.38 3.05 1.05 4.28l3.24-2.53Z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 6.22c1.43 0 2.72.49 3.73 1.45l2.8-2.8C16.84 3.27 14.63 2.33 12 2.33a9.75 9.75 0 0 0-8.7 5.39l3.24 2.53c.77-2.31 2.92-4.03 5.46-4.03Z"
+      />
+    </svg>
+  );
 }
