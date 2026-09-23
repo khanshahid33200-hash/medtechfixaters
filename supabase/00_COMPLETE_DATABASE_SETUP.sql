@@ -644,14 +644,12 @@ CREATE POLICY "Hospital Admin manage own hospital credentials" ON public.user_cr
 DROP POLICY IF EXISTS "Super Admin full access to appointments" ON public.appointments;
 DROP POLICY IF EXISTS "Hospital Admin manage appointments" ON public.appointments;
 DROP POLICY IF EXISTS "Doctor manage own appointments" ON public.appointments;
-DROP POLICY IF EXISTS "Public insert appointment" ON public.appointments;
 DROP POLICY IF EXISTS "Public view queue for today" ON public.appointments;
 
 CREATE POLICY "Super Admin full access to appointments" ON public.appointments FOR ALL TO authenticated USING (public.is_super_admin());
 CREATE POLICY "Hospital Admin manage appointments" ON public.appointments FOR ALL TO authenticated USING (hospital_id = public.current_hospital_id()) WITH CHECK (hospital_id = public.current_hospital_id());
 CREATE POLICY "Doctor manage own appointments" ON public.appointments FOR ALL TO authenticated USING (doctor_id = auth.uid() AND hospital_id = public.current_hospital_id()) WITH CHECK (doctor_id = auth.uid() AND hospital_id = public.current_hospital_id());
 CREATE POLICY "Public insert appointment" ON public.appointments FOR INSERT TO anon WITH CHECK (true);
-CREATE POLICY "Public view queue for today" ON public.appointments FOR SELECT TO anon USING (appointment_date = CURRENT_DATE);
 
 -- 5.7 CONSULTATIONS & PRESCRIPTIONS
 DROP POLICY IF EXISTS "Hospital staff view consultations" ON public.consultations;
@@ -909,9 +907,9 @@ DECLARE
     v_clean_slug TEXT := LOWER(TRIM(p_hospital_slug));
     v_qr_token TEXT := 'QR-' || UPPER(SUBSTRING(REPLACE(v_hosp_id::text, '-', ''), 1, 8));
 BEGIN
-    -- Allow execution if caller has super_admin profile or executing from platform admin context
-    IF auth.uid() IS NOT NULL AND NOT public.is_super_admin() THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Only the Super Admin may create hospitals.');
+    -- Enforce strict authentication & authorization: caller must be an authenticated Super Admin
+    IF auth.uid() IS NULL OR NOT public.is_super_admin() THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Platform Super Admin login required.');
     END IF;
 
     IF EXISTS (SELECT 1 FROM public.hospitals WHERE LOWER(email) = v_clean_email OR slug = v_clean_slug) THEN
@@ -1075,8 +1073,12 @@ DECLARE
     v_doc_code TEXT := COALESCE(NULLIF(TRIM(p_doctor_code), ''), 'DOC-' || UPPER(SUBSTRING(gen_random_uuid()::text, 1, 6)));
     v_qr_token TEXT := 'QR-' || UPPER(SUBSTRING(REPLACE(v_clinic_id::text, '-', ''), 1, 8));
     v_onboarding_status TEXT := CASE WHEN p_is_paid THEN 'ACTIVE' ELSE 'PAYMENT_PENDING' END;
-    v_account_status TEXT := CASE WHEN p_is_paid THEN 'active' ELSE 'pending' END;
 BEGIN
+    -- Enforce strict authentication & authorization: caller must be an authenticated Super Admin
+    IF auth.uid() IS NULL OR NOT public.is_super_admin() THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Platform Super Admin login required.');
+    END IF;
+
     -- 1. Create or Update Clinic Hospital Entity (client_type = 'individual_doctor')
     IF EXISTS (SELECT 1 FROM public.hospitals WHERE LOWER(email) = v_clean_email) THEN
         UPDATE public.hospitals SET
@@ -2894,8 +2896,9 @@ DECLARE
     v_qr_token TEXT;
     v_doc_code TEXT;
 BEGIN
-    IF NOT (SELECT role = 'super_admin' FROM public.profiles WHERE id = auth.uid()) THEN
-        RETURN jsonb_build_object('success', false, 'error', 'Only Super Admin can provision individual doctors.');
+    -- Enforce strict authentication & authorization: caller must be an authenticated Super Admin
+    IF auth.uid() IS NULL OR NOT public.is_super_admin() THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Platform Super Admin login required.');
     END IF;
 
     v_clinic_name := COALESCE(TRIM(p_clinic_name), TRIM(p_doctor_name) || ' Clinic');

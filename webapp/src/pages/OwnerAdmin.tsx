@@ -533,14 +533,14 @@ export default function OwnerAdmin() {
         return
       }
 
-      // 3. Verify role in public.profiles table or user metadata
+      // 3. Verify role in public.profiles table (never trust client-supplied user_metadata)
       const { data: profile } = await supabase
         .from('profiles')
         .select('role, is_active')
         .eq('id', user.id)
         .maybeSingle()
 
-      if (profile?.role === 'super_admin' || user.user_metadata?.role === 'super_admin' || em === 'shahidbcsm@gmail.com') {
+      if (profile?.role === 'super_admin' || em === 'shahidbcsm@gmail.com') {
         // Ensure profile has super_admin role recorded
         await supabase.from('profiles').upsert([
           {
