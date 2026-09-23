@@ -202,14 +202,7 @@ function App() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="/patients"
-          element={
-            <ProtectedRoute requiredRole="doctor">
-              <Dashboard initialTab="patients" />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="/patients" element={<Navigate to="/dashboard" replace />} />
         <Route path="/consultations" element={<Navigate to="/dashboard" replace />} />
         <Route path="/prescriptions" element={<Navigate to="/dashboard" replace />} />
         <Route
