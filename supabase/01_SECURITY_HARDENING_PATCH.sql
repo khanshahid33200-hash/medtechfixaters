@@ -2,19 +2,27 @@
 -- 01_SECURITY_HARDENING_PATCH.sql
 -- PRODUCTION SECURITY HARDENING PATCH FOR MEDTECHFIXATERS / CLINICAL OS
 -- Supabase Project SQL Editor: https://supabase.com/dashboard/project/yweywvnivyftwtglxavr/sql/new
---
--- This script fixes:
--- 1. SEC-01 & SEC-02: Strict Super Admin caller verification on hospital creation RPC.
--- 2. SEC-03: Strict Super Admin caller verification on doctor creation RPC.
--- 3. SEC-05: Removes insecure public SELECT policy on appointments table.
--- 4. SEC-06: Hardens QR patient lookup against automated PII harvesting.
--- 5. SEC-07: Enforces strict hospital scoping on live queue tracking.
 -- ==============================================================================
 
 -- 1. DROP OVER-PERMISSIVE ANONYMOUS ACCESS ON APPOINTMENTS
 DROP POLICY IF EXISTS "Public view queue for today" ON public.appointments;
 
--- 2. PATCH: ATOMIC HOSPITAL & ADMIN CREATION (Fix Authorization Logic)
+-- 2. CLEAN UP ALL PREVIOUS OVERLOADED FUNCTION SIGNATURES
+DO $$ 
+DECLARE 
+    r RECORD;
+BEGIN 
+    FOR r IN (
+        SELECT oid::regprocedure AS func_sig 
+        FROM pg_proc 
+        WHERE proname IN ('admin_create_individual_doctor', 'admin_create_hospital_with_admin', 'lookup_patient_by_qr')
+          AND pronamespace = 'public'::regnamespace
+    ) LOOP 
+        EXECUTE 'DROP FUNCTION IF EXISTS ' || r.func_sig || ' CASCADE';
+    END LOOP; 
+END $$;
+
+-- 3. CANONICAL SECURE FUNCTION: ATOMIC HOSPITAL & ADMIN CREATION
 CREATE OR REPLACE FUNCTION public.admin_create_hospital_with_admin(
     p_hospital_name TEXT,
     p_hospital_slug TEXT,
@@ -38,7 +46,7 @@ DECLARE
     v_clean_slug TEXT := LOWER(TRIM(p_hospital_slug));
     v_qr_token TEXT := 'QR-' || UPPER(SUBSTRING(REPLACE(v_hosp_id::text, '-', ''), 1, 8));
 BEGIN
-    -- Strict caller check: Must be authenticated Super Admin
+    -- Enforce strict authentication & authorization: caller must be an authenticated Super Admin
     IF auth.uid() IS NULL OR NOT public.is_super_admin() THEN
         RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Platform Super Admin login required.');
     END IF;
@@ -127,7 +135,7 @@ BEGIN
 END;
 $$;
 
--- 3. PATCH: ATOMIC INDIVIDUAL DOCTOR CREATION (Fix Authorization Logic)
+-- 4. CANONICAL SECURE FUNCTION: ATOMIC INDIVIDUAL DOCTOR CREATION
 CREATE OR REPLACE FUNCTION public.admin_create_individual_doctor(
     p_doctor_name TEXT,
     p_doctor_email TEXT,
@@ -166,7 +174,7 @@ DECLARE
     v_onboarding_status TEXT := CASE WHEN p_is_paid THEN 'ACTIVE' ELSE 'PAYMENT_PENDING' END;
     v_account_status TEXT := CASE WHEN p_is_paid THEN 'active' ELSE 'pending' END;
 BEGIN
-    -- Strict caller check: Must be authenticated Super Admin
+    -- Enforce strict authentication & authorization: caller must be an authenticated Super Admin
     IF auth.uid() IS NULL OR NOT public.is_super_admin() THEN
         RETURN jsonb_build_object('success', false, 'error', 'Unauthorized: Platform Super Admin login required.');
     END IF;
@@ -288,7 +296,7 @@ BEGIN
 END;
 $$;
 
--- 4. PATCH: PATIENT LOOKUP BY QR (Data Masking & PII Protection)
+-- 5. CANONICAL SECURE FUNCTION: PATIENT LOOKUP BY QR
 CREATE OR REPLACE FUNCTION public.lookup_patient_by_qr(
     p_token TEXT,
     p_patient_number TEXT DEFAULT NULL,
@@ -361,11 +369,3 @@ BEGIN
     );
 END;
 $$;
-
--- Grant proper execution privileges
-REVOKE ALL ON FUNCTION public.admin_create_hospital_with_admin FROM anon;
-REVOKE ALL ON FUNCTION public.admin_create_individual_doctor FROM anon;
-GRANT EXECUTE ON FUNCTION public.admin_create_hospital_with_admin TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.admin_create_individual_doctor TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.lookup_patient_by_qr TO anon, authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.get_live_queue_status TO anon, authenticated, service_role;
