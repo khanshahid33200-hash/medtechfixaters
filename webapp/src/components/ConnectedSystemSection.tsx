@@ -5,7 +5,6 @@ import {
   CalendarDays,
   Check,
   ClipboardList,
-  Database,
   FileText,
   Lock,
   QrCode,

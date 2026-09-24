@@ -15,7 +15,7 @@ import HospitalDashboardLayout from '../../components/hospitaldashboard/Hospital
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
 import { useAppointmentsRealtime } from '../../hooks/useAppointmentsRealtime'
-import { createManualAppointment, updateAppointmentStatus, rescheduleAppointment, AppointmentRow } from '../../services/appointmentService'
+import { createManualAppointment, updateAppointmentStatus, AppointmentRow } from '../../services/appointmentService'
 import { APPT_STATUS } from '../../hooks/useDashboardStats'
 
 const STATUS_TONE: Record<string, string> = {

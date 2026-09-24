@@ -1,4 +1,4 @@
-import React, { useState, useRef } from "react"
+import { useState, useRef } from "react"
 import { motion, useScroll, useTransform } from "framer-motion"
 import {
   ArrowDown,
@@ -6,14 +6,6 @@ import {
   Building2,
   Stethoscope,
   User,
-  Sparkles,
-  Zap,
-  Activity,
-  ShieldCheck,
-  QrCode,
-  CheckCircle2,
-  Clock,
-  Radio,
 } from "lucide-react"
 import HealthcareScene from "./HealthcareScene"
 import PatientJourney from "./PatientJourney"

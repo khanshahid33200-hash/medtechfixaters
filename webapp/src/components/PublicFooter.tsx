@@ -6,7 +6,6 @@ import {
   ArrowUpRight,
   Lock,
   Mail,
-  Sparkles,
 } from "lucide-react";
 
 const productLinks = [
@@ -21,14 +20,14 @@ const workspaceLinks = [
   ["Hospital Dashboard", "/hospitaldashboard"],
   ["Doctor Workspace", "/doctor"],
   ["Live Queue", "/track"],
-  ["Platform Admin", "/mrshahidbabu"],
 ];
 
 const companyLinks = [
   ["About Us", "/about"],
   ["Contact Us", "/contact"],
-  ["Privacy Policy", "/privacy"],
-  ["Terms of Service", "/terms"],
+  ["Privacy Policy", "/privacy-policy"],
+  ["Terms & Conditions", "/terms-and-conditions"],
+  ["Refund & Cancellation", "/refund-policy"],
 ];
 
 export default function PublicFooter() {

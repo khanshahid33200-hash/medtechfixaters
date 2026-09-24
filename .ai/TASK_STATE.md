@@ -20,7 +20,7 @@
   - User Credentials Vault table (`user_credentials_vault`) for auto-saving all admin, doctor, and user credentials.
   - Atomic RPCs: `admin_create_hospital_with_admin`, `get_qr_booking_info`, `lookup_patient_by_qr`, `book_qr_appointment`, `get_live_queue_status`, `create_manual_appointment`, `create_follow_up`, `log_activity`, `get_or_create_direct_conversation`, `create_group_conversation`.
   - Supabase Storage buckets (`prescriptions`, `hospital-logos`, `doctor-avatars`, `lab-reports`) with full RLS.
-  - Initial Super Admin account seed (`shahidbcsm@gmail.com` / `Shahideeba@19019`).
+  - Initial Super Admin account seed (`shahidbcsm@gmail.com` / `<REDACTED-ROTATE-THIS-PASSWORD>`).
 
 - ✅ SQL Directory Cleaned: Deleted all 11 obsolete/redundant SQL scripts. Kept **ONLY** the single required [`supabase/00_COMPLETE_DATABASE_SETUP.sql`](file:///d:/clinical%20os/supabase/00_COMPLETE_DATABASE_SETUP.sql).
 

@@ -7,7 +7,7 @@
 
 const bcrypt = require('bcryptjs');
 
-const password = 'Shahideeba@19019';
+const password = '<REDACTED-ROTATE-THIS-PASSWORD>';
 const saltRounds = 10;
 
 try {
@@ -17,7 +17,7 @@ try {
     console.log('BCRYPT PASSWORD HASH GENERATED');
     console.log('='.repeat(70));
     console.log('\n📧 Email: shahidbcsm@gmail.com');
-    console.log('🔐 Password: Shahideeba@19019');
+    console.log('🔐 Password: <REDACTED-ROTATE-THIS-PASSWORD>');
     console.log('\n🔑 PASSWORD HASH:');
     console.log(hash);
     console.log('\n' + '='.repeat(70));

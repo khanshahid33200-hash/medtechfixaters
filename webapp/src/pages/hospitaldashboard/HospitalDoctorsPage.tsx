@@ -4,33 +4,22 @@ import {
   Stethoscope,
   Search,
   Plus,
-  Shield,
-  Phone,
-  Mail,
-  Ban,
   CheckCircle2,
-  Calendar,
   Eye,
   EyeOff,
   AlertTriangle,
   X,
   Copy,
   Check,
-  Lock,
   Sparkles,
   RefreshCw,
-  Key,
-  Building2,
-  UserCheck,
-  DollarSign,
-  DoorOpen,
-  Users,
   ArrowRightLeft
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { generateTempPassword } from '../../utils/validation'
 import { logActivity } from '../../services/auditLogService'
 
 interface Doctor {
@@ -187,7 +176,7 @@ export default function HospitalDoctorsPage() {
   const [newDoctor, setNewDoctor] = useState({
     name: '',
     email: '',
-    password: 'Password123!',
+    password: generateTempPassword(),
     docCode: '',
     phone: '',
     deptId: '',
@@ -206,7 +195,7 @@ export default function HospitalDoctorsPage() {
     setNewDoctor({
       name: '',
       email: '',
-      password: 'Password123!',
+      password: generateTempPassword(),
       docCode: getNextDocCode(),
       phone: '',
       deptId: firstDept ? firstDept.id : '',

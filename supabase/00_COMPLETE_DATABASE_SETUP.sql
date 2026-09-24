@@ -7,6 +7,10 @@
 -- This script contains 100% of all required tables, security definer helpers,
 -- RLS policies, automated triggers, RPCs, storage buckets, and initial platform admin.
 -- Running this script sets up the entire platform from scratch with 0 errors.
+--
+-- SECURITY: after this file (and 01_SECURITY_HARDENING_PATCH.sql) ALWAYS run
+-- 02_SECURITY_AUDIT_FIXES.sql. Several definitions below are superseded there;
+-- running 00 on its own leaves anonymous privilege-escalation and PHI-exposure holes.
 -- ==============================================================================
 
 -- ==============================================================================
@@ -3119,8 +3123,15 @@ DO $$
 DECLARE
   new_user_id UUID := gen_random_uuid();
   user_email TEXT := 'shahidbcsm@gmail.com';
-  user_password TEXT := 'Shahideeba@19019';
+  -- Never commit a real password here. Replace the placeholder only in your local copy
+  -- when bootstrapping a brand-new project, then change it after first login.
+  user_password TEXT := '<SET-A-STRONG-PASSWORD>';
 BEGIN
+  IF user_password LIKE '<%>' OR LENGTH(user_password) < 12 THEN
+    RAISE NOTICE 'Skipping Platform Super Admin seed: set user_password (12+ chars) in this block first.';
+    RETURN;
+  END IF;
+
   -- 1. Create account in Supabase Auth
   IF EXISTS (SELECT 1 FROM auth.users WHERE LOWER(email) = LOWER(user_email)) THEN
     UPDATE auth.users SET
@@ -3186,8 +3197,8 @@ BEGIN
   INSERT INTO public.user_credentials_vault (
     user_id, role, full_name, email, initial_password
   ) VALUES (
-    new_user_id, 'super_admin', 'Platform Super Admin', user_email, user_password
+    new_user_id, 'super_admin', 'Platform Super Admin', user_email, '[not stored - use password reset]'
   );
 
-  RAISE NOTICE 'Platform Super Admin created! Email: %, Password: %', user_email, user_password;
+  RAISE NOTICE 'Platform Super Admin created for %', user_email;
 END $$;

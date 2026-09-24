@@ -124,9 +124,6 @@ class ApiClient {
   }
 
   // Health check
-  async healthCheck() {
-    return this.client.get('/health', { baseURL: 'http://localhost:8000' })
-  }
 }
 
 export default new ApiClient()

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'motion/react'
 import { Layers, Shield, ChevronRight, PhoneCall, CheckCircle } from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'

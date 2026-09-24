@@ -11,9 +11,6 @@ import {
   Sparkles,
   Stethoscope,
   Users,
-  Activity,
-  Zap,
-  MessageSquare,
 } from "lucide-react";
 
 const flowSteps = [

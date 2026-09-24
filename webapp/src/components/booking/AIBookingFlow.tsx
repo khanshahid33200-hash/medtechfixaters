@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Send,
-  Sparkles,
   ShieldCheck,
   RotateCcw,
 } from "lucide-react";

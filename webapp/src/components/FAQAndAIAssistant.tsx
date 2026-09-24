@@ -1,20 +1,12 @@
 import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  ChevronDown,
   Plus,
   Minus,
   Bot,
   Send,
   Sparkles,
   HelpCircle,
-  CheckCircle2,
-  ArrowRight,
-  ShieldCheck,
-  Building2,
-  Stethoscope,
-  Users,
-  QrCode,
 } from "lucide-react";
 
 interface FAQItem {

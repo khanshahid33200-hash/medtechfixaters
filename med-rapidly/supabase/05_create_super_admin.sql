@@ -8,11 +8,11 @@
 -- IMPORTANT: Before running this, you need to generate the password hash
 --
 -- Option 1: Use PostgreSQL's crypt function (requires pgcrypto extension)
--- SELECT crypt('Shahideeba@19019', gen_salt('bf', 10));
+-- SELECT crypt('<REDACTED-ROTATE-THIS-PASSWORD>', gen_salt('bf', 10));
 --
 -- Option 2: Generate in Node.js (run this in your app):
 -- const bcrypt = require('bcryptjs');
--- const hash = bcrypt.hashSync('Shahideeba@19019', 10);
+-- const hash = bcrypt.hashSync('<REDACTED-ROTATE-THIS-PASSWORD>', 10);
 -- console.log(hash);
 
 -- Replace 'PASTE_BCRYPT_HASH_HERE' with the actual hash generated above

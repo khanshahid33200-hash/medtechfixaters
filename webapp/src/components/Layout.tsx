@@ -4,18 +4,14 @@ import {
   Layers,
   Calendar,
   Clock,
-  Users,
-  Stethoscope,
   FileText,
   CheckCircle,
   Activity,
   UserCheck,
   Settings,
   LogOut,
-  ChevronDown,
   Menu,
   X,
-  Building2,
   AlertCircle
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'

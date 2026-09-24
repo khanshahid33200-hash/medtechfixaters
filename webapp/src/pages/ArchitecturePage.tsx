@@ -1,9 +1,7 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { useState } from 'react'
 import {
-  ShieldCheck, Database, Cpu, Network, Lock,
-  Server, Smartphone, CheckCircle2, ArrowRight
-} from 'lucide-react'
+  Database, Network, Lock,
+  Smartphone} from 'lucide-react'
 import { motion } from 'framer-motion'
 import PublicHeader from '../components/PublicHeader'
 import PublicFooter from '../components/PublicFooter'

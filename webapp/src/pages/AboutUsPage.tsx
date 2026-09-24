@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Sparkles,
@@ -8,24 +8,13 @@ import {
   Cpu,
   ArrowRight,
   CheckCircle2,
-  Activity,
-  ShieldCheck,
   Zap,
-  Globe,
   QrCode,
-  Layers,
   ArrowDown,
   Brain,
   Workflow,
   HeartHandshake,
-  Check,
-  ExternalLink,
-  ChevronRight,
-  TrendingUp,
-  FileText,
-  Clock,
-  Radio
-} from 'lucide-react'
+  ExternalLink} from 'lucide-react'
 import { motion } from 'framer-motion'
 import PublicHeader from '../components/PublicHeader'
 import PublicFooter from '../components/PublicFooter'

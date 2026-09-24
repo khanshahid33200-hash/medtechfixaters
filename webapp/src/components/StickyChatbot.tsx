@@ -1,26 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Bot,
   X,
   Send,
-  Sparkles,
   Calendar,
   CheckCircle2,
-  Phone,
-  Mail,
-  Building2,
-  User,
-  Clock,
   ArrowRight,
   ExternalLink,
   Loader2,
-  ChevronDown,
-  Minimize2,
-  Maximize2,
 } from "lucide-react";
 import { supabase } from "../lib/supabase";
 
@@ -127,7 +118,7 @@ export default function StickyChatbot() {
     const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
     if (emailMatch) details.email = emailMatch[0];
 
-    const phoneMatch = text.match(/(?:\+91[\-\s]?)?[6789]\d{9}/) || text.match(/\b\d{10,12}\b/);
+    const phoneMatch = text.match(/(?:\+91[\s-]?)?[6789]\d{9}/) || text.match(/\b\d{10,12}\b/);
     if (phoneMatch) details.phone = phoneMatch[0].replace(/\D/g, "").slice(-10);
 
     const nameMatch =

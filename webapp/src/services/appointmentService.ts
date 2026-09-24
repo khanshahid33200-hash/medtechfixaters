@@ -1,6 +1,5 @@
 import { supabase } from "../lib/supabase";
 import { AppointmentPayload, AppointmentResult } from "../types/appointment";
-import { getHospitalDoctors } from "./doctorService";
 import { logActivity } from "./auditLogService";
 import { APPT_STATUS } from "../hooks/useDashboardStats";
 

@@ -1,4 +1,3 @@
-import { motion } from "framer-motion";
 import { Calendar, Users, Stethoscope, FlaskConical, Receipt, ChevronDown, MoreHorizontal } from "lucide-react";
 
 export default function VisibilityVisual() {

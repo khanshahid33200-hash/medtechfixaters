@@ -8,7 +8,7 @@
 const bcrypt = require('bcryptjs');
 
 const email = 'shahidbcsm@gmail.com';
-const password = 'Shahideeba@19019';
+const password = '<REDACTED-ROTATE-THIS-PASSWORD>';
 const saltRounds = 10;
 
 try {

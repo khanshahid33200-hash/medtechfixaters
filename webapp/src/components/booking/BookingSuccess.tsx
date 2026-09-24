@@ -2,13 +2,9 @@ import React, { useState } from "react";
 import { motion } from "framer-motion";
 import {
   CheckCircle2,
-  Building,
   Clock,
   Users,
-  ExternalLink,
   RotateCcw,
-  Sparkles,
-  Calendar,
   Copy,
   Check,
   ShieldCheck,

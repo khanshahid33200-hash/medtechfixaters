@@ -1,4 +1,3 @@
-import React from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
@@ -7,10 +6,7 @@ import {
   Stethoscope,
   ArrowRight,
   Sparkles,
-  Zap,
   CheckCircle2,
-  Clock,
-  ShieldCheck,
 } from "lucide-react";
 
 const ease: [number, number, number, number] = [0.16, 1, 0.3, 1];

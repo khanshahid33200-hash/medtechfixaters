@@ -1,15 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  TrendingUp,
   BarChart3,
-  PieChart,
-  Calendar,
-  Clock,
-  ArrowUpRight,
-  ArrowDownRight,
-  Users,
-  Activity
-} from 'lucide-react'
+  Clock} from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'

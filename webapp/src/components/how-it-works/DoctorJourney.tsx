@@ -1,4 +1,3 @@
-import React from "react"
 import { motion } from "framer-motion"
 import {
   ClipboardCheck,
@@ -7,11 +6,6 @@ import {
   ListOrdered,
   Pill,
   User,
-  CheckCircle2,
-  Sparkles,
-  Stethoscope,
-  Activity,
-  Zap,
 } from "lucide-react"
 
 const steps = [

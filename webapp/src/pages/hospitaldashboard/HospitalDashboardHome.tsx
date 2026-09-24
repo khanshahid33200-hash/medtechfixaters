@@ -11,11 +11,9 @@ import {
   TrendingDown,
   Minus,
   Shield,
-  Plus,
   UserPlus,
   Stethoscope,
   Building2,
-  FileText,
   BarChart3,
   ChevronDown,
   IndianRupee,
@@ -38,6 +36,7 @@ import {
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'
+import { generateTempPassword } from '../../utils/validation'
 import { useDashboardStats, resolveRange, APPT_STATUS, DateRangeKey } from '../../hooks/useDashboardStats'
 import { logActivity } from '../../services/auditLogService'
 
@@ -117,7 +116,7 @@ export default function HospitalDashboardHome() {
   const [newDoctorForm, setNewDoctorForm] = useState({
     name: '',
     email: '',
-    password: 'Password123!',
+    password: generateTempPassword(),
     docCode: '',
     dept: 'Cardiology',
     specialization: 'Consultant Specialist',
@@ -321,7 +320,7 @@ export default function HospitalDashboardHome() {
       })
       setFeedbackNotice(`✓ Doctor "${newDoctorForm.name}" created with ID ${docCode}!`)
       setShowAddDoctorModal(false)
-      setNewDoctorForm({ name: '', email: '', password: 'Password123!', docCode: '', dept: 'Cardiology', specialization: 'Consultant Specialist', fee: 500, limit: 25 })
+      setNewDoctorForm({ name: '', email: '', password: generateTempPassword(), docCode: '', dept: 'Cardiology', specialization: 'Consultant Specialist', fee: 500, limit: 25 })
       setTimeout(() => setFeedbackNotice(null), 4000)
     } catch (err: any) {
       alert(`Could not create doctor account: ${err.message || err}`)

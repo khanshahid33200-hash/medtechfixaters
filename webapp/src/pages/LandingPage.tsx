@@ -1,18 +1,13 @@
-import AIAutomationSection from '../components/AIAutomationSection'
 import FAQSection from '../components/FAQSection'
 import QRAppointmentShowcase from '../components/QRAppointmentShowcase'
 import KeyBenefits from '../components/KeyBenefits'
 import ConnectedSystemSection from '../components/ConnectedSystemSection'
 import HowPlatformWorks from '../components/HowPlatformWorks'
 import WhatWeSolveSection from '../components/what-we-solve/WhatWeSolveSection'
-import DoctorDashboardSimulator from '../components/DoctorDashboardSimulator'
-import React, { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  QrCode, RefreshCw, UserCheck, Users, BarChart3,
-  Building2, Calendar, ShieldCheck, FileText,
-  Clock, Stethoscope, ArrowRight, Play, CheckCircle2,
-  HeartPulse, ChevronRight, X, Phone, Mail,
+  ArrowRight, Play, 
   Volume2, Check, Sparkles, Send, Activity, Settings,
   Search, Plus, Printer, Download, TrendingUp,
   AlertCircle, Eye, Lock, ChevronDown, Star, Shield,

@@ -1,17 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import {
-  Users,
   Search,
   Plus,
   Eye,
-  Edit2,
-  Calendar,
-  Phone,
-  CheckCircle2,
-  FileText,
-  Clock,
-  X
-} from 'lucide-react'
+  CheckCircle2} from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { APPT_STATUS, DateRange, resolveRange } from './useDashboardStats'
+import { DateRange, resolveRange } from './useDashboardStats'
 
 export interface DoctorKpis {
   totalAppointments: { value: number; change: number | null }

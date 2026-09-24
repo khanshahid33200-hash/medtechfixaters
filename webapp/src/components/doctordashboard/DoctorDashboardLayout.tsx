@@ -1,13 +1,10 @@
-import React, { useEffect, useState, ReactNode } from 'react'
+import { useEffect, useState, ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
 import {
   LayoutDashboard,
   Layers,
   Calendar,
-  Users,
-  Stethoscope,
-  FileText,
   CheckCircle,
   Activity,
   UserCheck,
@@ -23,6 +20,7 @@ import {
   KeyRound,
   Bell,
   CalendarClock,
+  Pill,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useSEO } from '../../hooks/useSEO'
@@ -40,6 +38,7 @@ const navItems = [
   { name: 'All Appointments', path: '/appointments', icon: Calendar },
   { name: 'Follow-Up', path: '/follow-ups', icon: CheckCircle },
   { name: 'History', path: '/history', icon: Activity },
+  { name: 'Medicines', path: '/medicines', icon: Pill },
   { name: 'QR', path: '/qr-kiosk', icon: QrCode },
   { name: 'Availability', path: '/availability', icon: CalendarClock },
   { name: 'Notifications', path: '/notifications', icon: Bell },
@@ -145,7 +144,9 @@ export default function DoctorDashboardLayout({ children, pageTitle, onResetView
     offline: { label: 'Offline', dot: 'bg-slate-400' },
   }
 
-  const isActive = (path: string) => location.pathname === path
+  // Sections with sub-pages (e.g. /medicines/import) keep their sidebar item highlighted.
+  const isActive = (path: string) =>
+    location.pathname === path || (path === '/medicines' && location.pathname.startsWith('/medicines/'))
 
   const handleLogout = async () => {
     await logout()

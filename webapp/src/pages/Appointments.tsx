@@ -9,7 +9,6 @@ import {
   getDoctorAppointments,
   subscribeToDoctorAppointments,
   addWalkInAppointment,
-  updateAppointmentStatus,
   type DoctorAppointment
 } from '../lib/doctorAppointments'
 import { validateName, validatePhone, validateAge } from '../utils/validation'

@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  QrCode,
-  Download,
   Printer,
   Copy,
   RefreshCw,
   Power,
   ExternalLink,
   CheckCircle2,
-  Share2,
   ShieldCheck
 } from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
@@ -72,7 +69,7 @@ export default function HospitalQRManagementPage() {
   const handleRegenerate = async () => {
     if (!currentHospId) return
     if (!confirm('Regenerate the QR token? Every link and printed code using the current QR will stop working immediately.')) return
-    const nextToken = `QR-${Math.random().toString(36).substring(2, 10).toUpperCase()}`
+    const nextToken = `QR-${crypto.randomUUID().replace(/-/g, '').slice(0, 12).toUpperCase()}`
     try {
       // UPDATE (not upsert) — qr_codes.hospital_id has no unique constraint,
       // so an upsert with no matching primary key would just INSERT a

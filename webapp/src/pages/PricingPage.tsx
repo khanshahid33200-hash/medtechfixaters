@@ -1,11 +1,17 @@
-import React, { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { Check, ArrowRight, ShieldCheck, Sparkles } from 'lucide-react'
+import { useState } from 'react'
+import { Check } from 'lucide-react'
 import { motion } from 'framer-motion'
 import PublicHeader from '../components/PublicHeader'
 import PublicFooter from '../components/PublicFooter'
 import ContactModal from '../components/ContactModal'
 import { useSEO } from '../hooks/useSEO'
+import seoContent from '../content/seoRoutes.json'
+
+const PLAN_UI: Record<string, { cta: string; popular: boolean }> = {
+  'Clinic Starter': { cta: 'Start 14-Day Free Trial', popular: false },
+  'Hospital Pro': { cta: 'Get Hospital Pro', popular: true },
+  'Enterprise Mesh': { cta: 'Contact Sales', popular: false },
+}
 
 export default function PricingPage() {
   useSEO({
@@ -16,63 +22,10 @@ export default function PricingPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('annual')
 
-  const plans = [
-    {
-      name: 'Clinic Starter',
-      tag: 'Solo & Duo Doctors',
-      priceMonthly: 1999,
-      priceAnnual: 1499,
-      desc: 'Ideal for independent doctors and single-counter outpatient clinics.',
-      features: [
-        'Up to 2 Doctor Logins',
-        'Unlimited Patient QR Tokens',
-        'Live Web Queue Telemetry',
-        '30-Second Prescription Pad',
-        'WhatsApp PDF Prescriptions (500/mo)',
-        'Basic Daily Footfall Reports'
-      ],
-      cta: 'Start 14-Day Free Trial',
-      popular: false
-    },
-    {
-      name: 'Hospital Pro',
-      tag: 'Polyclinics & Nursing Homes',
-      priceMonthly: 4999,
-      priceAnnual: 3999,
-      desc: 'Complete OPD management for multi-doctor facilities and small hospitals.',
-      features: [
-        'Up to 10 Doctor Logins',
-        'Unlimited QR Standees & Tokens',
-        'Voice TTS Audio Callout',
-        'Reception TV Queue Board Stream',
-        'Multi-Counter Load Balancing',
-        'Unlimited WhatsApp PDF Dispatches',
-        'Doctor Performance & Collection Audits',
-        'Priority Phone & WhatsApp Support'
-      ],
-      cta: 'Get Hospital Pro',
-      popular: true
-    },
-    {
-      name: 'Enterprise Mesh',
-      tag: 'Multi-Bed Hospitals & Chains',
-      priceMonthly: 9999,
-      priceAnnual: 7999,
-      desc: 'Enterprise security, dedicated instances, and custom billing integration.',
-      features: [
-        'Unlimited Doctor & Staff Logins',
-        'Unlimited Hospital Departments',
-        'Dedicated PostgreSQL Instance & RLS',
-        'Custom HIS/EHR API & Webhooks',
-        'NABH & ABDM Digital Compliance',
-        'On-Premise or Custom Cloud Hosting',
-        '24/7 Dedicated Account Manager',
-        'Custom Staff Training & Onboarding'
-      ],
-      cta: 'Contact Sales',
-      popular: false
-    }
-  ]
+  // Plan data is shared with the SEO build (structured data, llms.txt) so prices never drift.
+  const plans = seoContent.routes
+    .find((r) => r.path === '/pricing')!
+    .pricing!.map((p) => ({ ...p, ...PLAN_UI[p.name] }))
 
   return (
     <div className="min-h-screen bg-white text-slate-900 font-sans antialiased selection:bg-[#5B4DF5] selection:text-white">

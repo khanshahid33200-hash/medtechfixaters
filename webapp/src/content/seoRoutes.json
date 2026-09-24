@@ -1,0 +1,226 @@
+{
+  "siteUrl": "https://www.medtechfixaters.in",
+  "siteName": "MedTech Fixaters",
+  "alternateName": "MedTechFixaters",
+  "defaultImage": "/og-image.png",
+  "email": "contact@medtechfixaters.in",
+  "telephone": "+91-95878-67559",
+  "linkedin": "https://www.linkedin.com/company/medtech-fixaters",
+  "summary": "MedTech Fixaters is an AI-powered, multi-tenant healthcare platform for clinics and hospitals in India. It connects hospital administration, private doctor workspaces, QR-code appointment booking, live OPD token queues, digital prescriptions and an inbuilt patient CRM in one system, with each hospital's data isolated using PostgreSQL row-level security.",
+  "routes": [
+    {
+      "path": "/",
+      "title": "MedTech Fixaters — Your Hospital. Connected Digitally",
+      "description": "A connected digital healthcare platform where hospitals manage operations, doctors manage appointments and patients, and patients book via unique hospital QR codes.",
+      "h1": "Your Hospital. Connected Digitally.",
+      "lead": "One AI-powered connected platform for hospital administration, inbuilt patient CRM, doctor workspaces, intelligent booking, automated workflows, and live queues. 360° patient journey tracking, automated WhatsApp recall campaigns, and chronic care management built directly in.",
+      "sections": [
+        "Smart hospital QR appointment system",
+        "Real-time live queue",
+        "Inbuilt hospital and patient CRM",
+        "Private doctor workspaces",
+        "Hospital administration dashboard",
+        "Multi-tenant data isolation"
+      ],
+      "faqs": "landing",
+      "priority": "1.0",
+      "changefreq": "weekly"
+    },
+    {
+      "path": "/how-it-works",
+      "title": "How MedTech Fixaters Works — One Connected Healthcare Platform",
+      "description": "MedTech Fixaters connects patients, hospitals, and doctors through one AI-powered healthcare platform. Explore patient QR booking, hospital operations, and doctor workspaces.",
+      "h1": "One Connected Platform. Three Distinct Journeys.",
+      "sections": [
+        "From QR Scan To Consultation. Frictionless & Fully Transparent.",
+        "Your Entire Hospital Operations. Unified In One Real-Time Dashboard.",
+        "A Distraction-Free Clinical Desk. Engineered for Physician Speed.",
+        "Intelligent Automation. Supporting Every Clinical Step.",
+        "Every Journey Connects. Zero Data Overlap."
+      ],
+      "priority": "0.9",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/features",
+      "title": "Platform Features — MedTech Fixaters | Connected Healthcare Operating System",
+      "description": "Explore MedTech Fixaters in depth: Connected hospital administration, separate doctor workspaces, smart QR appointments, live queue management, and isolated multi-tenant security.",
+      "h1": "All The Tools Your Hospital Needs. Connected In One AI-Powered Platform.",
+      "sections": [
+        "Everything Connected. Built For Every Workflow.",
+        "MedTech AI. Working Across Your Hospital.",
+        "Complete Control. One Hospital Dashboard.",
+        "A Private Workspace For Every Doctor.",
+        "A Better Patient Journey. From Booking To Reports.",
+        "Retain Patients. Automate Recalls. Built In Without Third-Party Software.",
+        "Your Data. Inside The Right Workspace.",
+        "One Platform. Every Essential Workflow."
+      ],
+      "priority": "0.9",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/pricing",
+      "title": "Pricing Plans — Transparent OPD Software | MedTech Fixaters",
+      "description": "Affordable, transparent pricing plans for standalone clinics, multi-doctor polyclinics, and enterprise multi-bed hospitals.",
+      "h1": "Simple, Transparent Plans. No Hidden Fees.",
+      "pricing": [
+        {
+          "name": "Clinic Starter",
+          "tag": "Solo & Duo Doctors",
+          "priceMonthly": 1999,
+          "priceAnnual": 1499,
+          "desc": "Ideal for independent doctors and single-counter outpatient clinics.",
+          "features": [
+            "Up to 2 Doctor Logins",
+            "Unlimited Patient QR Tokens",
+            "Live Web Queue Telemetry",
+            "30-Second Prescription Pad",
+            "WhatsApp PDF Prescriptions (500/mo)",
+            "Basic Daily Footfall Reports"
+          ]
+        },
+        {
+          "name": "Hospital Pro",
+          "tag": "Polyclinics & Nursing Homes",
+          "priceMonthly": 4999,
+          "priceAnnual": 3999,
+          "desc": "Complete OPD management for multi-doctor facilities and small hospitals.",
+          "features": [
+            "Up to 10 Doctor Logins",
+            "Unlimited QR Standees & Tokens",
+            "Voice TTS Audio Callout",
+            "Reception TV Queue Board Stream",
+            "Multi-Counter Load Balancing",
+            "Unlimited WhatsApp PDF Dispatches",
+            "Doctor Performance & Collection Audits",
+            "Priority Phone & WhatsApp Support"
+          ]
+        },
+        {
+          "name": "Enterprise Mesh",
+          "tag": "Multi-Bed Hospitals & Chains",
+          "priceMonthly": 9999,
+          "priceAnnual": 7999,
+          "desc": "Enterprise security, dedicated instances, and custom billing integration.",
+          "features": [
+            "Unlimited Doctor & Staff Logins",
+            "Unlimited Hospital Departments",
+            "Dedicated PostgreSQL Instance & RLS",
+            "Custom HIS/EHR API & Webhooks",
+            "NABH & ABDM Digital Compliance",
+            "On-Premise or Custom Cloud Hosting",
+            "24/7 Dedicated Account Manager",
+            "Custom Staff Training & Onboarding"
+          ]
+        }
+      ],
+      "priority": "0.9",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/about",
+      "title": "About MedTech Fixaters — Connected Healthcare Technology",
+      "description": "MedTech Fixaters builds AI-powered digital systems that connect hospitals, doctors, patients, and healthcare workflows.",
+      "h1": "Building Connected Healthcare Technology.",
+      "sections": [
+        "Healthcare Operations Should Feel Connected.",
+        "Technology Built Around Real Healthcare Workflows.",
+        "Introducing MedTech Fixaters.",
+        "Technology That Connects Healthcare Workflows.",
+        "AI That Supports. Not Replaces.",
+        "Our Approach.",
+        "Building The Future Of Connected Healthcare."
+      ],
+      "priority": "0.7",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/architecture",
+      "title": "Platform Architecture — Enterprise Multi-Tenant Security | MedTech Fixaters",
+      "description": "Technical deep-dive into MedTech Fixaters architecture: PostgreSQL Row-Level Security, WebSockets real-time mesh, and ABDM compliance.",
+      "h1": "Enterprise Architecture. Engineered for Zero Downtime.",
+      "priority": "0.6",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/features/upcoming",
+      "title": "Upcoming Features & Product Roadmap — MedTech Fixaters AI Healthcare",
+      "description": "Explore upcoming MedTech Fixaters innovations: Ambient AI voice scribing, WhatsApp queue sync, IoT vitals telemetry, ABDM compliance, and multi-branch enterprise control.",
+      "h1": "The Future of Hospital AI. Arriving Soon.",
+      "priority": "0.6",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/contact",
+      "title": "Contact MedTech Fixaters | AI-Powered Healthcare Technology",
+      "description": "Contact MedTech Fixaters to discuss hospital digital workflows, AI-assisted healthcare operations, and technology partnerships.",
+      "h1": "Let’s Build Better Healthcare Workflows Together.",
+      "faqs": "contact",
+      "priority": "0.8",
+      "changefreq": "monthly"
+    },
+    {
+      "path": "/privacy",
+      "title": "Privacy Policy - Healthcare Data Privacy & Security | MedTechFixaters",
+      "description": "Comprehensive Privacy Policy for MedTechFixaters Healthcare SaaS platform. Learn how we safeguard electronic Protected Health Information (ePHI), enforce role-based access, multi-tenant isolation, and support HIPAA-aligned administrative, physical, and technical safeguards.",
+      "h1": "Privacy Policy",
+      "priority": "0.3",
+      "changefreq": "yearly"
+    },
+    {
+      "path": "/terms",
+      "title": "Terms & Conditions - Healthcare SaaS Master Terms | MedTechFixaters",
+      "description": "Terms & Conditions governing the licensing, acceptable use, healthcare provider responsibilities, multi-tenant isolation, and data governance for MedTechFixaters platform.",
+      "h1": "Terms & Conditions",
+      "priority": "0.3",
+      "changefreq": "yearly"
+    },
+    {
+      "path": "/refund-policy",
+      "title": "Refund & Cancellation Policy | MedTechFixaters Healthcare SaaS",
+      "description": "Subscription cancellation terms, billing schedules, and refund policy for MedTechFixaters healthcare software platform, clinic systems, and doctor subscriptions.",
+      "h1": "Refund & Cancellation Policy",
+      "priority": "0.3",
+      "changefreq": "yearly"
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/product",
+      "destination": "/"
+    },
+    {
+      "source": "/features/product",
+      "destination": "/features"
+    },
+    {
+      "source": "/upcoming-features",
+      "destination": "/features/upcoming"
+    },
+    {
+      "source": "/platform",
+      "destination": "/architecture"
+    },
+    {
+      "source": "/demo",
+      "destination": "/contact"
+    },
+    {
+      "source": "/book-demo",
+      "destination": "/contact"
+    },
+    {
+      "source": "/privacy-policy",
+      "destination": "/privacy"
+    },
+    {
+      "source": "/terms-and-conditions",
+      "destination": "/terms"
+    },
+    {
+      "source": "/refund-and-cancellation",
+      "destination": "/refund-policy"
+    }
+  ]
+}

@@ -10,11 +10,8 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Building2,
-  User,
   MessageSquare,
   Sparkles,
-  ArrowRight,
   Clock,
   ShieldCheck,
 } from "lucide-react";

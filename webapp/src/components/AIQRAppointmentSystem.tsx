@@ -16,7 +16,6 @@ import {
   QrCode,
   Scan,
   Sparkles,
-  Stethoscope,
   User,
   Users,
 } from "lucide-react";

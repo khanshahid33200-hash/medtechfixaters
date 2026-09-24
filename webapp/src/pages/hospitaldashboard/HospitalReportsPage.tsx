@@ -1,14 +1,8 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  FileText,
   Download,
   Printer,
-  Calendar,
-  Filter,
-  CheckCircle2,
-  Share2,
-  Sparkles
-} from 'lucide-react'
+  CheckCircle2} from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 import { supabase } from '../../lib/supabase'

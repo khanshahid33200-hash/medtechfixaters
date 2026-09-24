@@ -1,22 +1,10 @@
 import { useState, useEffect } from 'react'
 import {
-  Play,
-  CheckCircle,
   SkipForward,
-  RotateCcw,
-  Volume2,
   Ticket,
   UserCheck,
   Building2,
-  Users,
-  FileText,
-  Plus,
-  Trash2,
-  Printer,
-  X,
-  Activity,
-  Pill
-} from 'lucide-react'
+  Users} from 'lucide-react'
 import Layout from '../components/Layout'
 import { Card, CardContent, CardHeader } from '../components/Card'
 import Button from '../components/Button'

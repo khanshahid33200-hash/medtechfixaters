@@ -8,7 +8,6 @@ import {
   Stethoscope,
   Building2,
   Clock3,
-  Sparkles,
   RefreshCw,
   QrCode,
   Copy,
@@ -20,6 +19,7 @@ import {
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { supabase } from "../lib/supabase";
+import { PAYMENTS_ENABLED, payForSubscription } from "../lib/razorpayCheckout";
 import { useAuth } from "../context/AuthContext";
 import { useSEO } from "../hooks/useSEO";
 
@@ -375,20 +375,29 @@ export default function DoctorOnboardingPage() {
         throw new Error(saveRes?.error || "Failed to save doctor profile.");
       }
 
-      // 2. Activate subscription & generate unique QR portal
-      const { data: actRes, error: actErr } = await supabase.rpc(
-        "doctor_verify_and_activate_subscription",
-        {
-          p_doctor_id: user.id,
-          p_plan_id: "doctor_monthly",
-          p_amount: 999.0,
-          p_payment_provider: "verified_onboarding",
-          p_order_id: `ORD_${Date.now()}`,
-          p_payment_id: `ACT_${Date.now()}`,
-        }
-      );
+      // 2. Activate subscription & generate unique QR portal. With payments enabled the
+      // server verifies the Razorpay payment before activating; otherwise the free
+      // self-activation RPC is used (the server ignores any client-sent amount).
+      let actRes: any;
+      if (PAYMENTS_ENABLED) {
+        actRes = await payForSubscription("doctor_monthly", {
+          name: formData.doctorName.trim(),
+          email: user.email || undefined,
+          contact: formData.phone.trim() || undefined,
+        });
+      } else {
+        const { data, error: actErr } = await supabase.rpc(
+          "doctor_verify_and_activate_subscription",
+          {
+            p_doctor_id: user.id,
+            p_plan_id: "doctor_monthly",
+            p_amount: 999.0,
+          }
+        );
+        if (actErr) throw actErr;
+        actRes = data;
+      }
 
-      if (actErr) throw actErr;
       if (!actRes?.success) {
         throw new Error(actRes?.error || "Failed to activate practice.");
       }

@@ -3,44 +3,15 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronDown, HelpCircle } from "lucide-react";
+import contactFaqsData from "../../content/contactFaqs.json";
 
 interface FAQItem {
   question: string;
   answer: string;
 }
 
-const contactFaqs: FAQItem[] = [
-  {
-    question: "What is MedTech Fixaters?",
-    answer:
-      "MedTech Fixaters is an all-in-one AI-powered digital healthcare platform. It brings hospital administration, doctor workspaces, live token queues, QR appointment booking, and an inbuilt patient CRM into a single connected system.",
-  },
-  {
-    question: "Who is MedTech Fixaters designed for?",
-    answer:
-      "MedTech Fixaters is designed for solo clinical practices, polyclinics, nursing homes, and multi-specialty hospital networks looking to streamline OPD operations, eliminate waiting room congestion, and securely manage patient records.",
-  },
-  {
-    question: "How does the hospital QR appointment system work?",
-    answer:
-      "Every hospital receives a unique QR code standee and appointment link. When patients scan it using any mobile camera, they only see doctors and departments from that specific facility, select AI-guided or direct booking, and receive an instant digital queue pass with live status updates.",
-  },
-  {
-    question: "Does AI replace doctors?",
-    answer:
-      "No. MedTech AI functions strictly as an assistive intelligence and workflow orchestration layer. It assists with pre-consultation symptom intake, smart department routing, and note formatting so doctors can focus entirely on high-quality clinical care.",
-  },
-  {
-    question: "How does hospital data separation work?",
-    answer:
-      "Each hospital operates within a strictly isolated workspace backed by PostgreSQL Row-Level Security (RLS). Hospital H1 cannot access doctors, patients, revenue, or appointments of Hospital H2 under any circumstances.",
-  },
-  {
-    question: "How can a hospital discuss implementation?",
-    answer:
-      "You can submit an inquiry through the contact form above, call our team directly at +91 95878 67559, or send an email to contact@medtechfixaters.in. Our implementation specialists will schedule a 15-minute live platform walkthrough.",
-  },
-];
+// Shared with the static SEO build (seo/build-seo.mjs) so FAQ schema matches the page.
+const contactFaqs: FAQItem[] = contactFaqsData;
 
 export default function ContactFAQ() {
   const [openIndex, setOpenIndex] = useState<number | null>(0);

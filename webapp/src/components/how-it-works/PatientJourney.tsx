@@ -1,16 +1,12 @@
-import React, { useState } from "react"
+import { useState } from "react"
 import { motion } from "framer-motion"
 import {
-  ArrowRight,
   Bot,
   CalendarCheck,
-  Check,
   FileText,
   QrCode,
   Stethoscope,
   Users,
-  Smartphone,
-  Sparkles,
   Clock,
   ShieldCheck,
   Zap,

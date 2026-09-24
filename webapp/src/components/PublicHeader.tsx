@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, ArrowRight, Sparkles, ChevronDown, Layers, Zap, Stethoscope, Building2, LayoutGrid, Rocket } from 'lucide-react'
+import { Menu, X, ArrowRight, Sparkles, ChevronDown, Stethoscope, Building2, LayoutGrid, Rocket } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import ContactModal from './ContactModal'
 

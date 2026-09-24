@@ -7,11 +7,7 @@ import {
   Stethoscope,
   MessageSquare,
   Sparkles,
-  Zap,
   ShieldCheck,
-  Activity,
-  ArrowRight,
-  CheckCircle2,
 } from "lucide-react";
 
 const aiCapabilities = [

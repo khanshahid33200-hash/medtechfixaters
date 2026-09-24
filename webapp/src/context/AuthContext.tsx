@@ -51,6 +51,22 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+// Doctor-ID login: exact-match RPC, since anonymous visitors can no longer read
+// profile e-mails directly (02_SECURITY_AUDIT_FIXES.sql). The legacy query is only
+// used while that migration has not been applied yet (RPC missing: PGRST202).
+async function resolveDoctorCodeEmail(doctorCode: string): Promise<string | null> {
+  const { data, error } = await supabase.rpc('resolve_login_email', { p_identifier: doctorCode })
+  if (!error) return typeof data === 'string' && data ? data : null
+  if (error.code !== 'PGRST202') return null
+
+  const { data: legacy } = await supabase
+    .from('profiles')
+    .select('email, is_active, account_status')
+    .eq('doctor_code', doctorCode.toUpperCase())
+    .maybeSingle()
+  return legacy?.email && legacy.is_active && legacy.account_status === 'active' ? legacy.email : null
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<any | null>(null)
   const [doctorProfile, setDoctorProfile] = useState<DoctorProfile | null>(null)
@@ -162,6 +178,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
+    // One-time cleanup: older builds cached created users' plaintext passwords here.
+    try {
+      const raw = localStorage.getItem('clinicos_user_registry')
+      if (raw && raw.includes('"password"')) {
+        const cleaned = (JSON.parse(raw) as any[]).map(({ password: _pw, ...rest }) => rest)
+        localStorage.setItem('clinicos_user_registry', JSON.stringify(cleaned))
+      }
+    } catch {
+      localStorage.removeItem('clinicos_user_registry')
+    }
+
     const initAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession()
@@ -216,17 +243,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // If identifier is a Doctor ID (e.g. H1-D-0001, H1-CARDIO-01) without @ symbol:
       if (!cleanId.includes('@')) {
-        const { data: matchedProfile } = await supabase
-          .from('profiles')
-          .select('email, doctor_code, is_active, account_status')
-          .ilike('doctor_code', cleanId)
-          .maybeSingle()
+        const matchedEmail = await resolveDoctorCodeEmail(cleanId)
 
-        if (matchedProfile && matchedProfile.email) {
-          if (!matchedProfile.is_active || matchedProfile.account_status !== 'active') {
-            throw new Error('Access Denied: This Doctor ID account is restricted or deactivated.')
-          }
-          resolvedEmail = matchedProfile.email.toLowerCase()
+        if (typeof matchedEmail === 'string' && matchedEmail) {
+          resolvedEmail = matchedEmail.toLowerCase()
         } else {
           // Local registry fallback check
           const localRegistryRaw = localStorage.getItem('clinicos_user_registry')
@@ -258,13 +278,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user = data.user
 
       // Step 2: Fetch Profile and Hospital Node for Two-Layer Security
-      let { data: profileData } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('*, hospitals(*)')
         .eq('id', user.id)
         .maybeSingle()
 
-      const role = profileData?.role || user.user_metadata?.role || expectedRole || 'doctor'
+      const role = profileData?.role || expectedRole || 'doctor'
       const hospObj = profileData?.hospitals
       const hospStatus = hospObj?.status || 'active'
       const accStatus = profileData?.account_status || (profileData?.is_active ? 'active' : 'blocked')
@@ -281,7 +301,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // dashboard for their real role instead of being told to use the
       // right portal, and any authenticated user could then navigate
       // straight to the other portal's URL since routes didn't check role.
-      const definitiveRole = profileData?.role || user.user_metadata?.role
+      const definitiveRole = profileData?.role
       if (expectedRole && definitiveRole && definitiveRole !== expectedRole && definitiveRole !== 'super_admin') {
         await supabase.auth.signOut()
         setIsLoading(false)
@@ -429,17 +449,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       // If identifier is a Doctor ID (e.g. H1-D-0001) without @ symbol:
       if (!cleanId.includes('@')) {
-        const { data: matchedProfile } = await supabase
-          .from('profiles')
-          .select('email, doctor_code, is_active, account_status')
-          .ilike('doctor_code', cleanId)
-          .maybeSingle()
+        const matchedEmail = await resolveDoctorCodeEmail(cleanId)
 
-        if (matchedProfile && matchedProfile.email) {
-          if (!matchedProfile.is_active || matchedProfile.account_status !== 'active') {
-            throw new Error('Access Denied: This Doctor ID account is restricted or deactivated.')
-          }
-          resolvedEmail = matchedProfile.email.toLowerCase()
+        if (typeof matchedEmail === 'string' && matchedEmail) {
+          resolvedEmail = matchedEmail.toLowerCase()
         } else {
           // Local registry fallback
           const localRegistryRaw = localStorage.getItem('clinicos_user_registry')
@@ -457,7 +470,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
 
-      let { error: otpErr } = await supabase.auth.signInWithOtp({
+      const { error: otpErr } = await supabase.auth.signInWithOtp({
         email: resolvedEmail,
         options: {
           shouldCreateUser: false,
@@ -510,13 +523,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const user = data.user
 
       // Check role gate
-      let { data: profileData } = await supabase
+      const { data: profileData } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .maybeSingle()
 
-      const definitiveRole = profileData?.role || user.user_metadata?.role
+      const definitiveRole = profileData?.role
       if (expectedRole && definitiveRole && definitiveRole !== expectedRole && definitiveRole !== 'super_admin') {
         await supabase.auth.signOut()
         setIsLoading(false)
@@ -659,24 +672,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // edge function's create_doctor_auth_user action — nothing left to
       // do here now that the client-side fallback path is gone.
 
-      // Step C: Auto-save credentials to Supabase user_credentials_vault for admin reference
-      try {
-        await supabase.from('user_credentials_vault').insert([
-          {
-            hospital_id: validHospitalId,
-            user_id: finalUserId,
-            doctor_code: docCode,
-            role: metadata.role,
-            full_name: metadata.name,
-            email: cleanEmail,
-            initial_password: cleanPass,
-            department: metadata.dept || 'General',
-          },
-        ])
-      } catch (vaultErr) {
-        console.warn('user_credentials_vault notice:', vaultErr)
-      }
-
       // Step D: Synchronize to Local Registry for instant offline/resilient sign-in
       try {
         const regRaw = localStorage.getItem('clinicos_user_registry')
@@ -685,7 +680,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const userEntry = {
           id: finalUserId,
           email: cleanEmail,
-          password: cleanPass,
           role: metadata.role,
           name: metadata.name,
           doctor_code: docCode,
@@ -694,6 +688,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           is_active: true,
           created_at: new Date().toISOString()
         }
+        // Older builds stored plaintext passwords here; strip them from every entry.
+        registry.forEach((u) => { delete u.password })
         if (existingIdx >= 0) {
           registry[existingIdx] = userEntry
         } else {

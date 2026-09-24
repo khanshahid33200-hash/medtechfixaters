@@ -1,13 +1,13 @@
-import React, { useState, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  QrCode, RefreshCw, UserCheck, Users, BarChart3,
-  ShieldCheck, FileText, Stethoscope, Smartphone,
-  CheckCircle2, ArrowRight, MessageSquare, Clock, Zap,
-  Search, SlidersHorizontal, Check, ChevronDown, Award,
-  Sparkles, HeartPulse, Building2, Lock, Volume2, Printer,
-  Eye, Activity, Shield, Layers, Plus, ArrowUpRight,
-  Database, Cpu, CheckCircle, CalendarDays, KeyRound, Globe,
+  QrCode, Users, 
+  ShieldCheck, FileText, Stethoscope, 
+  CheckCircle2, ArrowRight, MessageSquare, Clock, 
+  Check, 
+  Sparkles, Building2, Lock, Printer,
+  Activity, 
+  CheckCircle, CalendarDays, Globe,
   Bot, Bell, Send, UserCog, IndianRupee, ArrowDown, ChevronRight
 } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'

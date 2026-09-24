@@ -2,7 +2,7 @@ import React, { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
-  Stethoscope, Mail, Lock, User, Phone, ArrowRight,
+  Mail, Lock, User, Phone, ArrowRight,
   Sparkles, CheckCircle2, ShieldCheck, AlertCircle
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'

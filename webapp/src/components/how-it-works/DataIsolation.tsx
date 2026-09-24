@@ -1,16 +1,12 @@
-import React from "react"
 import { motion } from "framer-motion"
 import {
   Building2,
   Check,
   Database,
-  LockKeyhole,
   ShieldCheck,
   Stethoscope,
   Users,
-  CalendarCheck,
   Lock,
-  KeyRound,
 } from "lucide-react"
 
 export default function DataIsolation() {

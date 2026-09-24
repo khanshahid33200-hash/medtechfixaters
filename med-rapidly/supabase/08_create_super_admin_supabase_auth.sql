@@ -1,7 +1,7 @@
 -- ============================================================================
 -- Med Rapidly - Create Super Admin in Supabase Auth
 -- Email: shahidbcsm@gmail.com
--- Password: Shahideeba@19019
+-- Password: <REDACTED-ROTATE-THIS-PASSWORD>
 -- This creates the user in BOTH auth.users AND profiles tables
 -- ============================================================================
 
@@ -15,7 +15,7 @@
 
 -- First, generate the password hash using pgcrypto
 -- Copy the result and use it below
-SELECT crypt('Shahideeba@19019', gen_salt('bf', 10)) as password_hash;
+SELECT crypt('<REDACTED-ROTATE-THIS-PASSWORD>', gen_salt('bf', 10)) as password_hash;
 
 -- Then insert into auth.users
 -- Note: You may need to run this via Supabase Dashboard as it requires service_role
@@ -38,7 +38,7 @@ INSERT INTO auth.users (
     gen_random_uuid(),
     '00000000-0000-0000-0000-000000000000',
     'shahidbcsm@gmail.com',
-    crypt('Shahideeba@19019', gen_salt('bf', 10)),
+    crypt('<REDACTED-ROTATE-THIS-PASSWORD>', gen_salt('bf', 10)),
     NOW(), -- Email confirmed immediately
     json_build_object(
         'full_name', 'Shahid Babu',
@@ -93,7 +93,7 @@ INSERT INTO users (
 ) SELECT
     id,
     'shahidbcsm@gmail.com',
-    crypt('Shahideeba@19019', gen_salt('bf', 10)),
+    crypt('<REDACTED-ROTATE-THIS-PASSWORD>', gen_salt('bf', 10)),
     'Shahid Babu',
     '+91-9000-0000',
     'super_admin',

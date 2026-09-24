@@ -1,11 +1,11 @@
 -- ============================================================================
 -- Med Rapidly - Fix Super Admin Login (MR SHAHID BABU)
 -- Email: shahidbcsm@gmail.com
--- Password: Shahideeba@19019
+-- Password: <REDACTED-ROTATE-THIS-PASSWORD>
 -- ============================================================================
 
 -- STEP 1: Generate proper bcrypt hash (run this first to see the hash)
-SELECT crypt('Shahideeba@19019', gen_salt('bf', 10)) as new_password_hash;
+SELECT crypt('<REDACTED-ROTATE-THIS-PASSWORD>', gen_salt('bf', 10)) as new_password_hash;
 
 -- Copy the result above, then use it in STEP 2 below
 
@@ -15,7 +15,7 @@ SELECT crypt('Shahideeba@19019', gen_salt('bf', 10)) as new_password_hash;
 
 -- Option A: If crypt() function worked above, run this:
 UPDATE users
-SET password_hash = crypt('Shahideeba@19019', gen_salt('bf', 10))
+SET password_hash = crypt('<REDACTED-ROTATE-THIS-PASSWORD>', gen_salt('bf', 10))
 WHERE email = 'shahidbcsm@gmail.com';
 
 -- Option B: If you got a hash from STEP 1, replace PASTE_HASH_HERE and run:

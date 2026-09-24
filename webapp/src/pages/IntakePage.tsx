@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useSearchParams, useNavigate } from 'react-router-dom'
 import {
-  Clock, CheckCircle2, MapPin, Stethoscope, ShieldAlert,
-  Building2, User, Calendar, Search, ArrowRight, ArrowLeft,
-  AlertCircle, FileText, Phone, Activity, Sparkles, Check,
+  CheckCircle2, MapPin, Stethoscope, ShieldAlert,
+  Building2, Search, ArrowRight, ArrowLeft,
+  AlertCircle, Activity, Check,
   Printer, Copy, ShieldCheck
 } from 'lucide-react'
 import { supabase } from '../lib/supabase'
@@ -209,23 +209,20 @@ export default function IntakePage() {
       if (lookupErr) throw lookupErr
 
       if (data && data.found && data.patient) {
+        // This public endpoint returns only a masked name and non-clinical fields;
+        // medical history stays inside the hospital, and the booking RPC keeps the
+        // stored name for a returning patient.
         const p = data.patient
         setFormData(prev => ({
           ...prev,
           patient_number: p.patient_number || '',
-          name: p.name || prev.name,
-          phone: p.phone || prev.phone,
           gender: p.gender || prev.gender,
           age: p.age ? p.age.toString() : prev.age,
-          date_of_birth: p.date_of_birth || prev.date_of_birth,
-          known_diseases: p.known_diseases || prev.known_diseases,
-          allergies: p.allergies || '',
-          previous_medicine: p.previous_medicine || prev.previous_medicine,
           previous_doctor_id: p.previous_doctor_id || '',
           previous_doctor_name: p.previous_doctor_name || ''
         }))
         setExistingPatientFound(true)
-        setLookupMessage(`✓ Found medical history for: ${p.name} (Patient #${p.patient_number})`)
+        setLookupMessage(`✓ Welcome back, ${p.name} (Patient #${p.patient_number})`)
       } else {
         setLookupMessage('ℹ️ No previous records found in this hospital. Proceeding as New Patient.')
         setExistingPatientFound(false)

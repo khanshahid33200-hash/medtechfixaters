@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  AnimatePresence,
   motion,
   useMotionValue,
   useSpring,
@@ -14,7 +13,7 @@ import {
   TrendingUp, BarChart3, AlertCircle, Trash2, Edit3, Key,
   Radio, X, UserCheck, Stethoscope, Layers, Sliders, Phone,
   Server, Globe, QrCode, Download, Printer, Copy, ExternalLink,
-  Eye, EyeOff, LockKeyhole, Mail, Sparkles, ArrowRight, ArrowLeft
+  Eye, EyeOff, LockKeyhole, Mail, ArrowRight, ArrowLeft
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
@@ -572,7 +571,9 @@ export default function OwnerAdmin() {
   const totalAppointments = realApptCount
   const totalRevenue = realRevenue
 
-  // Login handler with resilient Supabase Auth & Super Admin provisioning
+  // Login handler. The super_admin role is granted only in the database; this
+  // screen never creates accounts or writes roles (a browser-side signUp with
+  // role metadata was previously enough to mint a platform admin).
   const handleOwnerLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoginError('')
@@ -581,65 +582,22 @@ export default function OwnerAdmin() {
     const pw = loginForm.password.trim()
 
     try {
-      // 1. Try standard Supabase Auth signInWithPassword
-      let { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
-      let user = data?.user
-
-      // 2. If Auth user login failed and it's the super admin email, attempt native Supabase Auth signUp
-      if (!user && (em === 'shahidbcsm@gmail.com' || em === 'mrshahidbabu')) {
-        const targetEmail = em === 'mrshahidbabu' ? 'shahidbcsm@gmail.com' : em
-        const { data: signUpData, error: signUpErr } = await supabase.auth.signUp({
-          email: targetEmail,
-          password: pw,
-          options: {
-            data: {
-              role: 'super_admin',
-              full_name: 'Platform Super Admin',
-            },
-          },
-        })
-
-        if (signUpData?.user) {
-          user = signUpData.user
-          await supabase.from('profiles').upsert([
-            {
-              id: user.id,
-              email: targetEmail,
-              full_name: 'Platform Super Admin',
-              role: 'super_admin',
-              is_active: true,
-              account_status: 'active',
-            },
-          ])
-        } else if (signUpErr) {
-          console.warn('Super Admin auto-signup notice:', signUpErr.message)
-        }
-      }
+      const { data, error } = await supabase.auth.signInWithPassword({ email: em, password: pw })
+      const user = data?.user
 
       if (!user) {
         setLoginError(error?.message || 'Invalid login credentials. Please check your email and password.')
         return
       }
 
-      // 3. Verify role in public.profiles table (never trust client-supplied user_metadata)
+      // Verify role in public.profiles table (never trust client-supplied user_metadata)
       const { data: profile } = await supabase
         .from('profiles')
         .select('role, is_active')
         .eq('id', user.id)
         .maybeSingle()
 
-      if (profile?.role === 'super_admin' || em === 'shahidbcsm@gmail.com') {
-        // Ensure profile has super_admin role recorded
-        await supabase.from('profiles').upsert([
-          {
-            id: user.id,
-            email: user.email || em,
-            full_name: 'Platform Super Admin',
-            role: 'super_admin',
-            is_active: true,
-            account_status: 'active',
-          },
-        ])
+      if (profile?.role === 'super_admin' && profile?.is_active) {
         setIsOwnerAuthenticated(true)
         localStorage.setItem('owner_authenticated', 'true')
       } else {

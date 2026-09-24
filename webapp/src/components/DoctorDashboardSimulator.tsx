@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   Home,
   CalendarDays,
@@ -13,7 +13,6 @@ import {
   Bell,
   Search,
   ChevronDown,
-  ChevronRight,
   Clock,
   Plus,
   ShieldPlus,
@@ -23,24 +22,13 @@ import {
   HelpCircle,
   Building2,
   Star,
-  Timer,
   UserCheck,
   HeartPulse,
   Printer,
-  Share2,
   Send,
   CheckCircle2,
-  AlertCircle,
-  Phone,
-  Mail,
-  Filter,
   Sparkles,
   Zap,
-  TrendingUp,
-  Activity,
-  Check,
-  Shield,
-  Eye,
   Radio,
 } from "lucide-react";
 

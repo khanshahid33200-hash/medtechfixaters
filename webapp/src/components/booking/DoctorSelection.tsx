@@ -1,6 +1,6 @@
 import React from "react";
 import { motion } from "framer-motion";
-import { Stethoscope, Clock, IndianRupee, ArrowRight, UserCheck } from "lucide-react";
+import { Stethoscope, Clock, IndianRupee, ArrowRight } from "lucide-react";
 import { DoctorItem, DepartmentItem } from "../../types/booking";
 
 interface DoctorSelectionProps {

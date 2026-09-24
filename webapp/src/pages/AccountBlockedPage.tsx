@@ -1,6 +1,5 @@
-import React from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ShieldAlert, LogOut, ArrowLeft, Mail, PhoneCall } from 'lucide-react'
+import { ShieldAlert, LogOut, ArrowLeft } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 

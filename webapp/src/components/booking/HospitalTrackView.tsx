@@ -1,27 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import {
   Clock,
   Search,
   Activity,
   Building2,
-  User,
-  Stethoscope,
-  MapPin,
-  CheckCircle2,
   AlertCircle,
   ArrowLeft,
   RefreshCw,
-  Bell,
   Volume2,
   VolumeX,
-  Sparkles,
   ShieldCheck,
-  ChevronRight,
-  Check,
   Smartphone,
-  CreditCard,
-  ArrowRight,
 } from "lucide-react";
 import { supabase } from "../../lib/supabase";
 import { HospitalWorkspace } from "../../types/booking";

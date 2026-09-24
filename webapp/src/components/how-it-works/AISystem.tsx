@@ -1,8 +1,6 @@
-import React from "react"
 import { motion } from "framer-motion"
 import {
   Bell,
-  Bot,
   CalendarCheck,
   BrainCircuit,
   ClipboardList,
@@ -10,9 +8,6 @@ import {
   Route,
   User,
   Sparkles,
-  Zap,
-  CheckCircle2,
-  Brain,
 } from "lucide-react"
 
 const nodes = [

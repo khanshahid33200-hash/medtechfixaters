@@ -8,7 +8,6 @@ import {
   CheckCircle2,
   Stethoscope,
   Clock,
-  ShieldCheck,
   IndianRupee,
 } from "lucide-react";
 import { HospitalWorkspace, DoctorItem } from "../../types/booking";

@@ -17,7 +17,7 @@ BCRYPT PASSWORD HASH GENERATED
 ==============================================
 
 📧 Email: shahidbcsm@gmail.com
-🔐 Password: Shahideeba@19019
+🔐 Password: <REDACTED-ROTATE-THIS-PASSWORD>
 
 🔑 PASSWORD HASH:
 $2a$10$...long-string-here...
@@ -73,7 +73,7 @@ id              | email                  | full_name   | role        | status
 | Field | Value |
 |-------|-------|
 | **Email** | shahidbcsm@gmail.com |
-| **Password** | Shahideeba@19019 |
+| **Password** | <REDACTED-ROTATE-THIS-PASSWORD> |
 | **Role** | Super Admin |
 | **Username Path** | /mrshahidbabu |
 
@@ -84,7 +84,7 @@ id              | email                  | full_name   | role        | status
 1. **Go to login page:** `http://localhost:3000/login`
 2. **Enter:**
    - Email: `shahidbcsm@gmail.com`
-   - Password: `Shahideeba@19019`
+   - Password: `<REDACTED-ROTATE-THIS-PASSWORD>`
 3. **Click "Sign In"**
 4. **Access Super Admin Panel** at `/admin`
 
@@ -128,7 +128,7 @@ WHERE email = 'shahidbcsm@gmail.com';
   ```
 
 **Error: "Authentication failed"**
-- Make sure you're using the correct password: `Shahideeba@19019`
+- Make sure you're using the correct password: `<REDACTED-ROTATE-THIS-PASSWORD>`
 - Verify hash was generated correctly
 
 ---

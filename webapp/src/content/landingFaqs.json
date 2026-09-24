@@ -1,0 +1,86 @@
+[
+  {
+    "question": "How does the QR appointment system work?",
+    "answer": "Every hospital receives a separate QR code and appointment link. Patients scan the QR, view departments and available doctors from that hospital, then continue with AI-guided or direct appointment booking."
+  },
+  {
+    "question": "How does the Inbuilt Healthcare CRM work?",
+    "answer": "The inbuilt CRM provides 360° unified patient profiles, automated WhatsApp & SMS recall reminders 48 hours prior to visits, chronic care pathways (Hypertension, Diabetes), and instant post-OPD feedback collection without needing costly third-party software."
+  },
+  {
+    "question": "Is each hospital's data kept separate?",
+    "answer": "Yes. Each hospital operates inside its own protected workspace. Doctors, patients, appointments, queues, revenue, and records stay separated between hospitals via PostgreSQL Row-Level Security."
+  },
+  {
+    "question": "Can each doctor see every hospital patient?",
+    "answer": "No. Doctors only access patients assigned to them. Hospital administrators access authorized records inside their own hospital."
+  },
+  {
+    "question": "How does AI-guided booking work?",
+    "answer": "The AI collects appointment-related details and helps guide patients toward an appropriate department or available doctor. Patients also have the option to skip AI guidance and book directly."
+  },
+  {
+    "question": "How does the live queue system work?",
+    "answer": "Every doctor has an independent queue. When a consultation is completed, the waiting queue updates for patients assigned to that doctor."
+  },
+  {
+    "question": "Does every hospital receive its own QR code?",
+    "answer": "Yes. Every registered hospital receives a unique QR code and appointment link."
+  },
+  {
+    "question": "Will Hospital H1 see doctors from Hospital H2?",
+    "answer": "No. Hospital QR pages and dashboards show only authorized data from the selected hospital."
+  },
+  {
+    "question": "Can a patient skip AI assistance?",
+    "answer": "Yes. Patients can skip AI guidance and use the normal direct appointment booking flow."
+  },
+  {
+    "question": "What details can patients provide while booking?",
+    "answer": "Patients can provide information such as name, age, contact details, symptoms, known conditions, previous medicine, and previous doctor information where available."
+  },
+  {
+    "question": "Can a hospital administrator manage doctors?",
+    "answer": "Yes. Hospital administrators can manage authorized doctor profiles, appointments, queues, activity, and access status within their hospital."
+  },
+  {
+    "question": "Does each doctor have a separate dashboard?",
+    "answer": "Yes. Each doctor receives an individual dashboard and separate login credentials."
+  },
+  {
+    "question": "Can a hospital administrator view doctor activity?",
+    "answer": "Yes. Hospital administrators can view authorized appointment activity, doctor workload, queues, and patient records inside their hospital."
+  },
+  {
+    "question": "What happens when a doctor is blocked?",
+    "answer": "The doctor's access is removed until an authorized administrator restores the account."
+  },
+  {
+    "question": "What happens when a hospital is blocked?",
+    "answer": "The hospital loses platform access according to the account status configured by the platform administrator."
+  },
+  {
+    "question": "Can the system store patient history?",
+    "answer": "Yes. The platform supports appointment history, consultation records, prescriptions, reports, and other authorized patient information."
+  },
+  {
+    "question": "Does the platform support automated follow-ups?",
+    "answer": "Yes. Hospitals and doctors can manage follow-up reminders, appointment reminders, and patient communication workflows."
+  },
+  {
+    "question": "Will patients receive notifications?",
+    "answer": "Patients can receive appointment confirmations, queue updates, appointment reminders, follow-up reminders, and report notifications."
+  },
+  {
+    "question": "Can doctors receive new appointment notifications?",
+    "answer": "Yes. Doctors can receive notifications for new appointments, queue activity, cancellations, and other relevant updates."
+  },
+  {
+    "question": "Can hospitals track revenue and appointments?",
+    "answer": "Yes. Hospital dashboards support appointment monitoring, patient activity, doctor activity, and revenue tracking."
+  },
+  {
+    "question": "Is there an AI assistant for platform questions?",
+    "answer": "Yes. The MedTech AI Assistant helps visitors understand platform features, hospitals, doctors, QR appointments, live queues, and patient management."
+  }
+]

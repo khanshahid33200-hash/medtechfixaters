@@ -6,7 +6,6 @@ import ProtectedRoute from './components/ProtectedRoute'
 
 // Pages
 import LandingPage from './pages/LandingPage'
-import ProductPage from './pages/ProductPage'
 import AboutUsPage from './pages/AboutUsPage'
 import FeaturesPage from './pages/FeaturesPage'
 import UpcomingFeaturesPage from './pages/UpcomingFeaturesPage'
@@ -26,20 +25,14 @@ import IntakePage from './pages/IntakePage'
 import TrackPage from './pages/TrackPage'
 import RxPage from './pages/RxPage'
 import DisplayBoard from './pages/DisplayBoard'
-import PaymentsPage from './pages/PaymentsPage'
 import Login from './pages/Login'
 import AccountBlockedPage from './pages/AccountBlockedPage'
 import Dashboard from './pages/Dashboard'
-import Appointments from './pages/Appointments'
 import Checkin from './pages/Checkin'
-import Queue from './pages/Queue'
-import Reports from './pages/Reports'
-import QRKiosk from './pages/QRKiosk'
-import History from './pages/History'
-import DoctorProfile from './pages/DoctorProfile'
 import OwnerAdmin from './pages/OwnerAdmin'
 import DoctorSignupPage from './pages/DoctorSignupPage'
 import DoctorOnboardingPage from './pages/DoctorOnboardingPage'
+import MedicinesPage from './pages/MedicinesPage'
 // (Legacy Hospital Admin system deleted & merged into Hospital Dashboard system)
 
 // Medtech Fixaters Hospital Dashboard Pages (design.md)
@@ -70,10 +63,6 @@ function App() {
     // logged-out/broken session onto one hospital's data.
     const hospitalId = localStorage.getItem('hospital_id')
     if (hospitalId) apiClient.setClinicId(hospitalId)
-
-    apiClient.healthCheck().catch(() => {
-      console.warn('Backend server running locally')
-    })
   }, [])
 
   return (
@@ -96,8 +85,11 @@ function App() {
         <Route path="/book-demo" element={<ContactPage />} />
         <Route path="/demo" element={<ContactPage />} />
         <Route path="/privacy" element={<PrivacyPolicyPage />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
         <Route path="/terms" element={<TermsPage />} />
+        <Route path="/terms-and-conditions" element={<TermsPage />} />
         <Route path="/refund-policy" element={<RefundPolicyPage />} />
+        <Route path="/refund-and-cancellation" element={<RefundPolicyPage />} />
         <Route path="/thank-you" element={<ThankYouPage />} />
 
         {/* Public Patient Self-Service Workflows & AI/Manual QR Appointment Booking */}
@@ -245,6 +237,12 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/medicines" element={<ProtectedRoute requiredRole="doctor"><MedicinesPage /></ProtectedRoute>} />
+        <Route path="/medicines/new" element={<ProtectedRoute requiredRole="doctor"><MedicinesPage /></ProtectedRoute>} />
+        <Route path="/medicines/import" element={<ProtectedRoute requiredRole="doctor"><MedicinesPage /></ProtectedRoute>} />
+        <Route path="/medicines/rules" element={<ProtectedRoute requiredRole="doctor"><MedicinesPage /></ProtectedRoute>} />
+        <Route path="/medicines/tests" element={<ProtectedRoute requiredRole="doctor"><MedicinesPage /></ProtectedRoute>} />
+        <Route path="/medicines/import-history" element={<ProtectedRoute requiredRole="doctor"><MedicinesPage /></ProtectedRoute>} />
         <Route
           path="/payments"
           element={

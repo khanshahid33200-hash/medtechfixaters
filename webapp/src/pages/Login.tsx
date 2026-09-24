@@ -15,7 +15,6 @@ import {
   Stethoscope,
   Users,
   XCircle,
-  Sparkles,
   ChevronLeft,
 } from "lucide-react";
 

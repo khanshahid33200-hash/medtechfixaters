@@ -10,9 +10,7 @@ import {
   Upload,
   Trash2,
   CheckCircle2,
-  Save,
-  ShieldCheck
-} from 'lucide-react'
+  Save} from 'lucide-react'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 

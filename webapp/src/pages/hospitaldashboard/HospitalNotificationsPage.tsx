@@ -1,11 +1,9 @@
-import React, { useState } from 'react'
+import { useState } from 'react'
 import {
-  Bell,
   CheckCheck,
   Calendar,
   Layers,
   Stethoscope,
-  Shield,
   Trash2,
   CheckCircle2
 } from 'lucide-react'

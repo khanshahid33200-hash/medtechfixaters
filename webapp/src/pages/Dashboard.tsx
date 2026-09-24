@@ -1,16 +1,15 @@
 import React, { useState, useEffect } from 'react'
-import { Link, useNavigate, useLocation } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import {
   Users, Activity, Bell,
-  Settings, ChevronDown, CheckCircle2,
-  Calendar, LogOut, ChevronRight,
+  Settings, CheckCircle2,
+  Calendar, ChevronRight,
   AlertCircle, Search, Plus, Printer,
   X, UserCheck, Stethoscope, Layers, Phone,
-  Clock, Volume2, FileText, CheckCircle,
-  Star, Upload, Edit3, Trash2, DollarSign, Send, Eye, ShieldCheck,
-  Check, QrCode, Download, Copy, Share2, ExternalLink, CalendarDays,
-  FlaskConical, Sparkles, Paperclip, Shield, Tag, FilePlus2, Building2
-} from 'lucide-react'
+  Clock, FileText, CheckCircle,
+  Upload, Edit3, DollarSign, Send, Eye, ShieldCheck,
+  Check, QrCode, Download, Copy, ExternalLink, CalendarDays,
+  FlaskConical, Sparkles, Paperclip, Shield} from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 import { supabase } from '../lib/supabase'
@@ -37,7 +36,6 @@ import {
   addWalkInAppointment,
   completeConsultation,
   subscribeToDoctorAppointments,
-  getDoctorStats,
   getPatientProfile,
   updatePatientProfile,
   getPatientVisitHistory,

@@ -1,13 +1,13 @@
 // Supabase Edge Function: admin-ops
 //
 // Hosts privileged server-side operations with elevated service-role privileges.
-// Automatically archives all user credentials into public.user_credentials_vault.
 //
 // Deploy:
 //   supabase functions deploy admin-ops --no-verify-jwt
 //
 // Set project secrets:
 //   supabase secrets set PROJECT_SERVICE_ROLE_KEY=your_service_role_key
+//   supabase secrets set ALLOWED_ORIGINS=https://www.medtechfixaters.in,https://medtechfixaters.in
 
 import { createClient } from 'npm:@supabase/supabase-js@2.45.4'
 
@@ -15,10 +15,28 @@ const SUPABASE_URL = Deno.env.get('SUPABASE_URL') || 'https://yweywvnivyftwtglxa
 const SUPABASE_ANON_KEY = Deno.env.get('SUPABASE_ANON_KEY') || ''
 const SERVICE_ROLE_KEY = Deno.env.get('PROJECT_SERVICE_ROLE_KEY') || Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+const ALLOWED_ORIGINS = (Deno.env.get('ALLOWED_ORIGINS') ||
+  'https://www.medtechfixaters.in,https://medtechfixaters.in,http://localhost:3000,http://localhost:5173')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean)
+
+// Roles each caller may assign. Nobody can mint a super_admin through this function.
+const ASSIGNABLE_ROLES: Record<string, string[]> = {
+  super_admin: ['doctor', 'staff', 'hospital_admin'],
+  hospital_admin: ['doctor', 'staff'],
+}
+
+let corsHeaders: Record<string, string> = {}
+
+function buildCorsHeaders(req: Request) {
+  const origin = req.headers.get('Origin') ?? ''
+  return {
+    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    Vary: 'Origin',
+  }
 }
 
 function json(body: unknown, status = 200) {
@@ -32,6 +50,7 @@ const isUUID = (str?: string) =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str || '')
 
 Deno.serve(async (req) => {
+  corsHeaders = buildCorsHeaders(req)
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
   }
@@ -55,11 +74,11 @@ Deno.serve(async (req) => {
 
     const { data: callerProfile } = await callerClient
       .from('profiles')
-      .select('role, hospital_id, is_active')
+      .select('role, hospital_id, is_active, account_status')
       .eq('id', user.id)
       .maybeSingle()
 
-    if (!callerProfile || !callerProfile.is_active) {
+    if (!callerProfile || !callerProfile.is_active || (callerProfile.account_status && callerProfile.account_status !== 'active')) {
       return json({ success: false, error: 'Account inactive or not found.' }, 403)
     }
 
@@ -89,12 +108,15 @@ Deno.serve(async (req) => {
 
         const email = String(payload?.email || '').trim().toLowerCase()
         const password = String(payload?.password || '').trim()
-        const role = payload?.role || 'doctor'
+        const role = String(payload?.role || 'doctor')
+        if (!(ASSIGNABLE_ROLES[callerProfile.role] || []).includes(role)) {
+          return json({ success: false, error: `Not allowed to create ${role} accounts.` }, 403)
+        }
         const fullName = payload?.full_name || email.split('@')[0]
         const doctorCode = payload?.doctor_code || `DOC-${Math.floor(1000 + Math.random() * 9000)}`
 
-        if (!email || password.length < 6) {
-          return json({ success: false, error: 'A valid email and password (min 6 chars) are required.' }, 400)
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) || password.length < 8) {
+          return json({ success: false, error: 'A valid email and password (min 8 chars) are required.' }, 400)
         }
 
         let resolvedDeptId: string | null = null
@@ -123,6 +145,9 @@ Deno.serve(async (req) => {
           email,
           password,
           email_confirm: true,
+          // app_metadata is only writable with the service-role key; the signup trigger
+          // uses this marker to skip auto-creating a private clinic for this account.
+          app_metadata: { provisioned_by: 'admin-ops' },
           user_metadata: {
             full_name: fullName,
             role,
@@ -150,6 +175,8 @@ Deno.serve(async (req) => {
           department_id: resolvedDeptId,
           department: resolvedDeptName,
           specialization: payload?.specialization || 'Consultant Specialist',
+          client_type: 'hospital',
+          onboarding_status: 'ACTIVE',
           account_status: 'active',
           is_active: true,
         })
@@ -175,7 +202,7 @@ Deno.serve(async (req) => {
           ])
         }
 
-        // Auto-save credentials in public.user_credentials_vault
+        // Record who was provisioned — never the password itself.
         await admin.from('user_credentials_vault').insert([
           {
             hospital_id: payload.hospital_id,
@@ -184,7 +211,7 @@ Deno.serve(async (req) => {
             role,
             full_name: fullName,
             email,
-            initial_password: password,
+            initial_password: '[not stored - use password reset]',
             department: resolvedDeptName,
           },
         ])
@@ -193,7 +220,7 @@ Deno.serve(async (req) => {
           success: true,
           user_id: newUserId,
           doctor_code: doctorCode,
-          message: 'User created and credentials securely vaulted successfully.',
+          message: 'User created successfully.',
         })
       }
 
@@ -279,7 +306,10 @@ Deno.serve(async (req) => {
           .select()
           .maybeSingle()
 
-        if (error) return json({ success: false, error: error.message }, 400)
+        if (error) {
+          console.error('regenerate_qr_token failed:', error.message)
+          return json({ success: false, error: 'Could not regenerate the QR code.' }, 400)
+        }
         return json({ success: true, qr: data })
       }
 
@@ -287,6 +317,7 @@ Deno.serve(async (req) => {
         return json({ success: false, error: `Unknown action: ${action}` }, 400)
     }
   } catch (e) {
-    return json({ success: false, error: String(e) }, 500)
+    console.error('admin-ops error:', e)
+    return json({ success: false, error: 'Internal error.' }, 500)
   }
 })

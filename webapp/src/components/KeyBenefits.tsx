@@ -14,10 +14,6 @@ import {
   BarChart3,
   Stethoscope,
   MessageSquare,
-  Zap,
-  ShieldCheck,
-  Activity,
-  CheckCircle2,
 } from "lucide-react";
 
 // OPD Core Benefits

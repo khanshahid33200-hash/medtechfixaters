@@ -39,7 +39,7 @@ export function validateEmail(email: string): ValidationResult {
  */
 export function cleanPhoneNumber(phone: string): string {
   if (!phone) return ''
-  let cleaned = phone.replace(/[\s\-\(\)\.]/g, '')
+  let cleaned = phone.replace(/[\s\-().]/g, '')
   if (cleaned.startsWith('+91')) {
     cleaned = cleaned.substring(3)
   } else if (cleaned.startsWith('0091')) {
@@ -115,4 +115,15 @@ export function validateName(name: string): ValidationResult {
     return { isValid: false, error: 'Name must contain letters.' }
   }
   return { isValid: true }
+}
+
+/**
+ * Random temporary password for a newly provisioned account (shown once to the
+ * admin who creates it). Replaces a shared hard-coded default.
+ */
+export function generateTempPassword(length = 14): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%'
+  const bytes = new Uint32Array(length)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => chars[b % chars.length]).join('')
 }

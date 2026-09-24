@@ -1,4 +1,4 @@
-import React, { useState } from "react"
+import { useState } from "react"
 import { motion } from "framer-motion"
 import {
   BarChart3,
@@ -7,13 +7,6 @@ import {
   ClipboardList,
   IndianRupee,
   Users,
-  CheckCircle2,
-  Radio,
-  ArrowUpRight,
-  ShieldCheck,
-  TrendingUp,
-  Activity,
-  Layers,
 } from "lucide-react"
 
 const features = [
