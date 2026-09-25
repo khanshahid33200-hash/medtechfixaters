@@ -50,10 +50,12 @@ import HospitalUsersRolesPage from './pages/hospitaldashboard/HospitalUsersRoles
 import HospitalQRManagementPage from './pages/hospitaldashboard/HospitalQRManagementPage'
 import HospitalChatPage from './pages/hospitaldashboard/HospitalChatPage'
 import HospitalLogsPage from './pages/hospitaldashboard/HospitalLogsPage'
+import HospitalCrmPage from './pages/hospitaldashboard/HospitalCrmPage'
 
 // Components
 import CookieBanner from './components/CookieBanner'
 import ScrollToTop from './components/ScrollToTop'
+import RouteFade from './components/motion/RouteFade'
 import StickyChatbot from './components/StickyChatbot'
 
 function App() {
@@ -68,6 +70,7 @@ function App() {
   return (
     <AuthProvider>
       <ScrollToTop />
+      <RouteFade>
       <Routes>
         {/* Public Marketing & Legal Pages */}
         <Route path="/" element={<LandingPage />} />
@@ -112,6 +115,7 @@ function App() {
 
         {/* Sign In Portals & Access Control */}
         <Route path="/account-blocked" element={<AccountBlockedPage />} />
+        <Route path="/signup" element={<DoctorSignupPage />} />
         <Route path="/signup/doctor" element={<DoctorSignupPage />} />
         <Route path="/doctor/signup" element={<DoctorSignupPage />} />
         <Route path="/doctor/onboarding" element={<DoctorOnboardingPage />} />
@@ -153,6 +157,7 @@ function App() {
         <Route path="/hospitaldashboard/qr" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalQRManagementPage /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/chat" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalChatPage /></ProtectedRoute>} />
         <Route path="/hospitaldashboard/logs" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalLogsPage /></ProtectedRoute>} />
+        <Route path="/hospitaldashboard/crm" element={<ProtectedRoute requiredRole="hospital_admin"><HospitalCrmPage /></ProtectedRoute>} />
 
         {/* Redirect Legacy Hospital Admin Routes to Hospital Dashboard */}
         <Route path="/hospitaladmin-dashboard" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
@@ -287,6 +292,7 @@ function App() {
         {/* Custom 404 Catch-All Route */}
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
+      </RouteFade>
 
       {/* Global Sticky AI Chatbot */}
       <StickyChatbot />

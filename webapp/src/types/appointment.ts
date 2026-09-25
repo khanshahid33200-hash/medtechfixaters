@@ -49,6 +49,7 @@ export interface AppointmentPayload {
   patientEmail?: string;
   intake?: PatientIntake;
   appointmentDate?: string;
+  appointmentTime?: string;
 }
 
 export interface HospitalWorkspace {

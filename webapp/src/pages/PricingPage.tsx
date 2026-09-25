@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Check } from 'lucide-react'
+import { Check, Globe, Sparkles, ShieldCheck, Zap, Smartphone } from 'lucide-react'
 import { motion } from 'framer-motion'
 import PublicHeader from '../components/PublicHeader'
 import PublicFooter from '../components/PublicFooter'
@@ -16,7 +16,7 @@ const PLAN_UI: Record<string, { cta: string; popular: boolean }> = {
 export default function PricingPage() {
   useSEO({
     title: 'Pricing Plans — Transparent OPD Software | MedTech Fixaters',
-    description: 'Affordable, transparent pricing plans for standalone clinics, multi-doctor polyclinics, and enterprise multi-bed hospitals.',
+    description: 'Affordable, transparent pricing plans for standalone clinics, multi-doctor polyclinics, and enterprise multi-bed hospitals. Get a free custom website with any yearly plan.',
   })
 
   const [modalOpen, setModalOpen] = useState(false)
@@ -44,18 +44,38 @@ export default function PricingPage() {
             Scale your outpatient department with confidence. All plans include automated QR check-in, live queues, and 30-sec digital prescriptions.
           </p>
 
+          {/* Special Annual Perk Banner */}
+          <div className="pt-2">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="inline-flex flex-wrap items-center justify-center gap-2 px-4 py-2 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50 to-indigo-50 border border-orange-200/80 text-orange-950 text-xs sm:text-sm font-semibold shadow-xs"
+            >
+              <span className="flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-br from-orange-500 to-amber-500 text-white text-xs shadow-sm">
+                🎁
+              </span>
+              <span>
+                <strong>Annual Exclusive:</strong> Get a <strong>Free Custom Clinic / Hospital Website</strong> (worth ₹15,000) when you buy any yearly plan!
+              </span>
+            </motion.div>
+          </div>
+
           {/* Billing Cycle Toggle */}
           <div className="pt-4 flex items-center justify-center gap-3">
             <span className={`text-xs font-bold ${billingCycle === 'monthly' ? 'text-slate-900' : 'text-slate-400'}`}>Monthly</span>
             <button
               onClick={() => setBillingCycle(billingCycle === 'monthly' ? 'annual' : 'monthly')}
-              className="w-12 h-6 rounded-full bg-[#5B4DF5] p-1 flex items-center transition-all"
+              aria-label="Toggle Billing Cycle"
+              className="w-12 h-6 rounded-full bg-[#5B4DF5] p-1 flex items-center transition-all cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-[#5B4DF5]/40"
             >
               <div className={`w-4 h-4 rounded-full bg-white transition-transform ${billingCycle === 'annual' ? 'translate-x-6' : 'translate-x-0'}`} />
             </button>
             <span className={`text-xs font-bold flex items-center gap-1.5 ${billingCycle === 'annual' ? 'text-slate-900' : 'text-slate-400'}`}>
               <span>Annual</span>
-              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold">Save 20%</span>
+              <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-extrabold flex items-center gap-1">
+                <span>Save 20% + Free Website</span>
+                <Sparkles size={10} className="text-emerald-600" />
+              </span>
             </span>
           </div>
         </div>
@@ -94,6 +114,13 @@ export default function PricingPage() {
                     <span className="text-xs font-bold text-slate-400">/ month</span>
                   </div>
 
+                  {billingCycle === 'annual' && (
+                    <div className="p-2.5 rounded-xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/80 flex items-center gap-2 text-amber-900 text-xs font-bold shadow-2xs">
+                      <Globe size={15} className="text-orange-600 shrink-0" />
+                      <span>Includes Free Custom Website</span>
+                    </div>
+                  )}
+
                   <div className="pt-4 border-t border-slate-100 space-y-2.5">
                     {p.features.map((feat, i) => (
                       <div key={i} className="flex items-start gap-2.5 text-xs text-slate-700 font-medium">
@@ -107,7 +134,7 @@ export default function PricingPage() {
                 <div className="pt-6">
                   <button
                     onClick={() => setModalOpen(true)}
-                    className={`w-full py-3.5 rounded-full text-xs font-bold transition-all shadow-sm ${
+                    className={`w-full py-3.5 rounded-full text-xs font-bold transition-all shadow-sm cursor-pointer ${
                       p.popular
                         ? 'bg-[#5B4DF5] hover:bg-[#4939E8] text-white shadow-indigo-500/25'
                         : 'bg-slate-900 hover:bg-black text-white'
@@ -119,6 +146,55 @@ export default function PricingPage() {
               </motion.div>
             )
           })}
+        </div>
+      </section>
+
+      {/* Free Website Feature Highlight Section */}
+      <section className="py-16 px-6 bg-gradient-to-b from-white via-slate-50 to-white border-t border-slate-100">
+        <div className="max-w-5xl mx-auto">
+          <div className="text-center space-y-3 mb-12">
+            <span className="px-3.5 py-1.5 rounded-full bg-orange-100 text-orange-800 text-xs font-extrabold inline-flex items-center gap-1.5">
+              <Sparkles size={13} /> Yearly Plan Exclusive Perk
+            </span>
+            <h2 className="text-3xl sm:text-4xl font-black tracking-tight text-slate-900">
+              Get a Free Professional Website for Your Practice
+            </h2>
+            <p className="text-slate-600 text-sm sm:text-base max-w-2xl mx-auto">
+              When you purchase any annual subscription, our design and engineering team builds, deploys, and manages a custom website for your clinic or hospital at zero extra charge.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+                <Globe size={20} />
+              </div>
+              <h3 className="font-bold text-slate-900 text-base">Custom Domain & Branding</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Branded to your hospital or clinic colors, logo, doctor profiles, clinical departments, and your own custom domain.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-indigo-100 text-[#5B4DF5] flex items-center justify-center font-bold">
+                <Smartphone size={20} />
+              </div>
+              <h3 className="font-bold text-slate-900 text-base">Integrated Online Booking & QR</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Patients can directly book appointments, generate QR queue tokens, and view live OPD availability straight from your site.
+              </p>
+            </div>
+
+            <div className="p-6 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center font-bold">
+                <Zap size={20} />
+              </div>
+              <h3 className="font-bold text-slate-900 text-base">Fast Hosting & Local SEO</h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Blazing fast SSL hosting, Google Search indexing, and local Google Maps optimization included with zero maintenance fees.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
 

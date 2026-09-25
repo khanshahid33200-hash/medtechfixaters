@@ -82,5 +82,9 @@
   {
     "question": "Is there an AI assistant for platform questions?",
     "answer": "Yes. The MedTech AI Assistant helps visitors understand platform features, hospitals, doctors, QR appointments, live queues, and patient management."
+  },
+  {
+    "question": "Do I get a free website with the yearly plan?",
+    "answer": "Yes! When you subscribe to any yearly plan (Clinic Starter, Hospital Pro, or Enterprise Mesh), we design, build, and host a custom, mobile-friendly website for your clinic or hospital at zero extra cost, including custom domain setup, online appointment booking, doctor profiles, and Google SEO."
   }
 ]

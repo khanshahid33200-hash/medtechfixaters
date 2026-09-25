@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 import { supabase } from '../lib/supabase'
+import PlatformAiSettings from '../components/ai/PlatformAiSettings'
 
 interface HospitalItem {
   id: string
@@ -2876,6 +2877,8 @@ export default function OwnerAdmin() {
         {/* ─── VIEW 14: FEATURE SETTINGS ──────────────────────── */}
         {activeNav === 'features' && (
           <div className="space-y-6">
+            <PlatformAiSettings />
+
             <div>
               <h2 className="text-xl font-black text-slate-900">Platform Feature Flags & Switchboard</h2>
               <p className="text-xs text-slate-500">Toggle live microservices and operational features across all hospital instances.</p>

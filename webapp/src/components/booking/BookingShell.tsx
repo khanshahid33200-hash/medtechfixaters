@@ -3,8 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import { LiquidBackground } from "./LiquidBackground";
 import { HospitalHeader } from "./HospitalHeader";
 import { BookingHome } from "./BookingHome";
-import { AIBookingFlow } from "./AIBookingFlow";
-import { AIRecommendation } from "./AIRecommendation";
+import { ConversationalBooking } from "./ConversationalBooking";
 import { ManualBookingFlow } from "./ManualBookingFlow";
 import { BookingSuccess } from "./BookingSuccess";
 import { HospitalTrackView } from "./HospitalTrackView";
@@ -14,7 +13,6 @@ import {
   DoctorItem,
   DepartmentItem,
   PatientIntake,
-  DoctorRecommendation,
   BookingResult,
 } from "../../types/booking";
 import { getHospitalByTokenOrId } from "../../services/hospitalService";
@@ -39,9 +37,6 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
   const [trackInitialToken, setTrackInitialToken] = useState<string>("");
 
   // Temporary Flow States
-  const [patientIntake, setPatientIntake] = useState<PatientIntake | null>(null);
-  const [aiRecommendation, setAiRecommendation] =
-    useState<DoctorRecommendation | null>(null);
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorItem | null>(null);
 
   // Final Result State
@@ -132,75 +127,6 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
     };
   }, [tokenOrId]);
 
-  // Handle AI Intake Completion -> Show Recommendation Card
-  const handleAIIntakeComplete = (
-    intake: PatientIntake,
-    recommendation: DoctorRecommendation
-  ) => {
-    setPatientIntake(intake);
-    setAiRecommendation(recommendation);
-
-    // Match doctor object from hospital roster if present
-    const doc = doctors.find((d) => d.id === recommendation.doctorId) || doctors[0];
-    if (doc) setSelectedDoctor(doc);
-
-    setScreen("ai-recommendation");
-  };
-
-  // Handle AI Recommendation Final Confirmation -> Create Real Database Token
-  const handleConfirmAIRecommendation = async () => {
-    if (!hospital || !patientIntake || !aiRecommendation) return;
-    setSubmitting(true);
-
-    try {
-      const docId = selectedDoctor?.id || aiRecommendation.doctorId;
-      if (!docId) {
-        throw new Error("No doctor selected for booking.");
-      }
-
-      const newAppt = await createAppointment({
-        hospitalId: hospital.id,
-        doctorId: docId,
-        bookingMethod: "AI",
-        patientName: patientIntake.fullName,
-        patientPhone: patientIntake.contactNumber,
-        patientAge: patientIntake.age,
-        patientGender: patientIntake.gender || "Male",
-        intake: patientIntake as any,
-      });
-
-      const res: BookingResult = {
-        id: newAppt.id,
-        hospital_id: hospital.id,
-        doctor_id: docId,
-        doctor_name: newAppt.doctor_name,
-        department_name: newAppt.department_name,
-        hospital_name: newAppt.hospital_name || hospital.name,
-        patient_id: newAppt.patient_id,
-        patient_number: newAppt.patient_number,
-        patient_name: newAppt.patient_name,
-        patient_phone: newAppt.patient_phone,
-        booking_method: "AI",
-        token_number: newAppt.token_number,
-        queue_number: newAppt.queue_number,
-        tracking_token: newAppt.tracking_token,
-        queue_position: newAppt.queue_position,
-        patients_ahead: newAppt.patients_ahead,
-        estimated_wait_mins: newAppt.estimated_wait_mins,
-        appointment_date: newAppt.appointment_date,
-        created_at: newAppt.created_at,
-      };
-
-      setBookingResult(res);
-      setScreen("success");
-    } catch (err: any) {
-      console.error("AI Booking creation error:", err);
-      alert(err.message || "Failed to book appointment. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   // Handle Manual Booking Final Confirmation -> Create Real Database Token
   const handleConfirmManualBooking = async (
     patient: PatientIntake,
@@ -256,8 +182,6 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
 
   // Reset for another booking
   const handleBookAnother = () => {
-    setPatientIntake(null);
-    setAiRecommendation(null);
     if (!hospital?.is_individual_doctor) {
       setSelectedDoctor(null);
     }
@@ -293,26 +217,16 @@ export const BookingShell: React.FC<BookingShellProps> = ({ tokenOrId }) => {
             )}
 
             {screen === "ai-chat" && (
-              <AIBookingFlow
+              <ConversationalBooking
                 key="ai-chat"
                 hospital={hospital}
+                bookingRef={hospital?.qrToken || tokenOrId}
                 doctors={doctors}
-                departments={departments}
-                onCompleteAIIntake={handleAIIntakeComplete}
+                onBooked={(result) => {
+                  setBookingResult(result);
+                  setScreen("success");
+                }}
                 onBack={() => setScreen("home")}
-              />
-            )}
-
-            {screen === "ai-recommendation" && aiRecommendation && (
-              <AIRecommendation
-                key="ai-recommendation"
-                recommendation={aiRecommendation}
-                matchedDoctor={selectedDoctor || undefined}
-                isIndividualDoctor={Boolean(hospital?.is_individual_doctor)}
-                loading={submitting}
-                onConfirm={handleConfirmAIRecommendation}
-                onChangeDoctor={() => setScreen("manual-doctor")}
-                onSwitchManual={() => setScreen("manual-details")}
               />
             )}
 

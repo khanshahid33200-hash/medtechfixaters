@@ -19,6 +19,8 @@ import { useDoctorDashboardStats, resolveRange } from '../hooks/useDoctorDashboa
 import type { DateRangeKey } from '../hooks/useDashboardStats'
 import { createTestRequest, createFollowUp, createDoctorRequest, createEmergencyRequest, DoctorRequestType, fetchFollowUps, updateFollowUpStatus, FollowUpRow } from '../services/consultationWorkflowService'
 import { useAppointmentsRealtime } from '../hooks/useAppointmentsRealtime'
+import CrmOverview from '../components/crm/CrmOverview'
+import DoctorAiStatus from '../components/ai/DoctorAiStatus'
 import { rescheduleAppointment as rescheduleAppointmentSvc } from '../services/appointmentService'
 import {
   fetchAvailability,
@@ -2460,6 +2462,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
               <p className="text-xs text-slate-500">Real follow-up appointments — each has its own F-### token, separate from today's regular queue.</p>
             </div>
 
+            <CrmOverview />
+
             {/* Bucket counts — real, from public.follow_ups */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               {([
@@ -2722,6 +2726,8 @@ export default function Dashboard({ initialTab = 'dashboard' }: DashboardProps) 
         ═══════════════════════════════════════════════════════════════════ */}
         {activeNav === 'settings' && (
           <section className="space-y-6">
+            <DoctorAiStatus />
+
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
               <div>
                 <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2">

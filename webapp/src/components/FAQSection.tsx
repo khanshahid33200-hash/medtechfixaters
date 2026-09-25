@@ -101,11 +101,11 @@ const websiteKnowledge: KnowledgeItem[] = [
   },
   {
     id: "pricing",
-    category: "Pricing & Onboarding",
-    keywords: ["price", "pricing", "cost", "plan", "trial", "subscription", "buy", "quote", "onboarding"],
-    patterns: [/price/i, /cost/i, /plan/i, /trial/i, /subscription/i, /buy/i],
-    title: "Deployment Plans & 15-Minute Live Demo",
-    response: "MedTech Fixaters is delivered as a modern cloud platform:\n• 15-Minute Live Walkthrough: See the platform in action with our clinical implementation team.\n• 24-48 Hour Setup: Zero expensive local servers or hardware required—runs in any modern browser, tablet, or smartphone.\n• Predictable Modular Plans: Flexible for standalone clinics, polyclinics, and multi-specialty hospitals.\n👉 You can type 'Book a demo' right here or click the demo button above to schedule!",
+    category: "Pricing & Free Website Offer",
+    keywords: ["price", "pricing", "cost", "plan", "trial", "subscription", "buy", "quote", "onboarding", "yearly", "annual", "website", "free website"],
+    patterns: [/price/i, /cost/i, /plan/i, /trial/i, /subscription/i, /buy/i, /yearly/i, /annual/i, /free.*website/i, /website/i],
+    title: "Deployment Plans & Free Website on Yearly Plans",
+    response: "MedTech Fixaters offers flexible plans and special annual benefits:\n• 🎁 Free Custom Website: Buy any yearly plan and get a custom-designed, mobile-friendly clinic/hospital website with online booking and Google SEO included at ₹0 extra cost!\n• 15-Minute Live Walkthrough: See the platform in action with our clinical implementation team.\n• 24-48 Hour Setup: Zero expensive local servers or hardware required—runs in any modern browser, tablet, or smartphone.\n• Transparent Plans: Clinic Starter (₹1,499/mo billed annually), Hospital Pro (₹3,999/mo billed annually), and Enterprise Mesh.\n👉 You can type 'Book a demo' right here or visit /pricing to explore all tiers!",
   },
   {
     id: "about",

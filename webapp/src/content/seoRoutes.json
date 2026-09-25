@@ -10,17 +10,24 @@
   "routes": [
     {
       "path": "/",
-      "title": "MedTech Fixaters — Your Hospital. Connected Digitally",
-      "description": "A connected digital healthcare platform where hospitals manage operations, doctors manage appointments and patients, and patients book via unique hospital QR codes.",
-      "h1": "Your Hospital. Connected Digitally.",
-      "lead": "One AI-powered connected platform for hospital administration, inbuilt patient CRM, doctor workspaces, intelligent booking, automated workflows, and live queues. 360° patient journey tracking, automated WhatsApp recall campaigns, and chronic care management built directly in.",
+      "title": "MedTech Fixaters | OPD Queue & Prescription Software",
+      "description": "QR appointment booking, live patient queues and digital prescriptions for clinics and hospitals in India. Book a free demo of MedTech Fixaters.",
+      "h1": "Run your OPD without the crowd.",
+      "lead": "Patients book by scanning your QR code and follow their turn on their phone. Doctors prescribe in seconds. Patients need no app and any phone works, every doctor gets a separate login, and every clinic gets its own QR code and booking link.",
       "sections": [
-        "Smart hospital QR appointment system",
-        "Real-time live queue",
-        "Inbuilt hospital and patient CRM",
-        "Private doctor workspaces",
-        "Hospital administration dashboard",
-        "Multi-tenant data isolation"
+        "Set up MedTech Fixaters in 3 simple steps: create your clinic profile, add your team, schedule and manage bookings",
+        "Who MedTech Fixaters is built for: single-doctor clinics, small clinics, polyclinics and hospitals",
+        "What we offer: a clinic dashboard with appointments, live patient status, revenue and doctor-wise activity",
+        "A website for your clinic with doctor and department details and online appointment booking",
+        "MedTechFixaters AI, AI that works beyond appointment booking: conversational booking from plain language with real availability, a website assistant that answers only from approved public information, automatic follow-up reminders (email live, WhatsApp coming soon) and CRM next actions; plus Gemini-powered clinical suggestions for medicines, tests and patient advice that the doctor reviews and decides",
+        "How a visit works for your patients: scan the QR code, wait from anywhere, meet the doctor",
+        "Doctor workspace",
+        "Reception and live queue",
+        "Digital prescriptions",
+        "Follow-ups",
+        "Hospital dashboard",
+        "How doctors run their clinic: set OPD hours and leave days, keep a medicine list, call the next patient, add walk-ins, write prescriptions, track follow-ups and daily collections. Hospital admins also add doctors and departments, manage staff roles, see reports and every doctor’s live queue.",
+        "Your clinic’s data is secure and protected"
       ],
       "faqs": "landing",
       "priority": "1.0",
@@ -28,33 +35,34 @@
     },
     {
       "path": "/how-it-works",
-      "title": "How MedTech Fixaters Works — One Connected Healthcare Platform",
-      "description": "MedTech Fixaters connects patients, hospitals, and doctors through one AI-powered healthcare platform. Explore patient QR booking, hospital operations, and doctor workspaces.",
-      "h1": "One Connected Platform. Three Distinct Journeys.",
+      "title": "How It Works | MedTech Fixaters OPD & Queue Software",
+      "description": "How MedTech Fixaters works for patients, doctors and hospital admins: QR booking, live queue tracking, consultations with patient history, prescriptions and follow-ups.",
+      "h1": "From the QR code at reception to the prescription on their phone",
       "sections": [
-        "From QR Scan To Consultation. Frictionless & Fully Transparent.",
-        "Your Entire Hospital Operations. Unified In One Real-Time Dashboard.",
-        "A Distraction-Free Clinical Desk. Engineered for Physician Speed.",
-        "Intelligent Automation. Supporting Every Clinical Step.",
-        "Every Journey Connects. Zero Data Overlap."
+        "Getting set up: sign up, add departments and doctors, print your QR code",
+        "For patients: scan the QR code, book with the AI assistant or directly, fill in details once, get a token and track the live queue, get called in, receive the prescription on the phone",
+        "For doctors: open your workspace, run the live queue, consult with the patient history on screen, write the prescription from your medicine library, set a follow-up and call the next patient",
+        "For hospital admins: hospital dashboard, every live queue, doctors, departments and roles, hospital QR, reports and analytics, team chat, activity log",
+        "What happens to the data: each hospital is separate, access by role, prescriptions kept as issued"
       ],
       "priority": "0.9",
       "changefreq": "monthly"
     },
     {
       "path": "/features",
-      "title": "Platform Features — MedTech Fixaters | Connected Healthcare Operating System",
-      "description": "Explore MedTech Fixaters in depth: Connected hospital administration, separate doctor workspaces, smart QR appointments, live queue management, and isolated multi-tenant security.",
-      "h1": "All The Tools Your Hospital Needs. Connected In One AI-Powered Platform.",
+      "title": "Features | MedTech Fixaters OPD & Clinic Management Software",
+      "description": "Crowd management, secure cloud EMR, a live clinic dashboard, Patient 360, a clinic website with online booking, clinical suggestions and prescriptions on your letterhead.",
+      "h1": "Everything your clinic needs, in one simple system",
       "sections": [
-        "Everything Connected. Built For Every Workflow.",
-        "MedTech AI. Working Across Your Hospital.",
-        "Complete Control. One Hospital Dashboard.",
-        "A Private Workspace For Every Doctor.",
-        "A Better Patient Journey. From Booking To Reports.",
-        "Retain Patients. Automate Recalls. Built In Without Third-Party Software.",
-        "Your Data. Inside The Right Workspace.",
-        "One Platform. Every Essential Workflow."
+        "Crowd management: instant patient registration, easy appointment scheduling, live patient flow tracking",
+        "Secure cloud EMR: encrypted in transit and at rest, nothing to install, role-based access and audit logs",
+        "Intelligent dashboard: appointments, patient flow, collections and doctor-wise activity on one screen",
+        "Patient 360: details, visit history, appointments, notes and prescriptions in one place",
+        "A clinic website with doctor and department listings and online booking",
+        "Clinical note and medicine suggestions from your own saved rules; the doctor always decides",
+        "A hassle-free journey from booking to consultation on phone, tablet and desktop",
+        "Prescriptions printed or shared on your clinic letterhead",
+        "MedTech Fixaters assures you faster bookings, quicker care and deeper insights"
       ],
       "priority": "0.9",
       "changefreq": "monthly"
@@ -62,7 +70,7 @@
     {
       "path": "/pricing",
       "title": "Pricing Plans — Transparent OPD Software | MedTech Fixaters",
-      "description": "Affordable, transparent pricing plans for standalone clinics, multi-doctor polyclinics, and enterprise multi-bed hospitals.",
+      "description": "Affordable, transparent pricing plans for standalone clinics, multi-doctor polyclinics, and enterprise multi-bed hospitals. Get a free custom website with any yearly plan.",
       "h1": "Simple, Transparent Plans. No Hidden Fees.",
       "pricing": [
         {

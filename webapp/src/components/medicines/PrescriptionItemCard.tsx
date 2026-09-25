@@ -10,7 +10,7 @@ export interface PrescriptionDraftItem {
   duration: string
   route: string
   instruction: string
-  source: 'library' | 'suggestion' | 'manual'
+  source: 'library' | 'suggestion' | 'manual' | 'ai'
   confirmed: boolean
   warnings?: string | null
 }
@@ -67,7 +67,7 @@ export default function PrescriptionItemCard({ index, item, onChange, onRemove }
         </div>
         {item.source !== 'manual' && (
           <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black uppercase text-slate-500">
-            {item.source === 'suggestion' ? 'From your suggestion rule' : 'From your library'}
+            {item.source === 'suggestion' ? 'From your suggestion rule' : item.source === 'ai' ? 'AI suggestion · Gemini' : 'From your library'}
           </span>
         )}
       </div>

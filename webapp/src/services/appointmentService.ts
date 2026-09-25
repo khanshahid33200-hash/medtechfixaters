@@ -21,6 +21,7 @@ export async function createAppointment(
     patientGender,
     intake,
     appointmentDate,
+    appointmentTime,
   } = payload;
 
   if (!hospitalId || !doctorId) {
@@ -44,7 +45,7 @@ export async function createAppointment(
     p_patient_gender: patientGender || "Other",
     p_symptoms: symptomsStr || null,
     p_appointment_date: apptDate,
-    p_appointment_time: "09:00 AM",
+    p_appointment_time: appointmentTime || "09:00 AM",
     p_booking_method: bookingMethod?.toUpperCase() === "AI" ? "AI" : "Manual",
   });
 

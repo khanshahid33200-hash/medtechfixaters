@@ -43,6 +43,8 @@ import {
 import MedicineAutocomplete from './medicines/MedicineAutocomplete'
 import MedicineFormModal from './medicines/MedicineFormModal'
 import DecisionSupportPanel from './medicines/DecisionSupportPanel'
+import ClinicalAiPanel from './ai/ClinicalAiPanel'
+import type { ClinicalDraft, MedicineSuggestion } from '../lib/aiAssist'
 import PrescriptionItemCard, { type PrescriptionDraftItem } from './medicines/PrescriptionItemCard'
 
 export interface PatientWorkspaceData {
@@ -393,6 +395,37 @@ export default function PatientConsultationWorkspace({
     if (!selectedTests.includes(t.name)) setSelectedTests(prev => [...prev, t.name])
   }
 
+  // Gemini suggestions: added as an unconfirmed line the doctor must review and Save.
+  const addAiMedicine = (m: MedicineSuggestion) => {
+    if (medicines.some(x => x.name.toLowerCase() === m.name.toLowerCase())) return
+    const item: PrescribedMedicine = {
+      key: newKey(),
+      medicine_id: null,
+      name: m.name,
+      dosage: '',
+      frequency: '',
+      duration: '',
+      route: '',
+      instruction: '',
+      source: 'ai',
+      confirmed: false,
+      warnings: m.warnings.join(' · ') || null,
+    }
+    setMedicines(prev => [...prev, item])
+    auditMedicine('MEDICINE_ADDED_TO_PRESCRIPTION', item)
+  }
+
+  // Only what the doctor has entered in this consultation; the server adds the minimum
+  // patient context itself (never names, phone numbers or IDs).
+  const buildAiDraft = (): ClinicalDraft => ({
+    chief_complaint: patient.chief_complaint || '',
+    diagnosis: [diagnosis, secondaryDiagnosis].filter(Boolean).join('; '),
+    clinical_notes: clinicalNotes,
+    vitals: Object.fromEntries(Object.entries(consultationVitals).filter(([, v]) => Boolean(v && String(v).trim())).map(([k, v]) => [k, String(v)])),
+    selected_tests: selectedTests,
+    medicines: medicines.map(m => ({ name: m.strength ? `${m.name} ${m.strength}` : m.name, dosage: m.dosage, frequency: m.frequency, duration: m.duration })),
+  })
+
   const updateMedicine = (key: string, patch: Partial<PrescribedMedicine>) =>
     setMedicines(prev => prev.map(m => (m.key === key ? { ...m, ...patch } : m)))
 
@@ -437,7 +470,9 @@ export default function PatientConsultationWorkspace({
           duration: m.duration,
           route: m.route,
           instructions: m.instruction,
-          source: m.source,
+          // An AI suggestion becomes the doctor's own line once reviewed and saved; its AI origin
+          // stays in the activity log (MEDICINE_ADDED_TO_PRESCRIPTION, source 'ai').
+          source: m.source === 'ai' ? 'manual' : m.source,
           confirmed: m.confirmed,
         })),
         tests: selectedTests,
@@ -1007,6 +1042,14 @@ export default function PatientConsultationWorkspace({
                 onAddTest={addSuggestedTest}
               />
 
+              <ClinicalAiPanel
+                mode="tests"
+                appointmentId={patient.id}
+                buildDraft={buildAiDraft}
+                addedTests={selectedTests}
+                onAddTests={names => setSelectedTests(prev => Array.from(new Set([...prev, ...names])))}
+              />
+
               {/* Selected Tests Summary Banner */}
               <div className="p-4 bg-indigo-50/80 border border-indigo-100 rounded-2xl flex items-center justify-between">
                 <div>
@@ -1141,6 +1184,14 @@ export default function PatientConsultationWorkspace({
                 onAddMedicine={addSuggestedMedicine}
               />
 
+              <ClinicalAiPanel
+                mode="medicines"
+                appointmentId={patient.id}
+                buildDraft={buildAiDraft}
+                addedMedicines={medicines.map(m => m.name)}
+                onAddMedicine={addAiMedicine}
+              />
+
               {/* Doctor's own medicine library */}
               <div className="space-y-2">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -1246,6 +1297,15 @@ export default function PatientConsultationWorkspace({
                   </p>
                 )}
               </div>
+
+              <ClinicalAiPanel
+                mode="advice"
+                appointmentId={patient.id}
+                buildDraft={buildAiDraft}
+                initialAdviceNote={clinicalAdvice}
+                onUseAdvice={text => setClinicalAdvice(prev => (prev.trim() ? `${prev.trim()}
+${text}` : text))}
+              />
 
               {/* Advice & Follow-Up Date */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -1,7 +1,7 @@
 import { useState, useEffect, ReactNode } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'motion/react'
-import {
+import { HeartHandshake,
   LayoutDashboard,
   Calendar,
   Layers,
@@ -43,6 +43,7 @@ const navItems = [
   { name: 'Departments', path: '/hospitaldashboard/departments', icon: Building2 },
   { name: 'Doctors', path: '/hospitaldashboard/doctors', icon: Stethoscope },
   { name: 'Patients', path: '/hospitaldashboard/patients', icon: Users },
+  { name: 'CRM', path: '/hospitaldashboard/crm', icon: HeartHandshake },
   { name: 'Reports', path: '/hospitaldashboard/reports', icon: FileText },
   { name: 'Analytics', path: '/hospitaldashboard/analytics', icon: BarChart3 },
   { name: 'Notifications', path: '/hospitaldashboard/notifications', icon: Bell, badge: 'live' as const },

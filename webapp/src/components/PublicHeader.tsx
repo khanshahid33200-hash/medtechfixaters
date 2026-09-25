@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Menu, X, ArrowRight, Sparkles, ChevronDown, Stethoscope, Building2, LayoutGrid, Rocket } from 'lucide-react'
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence, useScroll, useMotionValueEvent, useReducedMotion } from 'framer-motion'
+import { EASE_OUT } from '../lib/motion'
 import ContactModal from './ContactModal'
 
 interface NavItem {
@@ -52,6 +53,7 @@ export default function PublicHeader() {
   const dropdownTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loginTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const location = useLocation()
+  const reduceMotion = useReducedMotion()
 
   const isActive = (path: string) => {
     if (path === '/') return location.pathname === '/'
@@ -84,13 +86,12 @@ export default function PublicHeader() {
     }, 180)
   }
 
-  useEffect(() => {
-    const onScroll = () => {
-      setScrolled(window.scrollY > 20)
-    }
-    window.addEventListener('scroll', onScroll)
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
+  // Scroll state from Framer's shared scroll value; only re-render when the threshold flips.
+  const { scrollY } = useScroll()
+  useMotionValueEvent(scrollY, 'change', (y) => {
+    const next = y > 20
+    setScrolled((prev) => (prev === next ? prev : next))
+  })
 
   // Close dropdowns on route change
   useEffect(() => {
@@ -102,13 +103,17 @@ export default function PublicHeader() {
   return (
     <>
       {/* ─── FLOATING GLASSY NAVBAR WITH SLIGHT ORANGE TOUCH ─── */}
-      <header
-        className="fixed top-3 sm:top-4 inset-x-0 z-50 max-w-6xl mx-auto px-3.5 sm:px-6 transition-all duration-300"
+      <motion.header
+        initial={reduceMotion ? false : { opacity: 0, y: -16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: EASE_OUT }}
+        className="fixed top-3 sm:top-4 inset-x-0 z-50 max-w-6xl mx-auto px-3.5 sm:px-6"
       >
+        {/* Height stays fixed when scrolled; only the glass and a slight scale change, so nothing jumps. */}
         <div
-          className={`h-15 sm:h-16 rounded-full px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-6 transition-all duration-300 relative ${
+          className={`h-15 sm:h-16 rounded-full px-4 sm:px-6 flex items-center justify-between gap-4 sm:gap-6 transition-[background-color,box-shadow,transform,border-color] duration-300 relative origin-top ${
             scrolled
-              ? 'backdrop-blur-2xl bg-gradient-to-r from-white/95 via-white/90 to-orange-50/60 border border-white shadow-[0_15px_40px_rgba(255,107,44,0.1),0_4px_20px_rgba(15,23,42,0.06)]'
+              ? 'scale-[0.98] backdrop-blur-2xl bg-gradient-to-r from-white/80 via-white/75 to-orange-50/60 border border-white/80 shadow-[0_15px_40px_rgba(255,107,44,0.14),0_4px_20px_rgba(15,23,42,0.06)]'
               : 'backdrop-blur-xl bg-gradient-to-r from-white/90 via-white/85 to-orange-50/50 border border-white/90 shadow-[0_10px_30px_rgba(255,107,44,0.06),0_2px_12px_rgba(15,23,42,0.04)]'
           }`}
         >
@@ -445,7 +450,7 @@ export default function PublicHeader() {
             </motion.div>
           )}
         </AnimatePresence>
-      </header>
+      </motion.header>
 
       <ContactModal isOpen={demoModalOpen} onClose={() => setDemoModalOpen(false)} />
     </>

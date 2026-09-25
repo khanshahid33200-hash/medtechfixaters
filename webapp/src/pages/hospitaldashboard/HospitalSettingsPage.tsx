@@ -10,7 +10,9 @@ import {
   Upload,
   Trash2,
   CheckCircle2,
+  Sparkles,
   Save} from 'lucide-react'
+import HospitalAiSettings from '../../components/ai/HospitalAiSettings'
 import HospitalDashboardLayout from '../../components/hospitaldashboard/HospitalDashboardLayout'
 import { useAuth } from '../../context/AuthContext'
 
@@ -132,7 +134,8 @@ export default function HospitalSettingsPage() {
             { id: 'account', label: 'Account Profile', icon: User },
             { id: 'security', label: 'Security', icon: KeyRound },
             { id: 'notifications', label: 'Notifications', icon: Bell },
-            { id: 'qr', label: 'QR Settings', icon: QrCode }
+            { id: 'qr', label: 'QR Settings', icon: QrCode },
+            { id: 'ai', label: 'AI & Follow-ups', icon: Sparkles }
           ].map(tab => {
             const Icon = tab.icon
             return (
@@ -156,6 +159,8 @@ export default function HospitalSettingsPage() {
         </div>
 
         {/* Tab 1: Hospital Profile */}
+        {activeTab === 'ai' && <HospitalAiSettings />}
+
         {activeTab === 'profile' && (
           <form onSubmit={handleSaveProfile} className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6 text-xs">
             <div>

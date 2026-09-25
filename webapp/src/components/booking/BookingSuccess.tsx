@@ -10,6 +10,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { BookingResult } from "../../types/booking";
+import { ReminderConsent } from "./ReminderConsent";
 
 interface BookingSuccessProps {
   result: BookingResult;
@@ -116,7 +117,7 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
               <Users className="w-3.5 h-3.5 text-[#007AFF]" /> Patients Ahead
             </span>
             <span className="text-lg font-bold text-[#1D1D1F] mt-0.5">
-              {result.patients_ahead ?? 2}
+              {result.patients_ahead ?? "—"}
             </span>
           </div>
 
@@ -125,7 +126,7 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
               <Clock className="w-3.5 h-3.5 text-[#FF9500]" /> Est. Wait Time
             </span>
             <span className="text-lg font-bold text-[#1D1D1F] mt-0.5">
-              ~{result.estimated_wait_mins ?? 15} mins
+              {result.estimated_wait_mins != null ? `~${result.estimated_wait_mins} mins` : "—"}
             </span>
           </div>
         </div>
@@ -154,7 +155,31 @@ export const BookingSuccess: React.FC<BookingSuccessProps> = ({
             <span className="text-[#6E6E73]">Mobile</span>
             <span className="font-semibold">{result.patient_phone}</span>
           </div>
+          {result.appointment_date && (
+            <div className="flex justify-between items-center">
+              <span className="text-[#6E6E73]">Date</span>
+              <span className="font-semibold">
+                {new Date(`${result.appointment_date}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+              </span>
+            </div>
+          )}
+          {result.queue_number && (
+            <div className="flex justify-between items-center">
+              <span className="text-[#6E6E73]">Queue</span>
+              <span className="font-mono font-bold">{result.queue_number}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-center">
+            <span className="text-[#6E6E73]">Status</span>
+            <span className="font-semibold text-[#FF9500]">Waiting</span>
+          </div>
+          <div className="flex justify-between items-center gap-3">
+            <span className="text-[#6E6E73]">Appointment ID</span>
+            <span className="font-mono text-[10px] text-slate-500 truncate">{result.id}</span>
+          </div>
         </div>
+
+        {result.tracking_token && <ReminderConsent trackingToken={result.tracking_token} />}
 
         {/* Live Queue Status Pill */}
         <div className="flex items-center justify-center gap-2 text-xs font-semibold text-[#34C759] bg-[#34C759]/10 p-2.5 rounded-xl">
