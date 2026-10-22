@@ -123,7 +123,7 @@ export default function ClinicalAiPanel(props: Props) {
           </span>
           <div>
             <h4 className="text-sm font-black text-slate-900">AI Clinical Assistant · {title}</h4>
-            <p className="text-[11px] font-semibold text-slate-500">Gemini-powered clinical assistance</p>
+            <p className="text-[11px] font-semibold text-slate-500">MedTech AI clinical assistance</p>
           </div>
         </div>
         {status === 'ready' || status === 'unknown' ? (
@@ -144,7 +144,7 @@ export default function ClinicalAiPanel(props: Props) {
       </p>
 
       {status === 'not_configured' && (
-        <p className="relative mt-3 text-xs font-semibold text-slate-500">Clinical AI features require Gemini configuration. Ask your platform administrator.</p>
+        <p className="relative mt-3 text-xs font-semibold text-slate-500">Clinical AI features require MedTech AI configuration. Ask your platform administrator.</p>
       )}
       {status === 'checking' && <p className="relative mt-3 text-xs text-slate-400">Checking AI availability…</p>}
 

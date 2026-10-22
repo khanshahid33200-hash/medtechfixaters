@@ -11,7 +11,7 @@ const STEPS = [
   },
   {
     icon: Smartphone,
-    title: 'Wait from anywhere',
+    title: 'Avoid long queue',
     body: 'Their phone shows the live queue and tells them when their turn is close. No crowd at the counter.',
   },
   {

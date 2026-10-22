@@ -144,11 +144,11 @@ const itemVariants = {
 
 export default function KeyBenefits() {
   return (
-    <section className="relative overflow-hidden bg-white px-5 py-20 sm:px-8 lg:px-12 lg:py-28 border-t border-slate-100">
+    <section className="relative overflow-hidden px-4 sm:px-6 lg:px-8 py-14 sm:py-20 md:py-24">
       {/* Background Glows */}
-      <div className="pointer-events-none absolute left-1/2 top-10 h-[450px] w-[700px] -translate-x-1/2 rounded-full bg-blue-100/50 blur-[120px]" />
+      <div className="pointer-events-none absolute left-1/2 top-10 h-[450px] w-[700px] -translate-x-1/2 rounded-full bg-blue-100/40 blur-[120px]" />
       <div className="pointer-events-none absolute right-[5%] bottom-10 h-80 w-80 rounded-full bg-orange-100/40 blur-[100px]" />
-      <div className="pointer-events-none absolute left-[5%] bottom-1/3 h-80 w-80 rounded-full bg-purple-100/30 blur-[100px]" />
+      <div className="pointer-events-none absolute left-[5%] bottom-1/3 h-80 w-80 rounded-full bg-purple-100/25 blur-[100px]" />
 
       <div className="relative mx-auto max-w-6xl">
         {/* ─── PART 1: EVERYTHING YOUR OPD NEEDS. ONE SMART PLATFORM. ─── */}
@@ -200,7 +200,7 @@ export default function KeyBenefits() {
                   stiffness: 280,
                   damping: 20,
                 }}
-                className="group relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/80 p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] backdrop-blur-xl text-left"
+                className="group relative overflow-hidden rounded-[24px] border border-orange-100/80 bg-white/85 p-6 shadow-[0_12px_32px_-16px_rgba(255,106,0,0.12),0_4px_16px_rgba(15,23,42,0.04)] backdrop-blur-xl text-left hover:border-orange-200 transition-colors"
               >
                 <div className="absolute -right-12 -top-12 h-32 w-32 rounded-full bg-blue-100/0 blur-2xl transition-all duration-500 group-hover:bg-blue-100/70" />
 
@@ -279,7 +279,7 @@ export default function KeyBenefits() {
             initial={{ opacity: 0, scale: 0.9, filter: "blur(10px)" }}
             whileInView={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
             viewport={{ once: true }}
-            className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-blue-200/80 bg-gradient-to-b from-blue-50/70 via-white to-slate-50 p-6 text-center shadow-[0_20px_50px_rgba(37,99,235,0.08)] backdrop-blur-xl"
+            className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-orange-200/80 bg-gradient-to-b from-orange-50/70 via-white to-slate-50 p-6 text-center shadow-[0_20px_50px_rgba(255,106,0,0.08)] backdrop-blur-xl"
           >
             <div className="relative mx-auto mb-4 flex h-16 w-16 items-center justify-center">
               <motion.div
@@ -323,7 +323,7 @@ export default function KeyBenefits() {
                 variants={itemVariants}
                 whileHover={{ y: -5, scale: 1.015 }}
                 transition={{ type: "spring", stiffness: 280, damping: 20 }}
-                className="group relative overflow-hidden rounded-[24px] border border-slate-200/80 bg-white/80 p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] backdrop-blur-xl text-left"
+                className="group relative overflow-hidden rounded-[24px] border border-orange-100/80 bg-white/85 p-6 shadow-[0_12px_32px_-16px_rgba(255,106,0,0.12),0_4px_16px_rgba(15,23,42,0.04)] backdrop-blur-xl text-left hover:border-orange-200 transition-colors"
               >
                 <div className="flex items-center justify-between mb-4">
                   <div className={`flex h-11 w-11 items-center justify-center rounded-xl text-white shadow-sm ${ai.iconBg}`}>

@@ -67,7 +67,7 @@ export default function PlatformAiSettings() {
           <p className="flex items-center gap-2 text-base font-black text-slate-900"><Sparkles size={17} className="text-orange-500" /> AI configuration</p>
           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ${status?.gemini_configured ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
             {status ? (status.gemini_configured ? <CheckCircle2 size={13} /> : <XCircle size={13} />) : <Loader2 size={13} className="animate-spin" />}
-            {statusError ? 'ai-assist not reachable' : !status ? 'Checking Gemini…' : status.gemini_configured ? `Gemini configured · ${status.model}` : 'Gemini key not set (GEMINI_API_KEY)'}
+            {statusError ? 'ai-assist not reachable' : !status ? 'Checking MedTech AI…' : status.gemini_configured ? `MedTech AI configured · ${status.model}` : 'MedTech AI key not set (GEMINI_API_KEY)'}
           </span>
         </div>
         {statusError && (

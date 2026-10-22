@@ -1,14 +1,67 @@
-import { useState } from 'react'
-import { Link } from 'react-router-dom'
-import { FileText, Download, ShieldCheck, CheckCircle } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
+import {
+  FileText,
+  Download,
+  ShieldCheck,
+  CheckCircle,
+  AlertCircle,
+  Printer,
+  Loader2,
+  Lock,
+  Calendar,
+  User,
+  Building
+} from 'lucide-react'
 import { Card } from '../components/Card'
+import PrescriptionDocumentView from '../components/prescription/PrescriptionDocumentView'
+import {
+  fetchAuthoritativePrescriptionData,
+  generatePrescriptionPdf,
+  downloadPdfBlob,
+  printPrescriptionDocument
+} from '../services/prescriptionPdfService'
+import type { PrescriptionDocumentData } from '../types/prescriptionPdf'
 
 export default function RxPage() {
+  const [searchParams] = useSearchParams()
+  const token = searchParams.get('token') || searchParams.get('id')
+
   const [phone, setPhone] = useState('')
   const [otp, setOtp] = useState('')
-  const [step, setStep] = useState<'phone' | 'otp' | 'prescriptions'>('phone')
+  const [step, setStep] = useState<'phone' | 'otp' | 'prescriptions' | 'token_view'>(token ? 'token_view' : 'phone')
+
+  const [tokenRxData, setTokenRxData] = useState<PrescriptionDocumentData | null>(null)
+  const [tokenLoading, setTokenLoading] = useState(false)
+  const [tokenError, setTokenError] = useState<string | null>(null)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   const [rxList, setRxList] = useState<any[]>([])
+
+  // If a token is provided in query params, load prescription directly
+  useEffect(() => {
+    if (!token) return
+
+    setStep('token_view')
+    setTokenLoading(true)
+    setTokenError(null)
+
+    // Token can be full UUID or appointment ID
+    fetchAuthoritativePrescriptionData(token)
+      .then((res) => {
+        if (res.success && res.data) {
+          setTokenRxData(res.data)
+        } else {
+          setTokenError(res.error || 'Prescription not found or invalid token.')
+        }
+      })
+      .catch((err) => {
+        setTokenError(err?.message || 'Server error while loading verified document.')
+      })
+      .finally(() => {
+        setTokenLoading(false)
+      })
+  }, [token])
 
   const handleSendOtp = (e: React.FormEvent) => {
     e.preventDefault()
@@ -20,6 +73,7 @@ export default function RxPage() {
     e.preventDefault()
     if (!otp) return
 
+    // In a real flow, OTP is verified against Supabase/SMS gateway
     setRxList([
       {
         id: 'rx-2026082230',
@@ -30,32 +84,118 @@ export default function RxPage() {
         date: '22 Aug 2026',
         diagnosis: 'Acute Knee Tendonitis',
         medicines: 'Tab. Paracetamol 650mg, Cap. Omeprazole 20mg'
-      },
-      {
-        id: 'rx-2026041215',
-        token_number: '2026041215',
-        doctor_name: 'Dr. Sunita Rao',
-        hospital_name: 'Metro Care General Hospital',
-        department: 'General OPD',
-        date: '12 Apr 2026',
-        diagnosis: 'Viral Fever & Dehydration',
-        medicines: 'Tab. Paracetamol 500mg, ORS Sachet'
       }
     ])
     setStep('prescriptions')
   }
 
+  const handleDownloadTokenPdf = async () => {
+    const rootEl = document.getElementById('prescription-document-root')
+    if (!rootEl) {
+      alert('Prescription preview element not ready.')
+      return
+    }
+
+    setIsGeneratingPdf(true)
+    const patientName = tokenRxData?.patient.name.replace(/[^a-zA-Z0-9]/g, '_') || 'Patient'
+    const dateStr = tokenRxData?.metadata.issued_at.slice(0, 10).replace(/-/g, '') || '2026'
+    const filename = `MedTechFixaters_RX_${patientName}_${dateStr}.pdf`
+
+    const res = await generatePrescriptionPdf(rootEl, filename)
+    setIsGeneratingPdf(false)
+
+    if (res.success && res.blob) {
+      downloadPdfBlob(res.blob, res.filename)
+    } else {
+      alert(`Could not compile PDF: ${res.error || 'Server error'}`)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-50 text-slate-800 font-sans p-4 sm:p-6 selection:bg-blue-600 selection:text-white">
-      <header className="max-w-xl mx-auto text-center space-y-2 mb-6">
+      <header className="max-w-3xl mx-auto text-center space-y-2 mb-6">
         <Link to="/">
           <img src="/assets/logo.png" alt="Clinic OS Logo" className="h-10 mx-auto object-contain" />
         </Link>
-        <h1 className="text-2xl font-black text-slate-900 tracking-tight font-recoleta">Digital Prescription Retrieval</h1>
-        <p className="text-xs text-slate-500 font-medium">Retrieve & download your verified PDF prescriptions securely</p>
+        <h1 className="text-2xl font-black text-slate-900 tracking-tight font-recoleta">
+          Verified Digital Prescription Portal
+        </h1>
+        <p className="text-xs text-slate-500 font-medium">
+          Official tamper-evident digital prescription retrieval • MedTechFixaters
+        </p>
       </header>
 
-      <div className="max-w-xl mx-auto">
+      <div className="max-w-3xl mx-auto">
+        {/* Token Direct View */}
+        {step === 'token_view' && (
+          <div className="space-y-4">
+            {tokenLoading && (
+              <Card className="rounded-3xl border border-slate-200 bg-white p-12 text-center space-y-3">
+                <Loader2 size={36} className="animate-spin text-blue-600 mx-auto" />
+                <h3 className="text-base font-bold text-slate-900">Verifying Authoritative Medical Record…</h3>
+                <p className="text-xs text-slate-500">Checking signature, tenant verification, and cryptographic hash.</p>
+              </Card>
+            )}
+
+            {tokenError && (
+              <Card className="rounded-3xl border border-rose-200 bg-rose-50/70 p-8 text-center space-y-3">
+                <AlertCircle size={36} className="text-rose-600 mx-auto" />
+                <h3 className="text-base font-bold text-rose-900">Unable to Verify Prescription</h3>
+                <p className="text-xs text-rose-700">{tokenError}</p>
+                <div className="pt-2">
+                  <button
+                    onClick={() => setStep('phone')}
+                    className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition"
+                  >
+                    Look Up via Phone & OTP
+                  </button>
+                </div>
+              </Card>
+            )}
+
+            {tokenRxData && !tokenLoading && (
+              <div className="space-y-4">
+                {/* Verification Badge */}
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center gap-2.5">
+                    <ShieldCheck size={24} className="text-emerald-600 shrink-0" />
+                    <div>
+                      <span className="font-extrabold text-emerald-900 block">Digitally Verified & Authentic</span>
+                      <span className="text-emerald-700 text-[11px]">
+                        Prescription #{tokenRxData.metadata.prescription_number} • Issued by {tokenRxData.doctor.name}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={printPrescriptionDocument}
+                      className="px-3.5 py-2 bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      <Printer size={14} />
+                      <span>Print</span>
+                    </button>
+                    <button
+                      onClick={handleDownloadTokenPdf}
+                      disabled={isGeneratingPdf}
+                      className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-md shadow-blue-600/20 flex items-center gap-1.5 transition cursor-pointer"
+                    >
+                      {isGeneratingPdf ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                      <span>Download Signed PDF</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Prescription Document Renderer */}
+                <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-x-auto p-4 sm:p-6">
+                  <PrescriptionDocumentView data={tokenRxData} showWatermark={false} />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Step: Enter Phone */}
         {step === 'phone' && (
           <Card className="rounded-3xl border border-slate-200 shadow-xl bg-white p-6 sm:p-8">
             <form onSubmit={handleSendOtp} className="space-y-4">
@@ -88,6 +228,7 @@ export default function RxPage() {
           </Card>
         )}
 
+        {/* Step: OTP */}
         {step === 'otp' && (
           <Card className="rounded-3xl border border-slate-200 shadow-xl bg-white p-6 sm:p-8">
             <form onSubmit={handleVerifyOtp} className="space-y-4 text-center">
@@ -119,6 +260,7 @@ export default function RxPage() {
           </Card>
         )}
 
+        {/* Step: Prescription List from OTP */}
         {step === 'prescriptions' && (
           <div className="space-y-4">
             <div className="flex items-center justify-between">
@@ -146,13 +288,22 @@ export default function RxPage() {
                   <p className="text-slate-600"><strong>Prescribed:</strong> {rx.medicines}</p>
                 </div>
 
-                <a
-                  href={`#download-${rx.id}`}
-                  onClick={() => alert(`Downloading Letterheaded PDF Prescription for Visit Token #${rx.token_number}...`)}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition"
+                <button
+                  type="button"
+                  onClick={() => {
+                    fetchAuthoritativePrescriptionData(rx.id).then(res => {
+                      if (res.success && res.data) {
+                        setTokenRxData(res.data)
+                        setStep('token_view')
+                      } else {
+                        alert('Prescription details not available.')
+                      }
+                    })
+                  }}
+                  className="w-full py-2.5 bg-slate-900 hover:bg-blue-600 text-white font-bold text-xs rounded-xl flex items-center justify-center gap-2 transition cursor-pointer"
                 >
-                  <Download size={16} /> Download Signed PDF Rx
-                </a>
+                  <Download size={16} /> View & Download Signed PDF Rx
+                </button>
               </Card>
             ))}
           </div>
@@ -161,3 +312,4 @@ export default function RxPage() {
     </div>
   )
 }
+

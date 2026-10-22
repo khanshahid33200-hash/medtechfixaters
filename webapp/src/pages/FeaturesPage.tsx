@@ -7,6 +7,7 @@ import {
 import PublicHeader from '../components/PublicHeader'
 import PublicFooter from '../components/PublicFooter'
 import DoctorDashboardSimulator from '../components/DoctorDashboardSimulator'
+import ManageClinic from '../components/home/ManageClinic'
 import AmbientBackground from '../components/motion/AmbientBackground'
 import { AnimatedSection, MotionCard, Reveal, StaggerContainer } from '../components/motion'
 import FinalCta from '../components/home/FinalCta'
@@ -72,8 +73,8 @@ const FEATURES = [
     tab: 'Clinical suggestions',
     eyebrow: 'Save time, get more done',
     title: 'Clinical note and medicine suggestions',
-    body: 'Suggestions come from the medicines and rules you save, plus Gemini-powered suggestions for medicines, tests and patient advice. Each one shows its reason and confidence, and the doctor always decides.',
-    points: ['Your own saved rules', 'Gemini-powered clinical assistance', 'Allergy warnings, doctor review required'],
+    body: 'Suggestions come from the medicines and rules you save, plus MedTech AI-powered suggestions for medicines, tests and patient advice. Each one shows its reason and confidence, and the doctor always decides.',
+    points: ['Your own saved rules', 'MedTech AI clinical assistance', 'Allergy warnings, doctor review required'],
     screen: { title: 'Suggested for fever', rows: [['Paracetamol 650', 'Add'], ['ORS sachets', 'Add'], ['Rest & fluids advice', 'Add'], ['Review in 3 days', 'Add']] },
   },
   {
@@ -331,6 +332,9 @@ export default function FeaturesPage() {
             <FeatureSection f={f} index={i} />
           </AnimatedSection>
         ))}
+        <AnimatedSection>
+          <ManageClinic />
+        </AnimatedSection>
         <AnimatedSection>
           <AssuranceBand />
         </AnimatedSection>

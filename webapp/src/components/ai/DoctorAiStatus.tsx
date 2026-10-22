@@ -25,7 +25,7 @@ export default function DoctorAiStatus() {
         ) : (
           <>
             {status && !status.gemini_configured && (
-              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">Clinical AI features require Gemini configuration. Ask your platform administrator.</p>
+              <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">Clinical AI features require MedTech AI configuration. Ask your platform administrator.</p>
             )}
             <ul className="mt-4 grid gap-2 sm:grid-cols-2">
               {clinical.map((f) => {
@@ -34,7 +34,7 @@ export default function DoctorAiStatus() {
                   <li key={f.key} className="flex items-center justify-between gap-2 rounded-2xl border border-slate-100 bg-slate-50/60 p-3 text-xs">
                     <span>
                       <span className="block font-extrabold text-slate-900">{f.label}</span>
-                      <span className="text-[10px] text-slate-500">{f.layer === 'Gemini' ? 'Gemini-powered clinical assistance' : 'MedTechFixaters AI'}</span>
+                      <span className="text-[10px] text-slate-500">{f.layer === 'Gemini' ? 'MedTech AI clinical assistance' : 'MedTechFixaters AI'}</span>
                     </span>
                     {status ? (on ? <CheckCircle2 size={16} className="text-emerald-600" /> : <XCircle size={16} className="text-slate-400" />) : <span className="text-slate-300">…</span>}
                   </li>

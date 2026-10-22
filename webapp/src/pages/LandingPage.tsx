@@ -8,7 +8,6 @@ import FeatureBento from '../components/home/FeatureBento'
 import TrustSection from '../components/home/TrustSection'
 import HomeFaq from '../components/home/HomeFaq'
 import FinalCta from '../components/home/FinalCta'
-import ManageClinic from '../components/home/ManageClinic'
 import SetupSteps from '../components/home/SetupSteps'
 import WhatWeOffer from '../components/home/WhatWeOffer'
 import SmartWorkflow from '../components/home/SmartWorkflow'
@@ -44,9 +43,6 @@ export default function LandingPage() {
         </AnimatedSection>
         <AnimatedSection>
           <FeatureBento />
-        </AnimatedSection>
-        <AnimatedSection>
-          <ManageClinic />
         </AnimatedSection>
         <AnimatedSection id="how-it-works">
           <PatientJourney />

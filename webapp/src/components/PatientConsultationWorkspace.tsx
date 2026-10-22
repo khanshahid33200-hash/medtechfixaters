@@ -19,7 +19,11 @@ import {
   CheckCircle2,
   Edit3,
   Save,
-  X
+  X,
+  Download,
+  Send,
+  Eye,
+  Loader2
 } from 'lucide-react'
 import {
   getPatientProfile,
@@ -44,8 +48,18 @@ import MedicineAutocomplete from './medicines/MedicineAutocomplete'
 import MedicineFormModal from './medicines/MedicineFormModal'
 import DecisionSupportPanel from './medicines/DecisionSupportPanel'
 import ClinicalAiPanel from './ai/ClinicalAiPanel'
+import EmailPrescriptionCard from './prescription/EmailPrescriptionCard'
 import type { ClinicalDraft, MedicineSuggestion } from '../lib/aiAssist'
 import PrescriptionItemCard, { type PrescriptionDraftItem } from './medicines/PrescriptionItemCard'
+import PrescriptionPreviewModal from './prescription/PrescriptionPreviewModal'
+import SendPrescriptionModal from './prescription/SendPrescriptionModal'
+import {
+  fetchAuthoritativePrescriptionData,
+  generatePrescriptionPdf,
+  downloadPdfBlob,
+  printPrescriptionDocument
+} from '../services/prescriptionPdfService'
+import type { PrescriptionDocumentData } from '../types/prescriptionPdf'
 
 export interface PatientWorkspaceData {
   id?: string
@@ -148,6 +162,9 @@ export default function PatientConsultationWorkspace({
   const [loading, setLoading] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [isCompletedSuccess, setIsCompletedSuccess] = useState(false)
+  const [previewModalOpen, setPreviewModalOpen] = useState(false)
+  const [sendModalOpen, setSendModalOpen] = useState(false)
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false)
 
   // Patient Profile Data from DB
   const [profile, setProfile] = useState<PatientProfile | null>(null)
@@ -1379,28 +1396,85 @@ ${text}` : text))}
                 <span className="text-xs font-bold text-slate-400 bg-slate-100 px-3 py-1 rounded-full">Step 5 of 5</span>
               </div>
 
-              {/* Success Banner */}
-              {isCompletedSuccess && (
-                <div className="p-5 bg-emerald-50 text-emerald-900 border border-emerald-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shrink-0">
-                      <Check size={24} />
+              {/* Success Banner & Post-Finalization Actions */}
+              {isCompletedSuccess ? (
+                <div className="space-y-4">
+                  <div className="p-6 bg-gradient-to-r from-emerald-500/10 via-emerald-500/15 to-teal-500/10 border-2 border-emerald-500/30 rounded-3xl space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-14 h-14 rounded-2xl bg-emerald-600 text-white flex items-center justify-center font-black shadow-lg shadow-emerald-600/30 shrink-0">
+                          <CheckCircle2 size={32} />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2.5 py-0.5 bg-emerald-700 text-white text-[11px] font-black rounded-md tracking-wider uppercase">
+                              Official Document Finalized
+                            </span>
+                            <span className="text-xs font-mono font-bold text-emerald-800">
+                              RX-{new Date().getFullYear()}-{(patient.id || '0001').slice(0, 6).toUpperCase()}
+                            </span>
+                          </div>
+                          <h4 className="font-black text-lg text-slate-900 mt-1">Consultation Finalized & Saved!</h4>
+                          <p className="text-xs text-slate-600 font-medium">
+                            Clinical findings, doctor-approved tests, medications and advice are locked into authoritative records.
+                          </p>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={onBack}
+                        className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition cursor-pointer shrink-0 shadow-md"
+                      >
+                        Done & Return to Queue
+                      </button>
                     </div>
-                    <div>
-                      <h4 className="font-black text-base">Consultation Successfully Completed!</h4>
-                      <p className="text-xs text-emerald-700 font-medium">
-                        Prescription saved to database and token completed in today's live queue.
-                      </p>
+
+                    {/* Master Action Bar */}
+                    <div className="pt-3 border-t border-emerald-500/20 grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => setPreviewModalOpen(true)}
+                        className="px-4 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs rounded-2xl shadow-md shadow-indigo-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Eye size={16} />
+                        <span>Preview Prescription</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setPreviewModalOpen(true)}
+                        className="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white font-black text-xs rounded-2xl shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Download size={16} />
+                        <span>Generate & Download PDF</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPreviewModalOpen(true)
+                        }}
+                        className="px-4 py-3 bg-slate-800 hover:bg-slate-900 text-white font-black text-xs rounded-2xl shadow-md flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Printer size={16} />
+                        <span>Print</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setSendModalOpen(true)}
+                        className="px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-black text-xs rounded-2xl shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+                      >
+                        <Send size={16} />
+                        <span>Send to Patient</span>
+                      </button>
                     </div>
                   </div>
-                  <button
-                    onClick={onBack}
-                    className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition cursor-pointer shrink-0"
-                  >
-                    Done & Return to Queue
-                  </button>
+
+                  {/* Emails the PDF automatically when the hospital enabled it and the patient agreed. */}
+                  {patient.id && <EmailPrescriptionCard appointmentId={patient.id} />}
                 </div>
-              )}
+              ) : null}
 
               {/* Official Letterhead Preview */}
               <div className="bg-white p-6 md:p-8 rounded-2xl border border-slate-200 shadow-sm space-y-5 font-sans text-slate-800">
@@ -1539,6 +1613,34 @@ ${text}` : text))}
 
         </div>
       </div>
+
+      {/* Prescription Preview Modal */}
+      {previewModalOpen && (
+        <PrescriptionPreviewModal
+          appointmentId={patient.id}
+          isOpen={previewModalOpen}
+          onClose={() => setPreviewModalOpen(false)}
+          onEdit={() => {
+            setPreviewModalOpen(false)
+            setCurrentStep(4)
+          }}
+        />
+      )}
+
+      {/* Send Prescription Modal */}
+      {sendModalOpen && (
+        <SendPrescriptionModal
+          isOpen={sendModalOpen}
+          onClose={() => setSendModalOpen(false)}
+          patientName={profile?.name || patient.patient_name}
+          patientPhone={profile?.phone || patient.phone}
+          prescriptionNumber={`RX-${new Date().getFullYear()}-${(patient.id || '0001').slice(0, 6).toUpperCase()}`}
+          verificationUrl={`${typeof window !== 'undefined' ? window.location.origin : ''}/rx?token=${patient.id?.replace(/-/g, '').slice(0, 16) || ''}`}
+          patientId={patient.patient_id || undefined}
+          appointmentId={patient.id}
+        />
+      )}
+
       {newMedicineName !== null && (
         <MedicineFormModal
           initialName={newMedicineName}

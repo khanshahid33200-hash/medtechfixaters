@@ -75,7 +75,7 @@ function DashboardMock() {
               initial={reduce ? false : { scaleY: 0 }}
               whileInView={{ scaleY: 1 }}
               viewport={{ once: true, amount: 0.6 }}
-              transition={{ duration: 0.6, ease: EASE_OUT, delay: 0.2 + i * 0.06 }}
+              transition={{ duration: 0.3, ease: EASE_OUT, delay: 0.05 + i * 0.03 }}
               style={{ height: `${h}%` }}
               className="flex-1 origin-bottom rounded-t-md bg-[linear-gradient(180deg,#FF8A3D,#FF6A00)]"
             />
@@ -121,7 +121,7 @@ function WebsiteMock() {
               initial={reduce ? false : { opacity: 0, y: 6 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true, amount: 0.6 }}
-              transition={{ duration: 0.4, ease: EASE_OUT, delay: 0.2 + i * 0.05 }}
+              transition={{ duration: 0.25, ease: EASE_OUT, delay: 0.05 + i * 0.02 }}
               className={`rounded-lg py-1.5 text-center text-[11px] font-bold ${i === 2 ? 'bg-[#FF6A00] text-white' : 'border border-orange-100 text-[#171717]'}`}
             >
               {s}
@@ -134,19 +134,30 @@ function WebsiteMock() {
   )
 }
 
+// Fast, compact slide-in motion for a shorter, snappier entrance
+const shortSlideLeft = {
+  hidden: { opacity: 0, x: 20 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.35, ease: EASE_OUT } },
+}
+
+const shortSlideRight = {
+  hidden: { opacity: 0, x: -20 },
+  visible: { opacity: 1, x: 0, transition: { duration: 0.35, ease: EASE_OUT } },
+}
+
 export default function WhatWeOffer() {
   const reduce = useReducedMotion()
   return (
-    <section className="py-12 md:py-16">
+    <section className="py-8 sm:py-10 md:py-12">
       <div className="max-w-6xl mx-auto px-4 sm:px-6">
-        <Reveal className="max-w-2xl mx-auto text-center space-y-3">
-          <p className="text-sm font-bold text-[#C2410C]">What we offer</p>
-          <h2 className="text-[clamp(1.875rem,3.5vw,2.75rem)] font-extrabold tracking-tight text-[#171717]">
-            Simple, thoughtful tools at your fingertips
+        <Reveal className="max-w-2xl mx-auto text-center space-y-2 sm:space-y-2.5">
+          <p className="text-xs sm:text-sm font-bold text-[#C2410C]">What we offer</p>
+          <h2 className="text-[clamp(1.75rem,3.5vw,2.5rem)] font-extrabold tracking-tight text-[#171717]">
+            Tools at your fingertips
           </h2>
         </Reveal>
 
-        <div className="mt-10 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+        <div className="mt-7 sm:mt-8 grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center">
           <div>
             <Reveal>
               <h3 className="text-xl sm:text-2xl font-extrabold tracking-tight text-[#171717]">See your clinic’s day at a glance</h3>
@@ -156,18 +167,18 @@ export default function WhatWeOffer() {
             </Reveal>
             <PointGrid points={DASHBOARD_POINTS} />
           </div>
-          <motion.div variants={reduce ? undefined : slideLeft} initial={reduce ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.3 }}>
+          <motion.div variants={reduce ? undefined : shortSlideLeft} initial={reduce ? false : 'hidden'} whileInView="visible" viewport={{ once: true, amount: 0.2 }}>
             <DashboardMock />
           </motion.div>
         </div>
 
-        <div className="mt-14 grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
+        <div className="mt-10 sm:mt-12 grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-10 items-center">
           <motion.div
             className="order-2 lg:order-1"
-            variants={reduce ? undefined : slideRight}
+            variants={reduce ? undefined : shortSlideRight}
             initial={reduce ? false : 'hidden'}
             whileInView="visible"
-            viewport={{ once: true, amount: 0.3 }}
+            viewport={{ once: true, amount: 0.2 }}
           >
             <WebsiteMock />
           </motion.div>

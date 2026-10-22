@@ -9,7 +9,7 @@ export const FLAGS: { key: FlagKey; label: string; desc: string; layer: 'MedTech
   { key: 'public_ai_chat_enabled', label: 'Website visitor assistant', desc: 'Answers from approved public information only.', layer: 'MedTechFixaters AI' },
   { key: 'auto_followup_enabled', label: 'Automatic follow-up reminders', desc: 'Email (and WhatsApp once a provider is connected) to patients who agreed.', layer: 'MedTechFixaters AI' },
   { key: 'crm_ai_enabled', label: 'CRM assistance', desc: 'Suggested next actions and reminder drafts in the CRM.', layer: 'MedTechFixaters AI' },
-  { key: 'clinical_ai_enabled', label: 'Clinical AI (master switch)', desc: 'Turns all Gemini clinical assistance on or off.', layer: 'Gemini' },
+  { key: 'clinical_ai_enabled', label: 'Clinical AI (master switch)', desc: 'Turns all MedTech AI clinical assistance on or off.', layer: 'Gemini' },
   { key: 'medicine_suggestions_enabled', label: 'Medicine suggestions', desc: 'Doctor reviews and adds each suggestion.', layer: 'Gemini' },
   { key: 'test_suggestions_enabled', label: 'Test suggestions', desc: 'Doctor selects which tests to add.', layer: 'Gemini' },
   { key: 'doctor_advice_enabled', label: 'Doctor advice drafts', desc: 'Turns the doctor’s note into patient-friendly advice for review.', layer: 'Gemini' },

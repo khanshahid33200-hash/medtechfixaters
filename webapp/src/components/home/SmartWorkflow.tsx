@@ -5,9 +5,9 @@ import { MotionCard, Reveal, StaggerContainer } from '../motion'
 import { EASE_OUT } from '../../lib/motion'
 
 // Two AI layers, both real: "MedTechFixaters AI" is built in (booking, website assistant,
-// follow-up automation, CRM) and uses no external model; "Gemini" powers the doctor-only clinical
+// follow-up automation, CRM) and uses no external model; "MedTech AI" powers the doctor-only clinical
 // suggestions. WhatsApp reminders need a provider, so that part is labelled as coming soon.
-type Badge = 'MedTechFixaters AI' | 'Gemini'
+type Badge = 'MedTechFixaters AI' | 'MedTech AI'
 
 const CARDS: { icon: typeof Bot; kicker: string; title: string; body: string; badge: Badge }[] = [
   {
@@ -43,20 +43,20 @@ const CARDS: { icon: typeof Bot; kicker: string; title: string; body: string; ba
     kicker: 'Clinical AI',
     title: 'Medicine and test suggestions',
     body: 'During a consultation, doctors can ask for medicines and tests to consider, with reasons, confidence and allergy warnings. The doctor reviews and adds each one.',
-    badge: 'Gemini',
+    badge: 'MedTech AI',
   },
   {
     icon: Stethoscope,
     kicker: 'Clinical AI',
     title: 'Clear advice for patients',
     body: 'The doctor jots a short note; AI turns it into clear, kind patient advice for the doctor to edit and use. Never sent to a patient automatically.',
-    badge: 'Gemini',
+    badge: 'MedTech AI',
   },
 ]
 
 const BADGE_STYLE: Record<Badge, string> = {
   'MedTechFixaters AI': 'bg-[linear-gradient(135deg,#FF6A00,#FF8A3D)] text-white',
-  Gemini: 'bg-[#171717] text-white',
+  'MedTech AI': 'bg-[#171717] text-white',
 }
 
 // Sample events for the illustration; not real patients.
@@ -65,8 +65,8 @@ const EVENTS = [
   { icon: AlertTriangle, text: 'Emergency words spotted: advised to call 112', meta: 'AI booking' },
   { icon: CalendarCheck, text: 'Follow-up reminder emailed to 12 patients', meta: 'Automatic follow-up' },
   { icon: Sparkles, text: '3 overdue follow-ups: call them today', meta: 'CRM next action' },
-  { icon: Pill, text: '4 medicines suggested, doctor added 2', meta: 'Gemini clinical AI' },
-  { icon: Stethoscope, text: 'Advice draft ready for the doctor to review', meta: 'Gemini clinical AI' },
+  { icon: Pill, text: '4 medicines suggested, doctor added 2', meta: 'MedTech AI' },
+  { icon: Stethoscope, text: 'Advice draft ready for the doctor to review', meta: 'MedTech AI' },
 ]
 
 function ActivityFeed() {
@@ -140,7 +140,7 @@ export default function SmartWorkflow() {
             </h2>
             <p className="text-[#6B6B6B] max-w-[52ch]">
               Built-in AI books appointments from plain language, answers visitors, sends follow-up reminders and runs your CRM.
-              For doctors, Gemini-powered clinical assistance suggests medicines, tests and patient advice. AI suggests; the doctor decides.
+              For doctors, MedTech AI clinical assistance suggests medicines, tests and patient advice. AI suggests; the doctor decides.
             </p>
           </Reveal>
           <ActivityFeed />

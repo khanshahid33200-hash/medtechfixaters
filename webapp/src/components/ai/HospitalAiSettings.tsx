@@ -11,10 +11,11 @@ type Settings = {
   followup_whatsapp_enabled: boolean
   followup_email_enabled: boolean
   followup_template: string | null
+  rx_email_auto: boolean
 }
 
 const DEFAULTS: Settings = {
-  flags: {}, followup_days_before: 1, followup_overdue_days: 2, followup_whatsapp_enabled: true, followup_email_enabled: true, followup_template: null,
+  flags: {}, followup_days_before: 1, followup_overdue_days: 2, followup_whatsapp_enabled: true, followup_email_enabled: true, followup_template: null, rx_email_auto: false,
 }
 const SAMPLE_TEMPLATE =
   'Hello {{patient_name}},\nThis is a follow-up reminder from {{clinic_name}}.\nYour doctor recommended a follow-up on {{followup_date}}.\nYou can book your appointment here:\n{{booking_link}}'
@@ -75,6 +76,7 @@ export default function HospitalAiSettings() {
       followup_whatsapp_enabled: s.followup_whatsapp_enabled,
       followup_email_enabled: s.followup_email_enabled,
       followup_template: s.followup_template?.trim() || null,
+      rx_email_auto: s.rx_email_auto,
     })
     setSaving(false)
     if (error) { setNotice(`Could not save: ${error.message}`); return }
@@ -151,6 +153,18 @@ export default function HospitalAiSettings() {
           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Preview</p>
           <p className="mt-1 whitespace-pre-line text-slate-700">{preview}</p>
         </div>
+      </div>
+
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm space-y-3">
+        <h2 className="text-lg font-black text-slate-900">Prescription by email</h2>
+        <p className="text-xs text-slate-500">
+          When a consultation is completed, email the prescription as a PDF to patients who agreed to receive email. Doctors and staff can always send it manually with “Email PDF”.
+          Uses the platform’s email account (Gmail SMTP).
+        </p>
+        <label className="flex cursor-pointer items-center gap-2 text-xs font-bold text-slate-700">
+          <input type="checkbox" checked={s.rx_email_auto} onChange={(e) => setS({ ...s, rx_email_auto: e.target.checked })} className="h-4 w-4 accent-indigo-600" />
+          Automatically email the prescription PDF after each consultation
+        </label>
       </div>
 
       <div className="flex items-center justify-end gap-3">

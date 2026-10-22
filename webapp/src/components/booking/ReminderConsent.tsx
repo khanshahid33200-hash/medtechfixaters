@@ -37,7 +37,7 @@ export const ReminderConsent: React.FC<{ trackingToken: string }> = ({ trackingT
     return (
       <p className="flex items-center justify-center gap-1.5 rounded-xl bg-slate-50 p-3 text-xs font-semibold text-slate-600">
         <Check className="h-3.5 w-3.5 text-[#34C759]" />
-        {state === "saved" ? "Thanks. The clinic will remind you about follow-ups." : "No problem. You won’t get follow-up reminders."}
+        {state === "saved" ? "Thanks. You’ll receive your prescription and follow-up reminders." : "No problem. You won’t get messages from the clinic."}
       </p>
     );
   }
@@ -45,16 +45,16 @@ export const ReminderConsent: React.FC<{ trackingToken: string }> = ({ trackingT
   return (
     <div className="space-y-3 rounded-2xl border border-slate-100 bg-white/80 p-4 text-left text-xs">
       <p className="flex items-center gap-1.5 font-bold text-[#1D1D1F]">
-        <Bell className="h-4 w-4 text-[#007AFF]" /> Follow-up reminders
+        <Bell className="h-4 w-4 text-[#007AFF]" /> Prescription & follow-up reminders
       </p>
-      <p className="text-[#6E6E73]">If your doctor schedules a follow-up, may the clinic remind you?</p>
+      <p className="text-[#6E6E73]">May the clinic send you your prescription and remind you about follow-ups?</p>
       <label className="flex items-center gap-2 font-semibold text-slate-700">
         <input type="checkbox" checked={whatsapp} onChange={(e) => setWhatsapp(e.target.checked)} className="h-4 w-4 accent-[#007AFF]" />
         On WhatsApp (this mobile number)
       </label>
       <label className="flex items-center gap-2 font-semibold text-slate-700">
         <input type="checkbox" checked={emailOn} onChange={(e) => setEmailOn(e.target.checked)} className="h-4 w-4 accent-[#007AFF]" />
-        By email
+        By email (prescription PDF + reminders)
       </label>
       {emailOn && (
         <input

@@ -21,10 +21,13 @@ import {
   Bell,
   CalendarClock,
   Pill,
+  Sparkles,
+  HelpCircle,
 } from 'lucide-react'
 import { useAuth } from '../../context/AuthContext'
 import { useSEO } from '../../hooks/useSEO'
 import { supabase } from '../../lib/supabase'
+import DoctorGuideTour from './DoctorGuideTour'
 
 interface DoctorDashboardLayoutProps {
   children: ReactNode
@@ -59,6 +62,7 @@ export default function DoctorDashboardLayout({ children, pageTitle, onResetView
 
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false)
+  const [tourOpen, setTourOpen] = useState(false)
   const [hospitalLogo, setHospitalLogo] = useState<string | null>(null)
   const [onlineStatus, setOnlineStatus] = useState<OnlineStatus>('active')
   const [now, setNow] = useState(() => new Date())
@@ -208,10 +212,12 @@ export default function DoctorDashboardLayout({ children, pageTitle, onResetView
           {navItems.map((item) => {
             const active = isActive(item.path)
             const Icon = item.icon
+            const tourId = `nav-${item.name.toLowerCase().replace(/\s+/g, '-')}`
             return (
               <Link
                 key={item.name}
                 to={item.path}
+                data-tour={tourId}
                 title={isCollapsed ? item.name : undefined}
                 onClick={() => {
                   if (onResetView) onResetView()
@@ -349,8 +355,21 @@ export default function DoctorDashboardLayout({ children, pageTitle, onResetView
               {dateLabel} · {dayLabel}
             </span>
 
+            {/* Quick Tour Walkthrough Trigger */}
+            <motion.button
+              whileHover={{ scale: 1.04, y: -1 }}
+              whileTap={{ scale: 0.96 }}
+              onClick={() => setTourOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11.5px] font-bold text-blue-700 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-400/30 shadow-sm transition-all cursor-pointer"
+              title="Start Doctor Workspace Walkthrough Tour"
+            >
+              <Sparkles size={13} className="text-blue-600 animate-pulse" />
+              <span className="hidden sm:inline">Guide Tour</span>
+            </motion.button>
+
             <div className="relative">
               <motion.button
+                data-tour="doctor-status"
                 whileHover={{ y: -1 }}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
@@ -389,6 +408,16 @@ export default function DoctorDashboardLayout({ children, pageTitle, onResetView
                     >
                       <span className={`w-2 h-2 rounded-full ${statusMeta[onlineStatus].dot}`} />
                       <span>Status: {statusMeta[onlineStatus].label} (tap to change)</span>
+                    </button>
+                    <button
+                      onClick={() => {
+                        setProfileDropdownOpen(false)
+                        setTourOpen(true)
+                      }}
+                      className="w-full text-left flex items-center gap-2.5 px-4 py-2 hover:bg-blue-50/80 hover:text-blue-600 transition cursor-pointer"
+                    >
+                      <Sparkles size={15} className="text-blue-500" />
+                      <span>Workspace Tour & Guide</span>
                     </button>
                     <Link
                       to="/profile"
@@ -445,6 +474,13 @@ export default function DoctorDashboardLayout({ children, pageTitle, onResetView
           {children}
         </motion.main>
       </div>
+
+      {/* Interactive Guided Tour for First Time and On-Demand Doctor Onboarding */}
+      <DoctorGuideTour
+        doctorId={doctorId || currentUser?.id}
+        forceOpen={tourOpen}
+        onClose={() => setTourOpen(false)}
+      />
     </div>
   )
 }
