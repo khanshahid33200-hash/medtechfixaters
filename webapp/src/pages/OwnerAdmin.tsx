@@ -1960,7 +1960,7 @@ export default function OwnerAdmin() {
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-black text-slate-900">Platform Revenue & Billing Suite</h2>
-                <p className="text-xs text-slate-500">Real-time subscription collections, Razorpay settlements, and payout logs.</p>
+                <p className="text-xs text-slate-500">Real-time subscription collections, Cashfree settlements, and payout logs.</p>
               </div>
             </div>
 
@@ -1968,7 +1968,7 @@ export default function OwnerAdmin() {
               {[
                 { title: 'Total Revenue MTD', val: `₹${totalRevenue.toLocaleString('en-IN')}`, badge: `${hospitalsList.length} Active Accounts` },
                 { title: 'Active Paid Accounts', val: hospitalsList.length.toString(), badge: 'Monthly Auto-Renewal' },
-                { title: 'Settlement Status', val: 'Standby', badge: 'Razorpay Gateway Ready' },
+                { title: 'Settlement Status', val: 'Active', badge: 'Cashfree Gateway Ready' },
               ].map((f, i) => (
                 <div key={i} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase">{f.title}</span>
@@ -2190,7 +2190,7 @@ export default function OwnerAdmin() {
               {[
                 { name: 'WhatsApp Cloud API (Meta)', desc: 'Direct webhook dispatcher for PDF prescriptions & tokens.', key: integrationKeys.whatsappToken, setterKey: 'whatsappToken' as const, status: 'Ready for Credentials', icon: '💬' },
                 { name: 'ABDM Production Gateway (M1/M2/M3)', desc: 'Ayushman Bharat Digital Mission cryptographic health records signing.', key: integrationKeys.abdmClientId, setterKey: 'abdmClientId' as const, status: 'Compliant & Standby', icon: '🔒' },
-                { name: 'Razorpay Payment & Settlement Engine', desc: 'Automated hospital subscription billing & payout deposits.', key: integrationKeys.razorpayKey, setterKey: 'razorpayKey' as const, status: 'Ready for Live Key', icon: '💳' },
+                { name: 'Cashfree Payment & Settlement Engine', desc: 'Automated hospital subscription billing & payout deposits.', key: (integrationKeys as any).cashfreeKey || integrationKeys.razorpayKey, setterKey: 'razorpayKey' as const, status: 'Active (Sandbox/Production)', icon: '💳' },
                 { name: 'Fast2SMS OTP Failover', desc: 'Secondary fallback for critical token SMS delivery.', key: integrationKeys.smsGatewayKey, setterKey: 'smsGatewayKey' as const, status: 'Ready for Live Key', icon: '📱' },
               ].map((integ, idx) => (
                 <div key={idx} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">

@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { Cookie, ShieldCheck, CheckCircle2, X } from 'lucide-react'
 
 export default function CookieBanner() {
   const [isVisible, setIsVisible] = useState(false)
+  const location = useLocation()
 
   useEffect(() => {
     const consent = localStorage.getItem('clinicos_cookie_consent')
@@ -13,6 +14,14 @@ export default function CookieBanner() {
       return () => clearTimeout(timer)
     }
   }, [])
+
+  if (
+    location.pathname.startsWith('/onboarding') ||
+    location.pathname.startsWith('/auth/') ||
+    location.pathname.startsWith('/checkout/')
+  ) {
+    return null
+  }
 
   const handleAcceptAll = () => {
     localStorage.setItem('clinicos_cookie_consent', 'accepted_all')

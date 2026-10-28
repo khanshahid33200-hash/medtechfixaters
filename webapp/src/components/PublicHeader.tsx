@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
-import { Menu, X, ArrowRight, Sparkles, ChevronDown, Stethoscope, Building2, LayoutGrid, Rocket } from 'lucide-react'
+import { Menu, X, ArrowRight, Sparkles, ChevronDown, Stethoscope, Building2, LayoutGrid, Rocket, Lock } from 'lucide-react'
 import { motion, AnimatePresence, useScroll, useMotionValueEvent, useReducedMotion } from 'framer-motion'
 import { EASE_OUT } from '../lib/motion'
 import ContactModal from './ContactModal'
@@ -39,6 +39,7 @@ const NAV_LINKS: NavItem[] = [
     ],
   },
   { to: '/how-it-works', label: 'How it works' },
+  { to: '/pricing', label: 'Pricing' },
   { to: '/about', label: 'About Us' },
   { to: '/contact', label: 'Contact Us' },
 ]
@@ -246,80 +247,12 @@ export default function PublicHeader() {
 
           {/* Right Action Buttons */}
           <div className="hidden sm:flex items-center gap-3">
-            <div
-              className="relative"
-              onMouseEnter={handleLoginMouseEnter}
-              onMouseLeave={handleLoginMouseLeave}
+            <Link
+              to="/login"
+              className="px-4 py-2 rounded-full text-xs font-bold text-slate-700 hover:text-orange-600 hover:bg-orange-50/50 transition-colors flex items-center gap-1 cursor-pointer"
             >
-              <Link
-                to="/login"
-                onClick={() => setLoginDropdownOpen(false)}
-                className="px-3.5 py-1.5 rounded-full text-xs font-bold text-slate-700 hover:text-orange-600 hover:bg-orange-50/50 transition-colors flex items-center gap-1 cursor-pointer"
-              >
-                <span>Login</span>
-                <ChevronDown
-                  size={12}
-                  className={`transition-transform duration-200 ${
-                    loginDropdownOpen ? 'rotate-180 text-orange-600' : ''
-                  }`}
-                />
-              </Link>
-
-              {/* Login Options Dropdown */}
-              <AnimatePresence>
-                {loginDropdownOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 10, scale: 0.96 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                    transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
-                    className="absolute top-full right-0 mt-3 w-68 p-2.5 rounded-3xl bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-[0_25px_60px_rgba(15,23,42,0.15),0_10px_30px_rgba(255,107,44,0.1)] z-[100] space-y-1 text-left"
-                  >
-                    <Link
-                      to="/login/doctordashboard"
-                      onClick={() => setLoginDropdownOpen(false)}
-                      className="flex items-start gap-3 p-2.5 rounded-2xl hover:bg-emerald-50/80 transition-all group"
-                    >
-                      <div className="w-8.5 h-8.5 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform shadow-2xs">
-                        <Stethoscope size={16} />
-                      </div>
-                      <div>
-                        <div className="font-bold text-xs text-slate-900 group-hover:text-emerald-700">Doctor Login</div>
-                        <p className="text-[11px] text-slate-500 font-normal leading-tight mt-0.5">
-                          OPD consult queue & Rx console
-                        </p>
-                      </div>
-                    </Link>
-
-                    <Link
-                      to="/login/hospitaladministration"
-                      onClick={() => setLoginDropdownOpen(false)}
-                      className="flex items-start gap-3 p-2.5 rounded-2xl hover:bg-blue-50/80 transition-all group"
-                    >
-                      <div className="w-8.5 h-8.5 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center shrink-0 mt-0.5 group-hover:scale-105 transition-transform shadow-2xs">
-                        <Building2 size={16} />
-                      </div>
-                      <div>
-                        <div className="font-bold text-xs text-slate-900 group-hover:text-blue-700">Hospital Admin</div>
-                        <p className="text-[11px] text-slate-500 font-normal leading-tight mt-0.5">
-                          Doctor seats, live lobby & settings
-                        </p>
-                      </div>
-                    </Link>
-
-                    <div className="pt-1.5 border-t border-slate-100 mt-1">
-                      <Link
-                        to="/login"
-                        onClick={() => setLoginDropdownOpen(false)}
-                        className="block px-3 py-2 rounded-xl text-center text-[11px] font-bold text-slate-600 hover:text-orange-600 hover:bg-orange-50/60 transition"
-                      >
-                        Unified Sign In Screen →
-                      </Link>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+              <span>Login / Sign Up</span>
+            </Link>
 
             <Link to="/book-demo">
               <motion.button
@@ -421,24 +354,14 @@ export default function PublicHeader() {
               </nav>
 
               <div className="pt-3 border-t border-slate-100 flex flex-col gap-2">
-                <div className="grid grid-cols-2 gap-2">
-                  <Link
-                    to="/login/doctordashboard"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="py-2.5 px-3 text-center rounded-xl bg-emerald-50 text-emerald-800 font-bold text-xs hover:bg-emerald-100 transition flex items-center justify-center gap-1.5 border border-emerald-200/60"
-                  >
-                    <Stethoscope size={14} />
-                    <span>Doctor Login</span>
-                  </Link>
-                  <Link
-                    to="/login/hospitaladministration"
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="py-2.5 px-3 text-center rounded-xl bg-blue-50 text-blue-800 font-bold text-xs hover:bg-blue-100 transition flex items-center justify-center gap-1.5 border border-blue-200/60"
-                  >
-                    <Building2 size={14} />
-                    <span>Hospital Login</span>
-                  </Link>
-                </div>
+                <Link
+                  to="/login"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full py-2.5 px-3 text-center rounded-xl bg-orange-50 text-orange-700 font-bold text-xs hover:bg-orange-100 transition flex items-center justify-center gap-1.5 border border-orange-200/60"
+                >
+                  <Lock size={14} />
+                  <span>Login / Sign Up</span>
+                </Link>
                 <Link
                   to="/book-demo"
                   onClick={() => setMobileMenuOpen(false)}

@@ -40,7 +40,19 @@ export default function Login({ lockedRole }: LoginProps) {
   const location = useLocation();
   const { loginWithSupabase } = useAuth();
 
-  const [tab, setTab] = useState<AuthTab>("login");
+  const searchParams = new URLSearchParams(location.search);
+  const initialTab = searchParams.get("tab") === "signup" ? "signup" : "login";
+  const [tab, setTab] = useState<AuthTab>(initialTab);
+
+  React.useEffect(() => {
+    const qTab = new URLSearchParams(location.search).get("tab");
+    if (qTab === "signup") {
+      setTab("signup");
+    } else if (qTab === "login") {
+      setTab("login");
+    }
+  }, [location.search]);
+
   const [loginType, setLoginType] = useState<LoginType>(
     lockedRole === "hospital_admin" ? "hospital" : "doctor"
   );
@@ -94,7 +106,7 @@ export default function Login({ lockedRole }: LoginProps) {
         (onboardingStatus === "PROFILE_INCOMPLETE" ||
           onboardingStatus === "PAYMENT_PENDING")
       ) {
-        navigate("/doctor/onboarding");
+        navigate("/onboarding/category");
       } else {
         navigate("/dashboard");
       }
@@ -111,7 +123,7 @@ export default function Login({ lockedRole }: LoginProps) {
     setLoading(true);
 
     try {
-      const redirectUrl = `${window.location.origin}/doctor/onboarding`;
+      const redirectUrl = `${window.location.origin}/auth/callback`;
       const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
@@ -147,7 +159,7 @@ export default function Login({ lockedRole }: LoginProps) {
       const { error: resetErr } = await supabase.auth.resetPasswordForEmail(
         cleanEmail,
         {
-          redirectTo: `${window.location.origin}/doctor/onboarding`,
+          redirectTo: `${window.location.origin}/login`,
         }
       );
 
@@ -165,6 +177,7 @@ export default function Login({ lockedRole }: LoginProps) {
     clearMessages();
     setTab(nextTab);
     setForgotMode(false);
+    navigate(nextTab === "signup" ? "/login?tab=signup" : "/login", { replace: true });
   };
 
   return (
@@ -405,6 +418,7 @@ export default function Login({ lockedRole }: LoginProps) {
                     <SignupPanel
                       loading={loading}
                       onGoogle={handleGoogleLogin}
+                      onSwitchToLogin={() => selectTab("login")}
                     />
                   </motion.div>
                 )}
@@ -636,59 +650,131 @@ function HospitalLoginForm({
   );
 }
 
-function SignupPanel({ loading, onGoogle }: any) {
+function SignupPanel({ loading, onGoogle, onSwitchToLogin }: any) {
+  const [category, setCategory] = useState<'doctor' | 'hospital'>('doctor');
+
   return (
-    <div className="text-left">
-      <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/60 to-indigo-50/30 p-5 mb-6">
-        <div className="flex gap-3.5 items-start">
-          <div className="w-10 h-10 rounded-xl bg-[#1677FF] text-white flex items-center justify-center shrink-0 shadow-sm shadow-blue-500/20">
-            <Stethoscope size={20} />
+    <div className="text-left space-y-4">
+      {/* Category selector */}
+      <div className="grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => setCategory('doctor')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            category === 'doctor'
+              ? 'border-[#1677FF] bg-blue-50/70 shadow-xs ring-1 ring-[#1677FF]/20'
+              : 'border-gray-200 bg-white hover:border-gray-300'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                category === 'doctor' ? 'bg-[#1677FF] text-white' : 'bg-gray-100 text-gray-500'
+              }`}
+            >
+              <Stethoscope size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-gray-900 truncate">Solo Doctor / Clinic</div>
+              <div className="text-[10px] text-emerald-600 font-semibold">₹500 First Month</div>
+            </div>
           </div>
+        </button>
 
-          <div>
-            <h3 className="font-semibold text-sm text-gray-900">
-              Doctor / Clinic / Individual Doctor
-            </h3>
-
-            <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-              Create an account for your clinic or individual medical practice.
-            </p>
+        <button
+          type="button"
+          onClick={() => setCategory('hospital')}
+          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+            category === 'hospital'
+              ? 'border-stone-800 bg-stone-50 shadow-xs ring-1 ring-stone-800/20'
+              : 'border-gray-200 bg-white hover:border-gray-300'
+          }`}
+        >
+          <div className="flex items-center gap-2.5">
+            <div
+              className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${
+                category === 'hospital' ? 'bg-stone-900 text-white' : 'bg-gray-100 text-gray-500'
+              }`}
+            >
+              <Building2 size={16} />
+            </div>
+            <div className="min-w-0">
+              <div className="text-xs font-bold text-gray-900 truncate">Hospital</div>
+              <div className="text-[10px] text-gray-500">Custom Scope</div>
+            </div>
           </div>
-        </div>
+        </button>
       </div>
 
-      <button
-        type="button"
-        disabled={loading}
-        onClick={onGoogle}
-        className="w-full h-12 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-sm transition flex items-center justify-center gap-3 disabled:opacity-50 shadow-lg shadow-blue-500/15"
-      >
-        <GoogleIcon />
-        <span>Continue with Google</span>
-        <ArrowRight size={16} />
-      </button>
+      {category === 'doctor' ? (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50/70 to-indigo-50/40 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold text-blue-700 uppercase tracking-wider">
+                Solo Doctor & Clinic Plan
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">
+                90% OFF
+              </span>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Start with ₹500 for your first month (regular ₹5,000/mo thereafter). Includes personal doctor QR booking, digital receptionist, and live OPD queue.
+            </p>
+          </div>
 
-      <p className="text-center text-xs text-gray-400 mt-3.5">
-        Google is the only self-signup method.
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onGoogle}
+            className="w-full h-12 rounded-xl bg-[#1677FF] hover:bg-blue-600 text-white font-semibold text-sm transition flex items-center justify-center gap-3 disabled:opacity-50 shadow-lg shadow-blue-500/15 cursor-pointer"
+          >
+            <GoogleIcon />
+            <span>Sign Up with Google</span>
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          <div className="rounded-2xl border border-stone-200 bg-stone-50/80 p-4">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-[11px] font-bold text-stone-800 uppercase tracking-wider">
+                Hospital Enterprise Solutions
+              </span>
+              <span className="px-2 py-0.5 rounded-full bg-stone-200 text-stone-700 text-[10px] font-bold">
+                Quote-based
+              </span>
+            </div>
+            <p className="text-xs text-gray-600 leading-relaxed">
+              Multi-doctor, multi-department, voice receptionist, and TV displays. Quote-based agreement without automated credit card charges.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onGoogle}
+            className="w-full h-12 rounded-xl bg-stone-900 hover:bg-black text-white font-semibold text-sm transition flex items-center justify-center gap-3 disabled:opacity-50 shadow-lg shadow-stone-900/15 cursor-pointer"
+          >
+            <GoogleIcon />
+            <span>Continue with Google (Hospital)</span>
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
+
+      <p className="text-center text-xs text-gray-400">
+        Google OAuth provides secure, single sign-on access.
       </p>
 
-      <div className="my-6 h-px bg-gray-100" />
-
-      <div className="text-center">
-        <h4 className="font-semibold text-xs text-gray-900">
-          Hospital Account?
-        </h4>
-
-        <p className="text-xs text-gray-500 mt-1">
-          Hospital accounts are created and provisioned by platform administration.
-        </p>
-
-        <Link
-          to="/contact"
-          className="mt-3 inline-block text-[#1677FF] font-semibold text-xs hover:underline"
+      <div className="pt-2 text-center text-xs text-gray-500 border-t border-gray-100">
+        Already registered?{' '}
+        <button
+          type="button"
+          onClick={onSwitchToLogin}
+          className="text-[#1677FF] font-semibold hover:underline cursor-pointer"
         >
-          Contact Administration →
-        </Link>
+          Sign in here
+        </button>
       </div>
     </div>
   );

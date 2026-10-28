@@ -74,52 +74,55 @@
       "h1": "Simple, Transparent Plans. No Hidden Fees.",
       "pricing": [
         {
-          "name": "Clinic Starter",
-          "tag": "Solo & Duo Doctors",
-          "priceMonthly": 1999,
-          "priceAnnual": 1499,
-          "desc": "Ideal for independent doctors and single-counter outpatient clinics.",
+          "name": "First Month Special Offer",
+          "tag": "Solo Doctors & Clinics",
+          "priceMonthly": 500,
+          "priceAnnual": 5000,
+          "desc": "Introductory pricing: ₹500 for your first month (90% off). Regular price ₹5,000/month from month two.",
           "features": [
-            "Up to 2 Doctor Logins",
-            "Unlimited Patient QR Tokens",
-            "Live Web Queue Telemetry",
-            "30-Second Prescription Pad",
-            "WhatsApp PDF Prescriptions (500/mo)",
-            "Basic Daily Footfall Reports"
+            "Digital receptionist for healthcare facilities",
+            "Hospital-specific QR code check-in standee",
+            "Doctor discovery and appointment booking",
+            "AI-assisted patient triage and chatbot",
+            "Live patient queue management",
+            "Online payment integration (UPI, QR, cards)",
+            "Separate doctor dashboard with data isolation",
+            "Administrative management tools"
           ]
         },
         {
-          "name": "Hospital Pro",
-          "tag": "Polyclinics & Nursing Homes",
-          "priceMonthly": 4999,
-          "priceAnnual": 3999,
-          "desc": "Complete OPD management for multi-doctor facilities and small hospitals.",
+          "name": "Doctor and Clinic Plan",
+          "tag": "Regular Monthly Subscription",
+          "priceMonthly": 5000,
+          "priceAnnual": 5000,
+          "desc": "A monthly subscription for eligible individual doctors and clinics at ₹5,000 per month.",
           "features": [
-            "Up to 10 Doctor Logins",
-            "Unlimited QR Standees & Tokens",
-            "Voice TTS Audio Callout",
-            "Reception TV Queue Board Stream",
-            "Multi-Counter Load Balancing",
-            "Unlimited WhatsApp PDF Dispatches",
-            "Doctor Performance & Collection Audits",
-            "Priority Phone & WhatsApp Support"
+            "Digital receptionist for healthcare facilities",
+            "Hospital-specific QR code check-in standee",
+            "Doctor discovery and appointment booking",
+            "AI-assisted patient triage and chatbot",
+            "Live patient queue management",
+            "Online payment integration (UPI, QR, cards)",
+            "Separate doctor dashboard with data isolation",
+            "Administrative management tools"
           ]
         },
         {
-          "name": "Enterprise Mesh",
-          "tag": "Multi-Bed Hospitals & Chains",
-          "priceMonthly": 9999,
-          "priceAnnual": 7999,
-          "desc": "Enterprise security, dedicated instances, and custom billing integration.",
+          "name": "Hospital Solutions",
+          "tag": "Hospitals & Multi-Bed Chains",
+          "priceMonthly": 0,
+          "priceAnnual": 0,
+          "desc": "Custom pricing tailored to your hospital's operational, technical, and deployment requirements.",
           "features": [
-            "Unlimited Doctor & Staff Logins",
-            "Unlimited Hospital Departments",
-            "Dedicated PostgreSQL Instance & RLS",
-            "Custom HIS/EHR API & Webhooks",
-            "NABH & ABDM Digital Compliance",
-            "On-Premise or Custom Cloud Hosting",
-            "24/7 Dedicated Account Manager",
-            "Custom Staff Training & Onboarding"
+            "Multi-doctor & multi-department digital receptionist",
+            "Hospital-specific QR code access for all counters",
+            "Doctor discovery and appointment booking across departments",
+            "AI-assisted patient triage and chatbot with department routing",
+            "Live patient queue management with TV display board streaming",
+            "Online payment integration with department ledger splits",
+            "Voice receptionist functionality with automated audio token callouts",
+            "Separate hospital and doctor dashboards with strict PostgreSQL data isolation",
+            "Administrative management tools with role-based access & audit logs"
           ]
         }
       ],

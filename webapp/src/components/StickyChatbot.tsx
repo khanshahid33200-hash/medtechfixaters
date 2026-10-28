@@ -14,10 +14,13 @@ type ChatMessage =
 
 const STARTERS = ["How does QR booking work?", "Is patient data kept separate?", "Can individual doctors use it?", "How do I book a demo?"];
 
-// Pages where the widget would get in the way (dashboards, booking, TV display).
-const HIDDEN_PREFIXES = ["/dashboard", "/doctordashboard", "/hospitaldashboard", "/hospitaladmin", "/mrshahidbabu", "/display",
+// Pages where the widget would get in the way (dashboards, booking, TV display, onboarding).
+const HIDDEN_PREFIXES = [
+  "/dashboard", "/doctordashboard", "/hospitaldashboard", "/hospitaladmin", "/mrshahidbabu", "/display",
   "/a/", "/book/", "/appointment/", "/intake/", "/track", "/queue", "/appointments", "/follow-ups", "/history", "/medicines",
-  "/qr-kiosk", "/availability", "/notifications", "/settings", "/profile", "/login", "/signup", "/doctor/"];
+  "/qr-kiosk", "/availability", "/notifications", "/settings", "/profile", "/login", "/signup", "/doctor/",
+  "/onboarding", "/auth/", "/checkout/",
+];
 
 export default function StickyChatbot() {
   const location = useLocation();

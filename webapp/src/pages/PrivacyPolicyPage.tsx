@@ -239,7 +239,7 @@ export default function PrivacyPolicyPage() {
               <CreditCard size={16} className="text-blue-600" /> E. Payment Information
             </h4>
             <p className="text-xs text-slate-600">
-              Subscription billing and payment transactions are processed through certified third-party payment gateways such as <strong>[PAYMENT PROVIDER]</strong> (e.g., Razorpay). MedTechFixaters does not capture, store, or process complete credit card numbers, debit card PINs, or CVVs on our own servers. Payment information is subject to the third-party payment provider's own privacy policy and terms.
+              Subscription billing and payment transactions are processed through certified third-party payment gateways such as <strong>Cashfree Payments</strong>. MedTechFixaters does not capture, store, or process complete credit card numbers, debit card PINs, or CVVs on our own servers. Payment information is subject to the third-party payment provider's own privacy policy and terms.
             </p>
           </div>
 

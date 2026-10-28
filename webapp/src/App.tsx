@@ -33,7 +33,22 @@ import OwnerAdmin from './pages/OwnerAdmin'
 import DoctorSignupPage from './pages/DoctorSignupPage'
 import DoctorOnboardingPage from './pages/DoctorOnboardingPage'
 import MedicinesPage from './pages/MedicinesPage'
-// (Legacy Hospital Admin system deleted & merged into Hospital Dashboard system)
+
+// Standalone Onboarding & Payments System
+import AuthCallbackPage from './pages/auth/AuthCallbackPage'
+import OnboardingRoot from './pages/onboarding/OnboardingRoot'
+import Step1BasicDetails from './pages/onboarding/Step1BasicDetails'
+import Step2OrganizationDetails from './pages/onboarding/Step2OrganizationDetails'
+import Step3Availability from './pages/onboarding/Step3Availability'
+import Step4ConsultationFees from './pages/onboarding/Step4ConsultationFees'
+import Step5Review from './pages/onboarding/Step5Review'
+import Step6Payment from './pages/onboarding/Step6Payment'
+import PaymentSuccessPage from './pages/onboarding/PaymentSuccessPage'
+import PaymentPendingOrFailedPage from './pages/onboarding/PaymentPendingOrFailedPage'
+import SubscriptionDetailsPage from './pages/subscription/SubscriptionDetailsPage'
+import SubscriptionExpiredPage from './pages/subscription/SubscriptionExpiredPage'
+import HospitalInquiryStatusPage from './pages/hospital/HospitalInquiryStatusPage'
+import AdminHospitalInquiriesPage from './pages/admin/AdminHospitalInquiriesPage'
 
 // Medtech Fixaters Hospital Dashboard Pages (design.md)
 import HospitalDashboardHome from './pages/hospitaldashboard/HospitalDashboardHome'
@@ -113,28 +128,51 @@ function App() {
           }
         />
 
-        {/* Sign In Portals & Access Control */}
-        <Route path="/account-blocked" element={<AccountBlockedPage />} />
-        <Route path="/signup" element={<DoctorSignupPage />} />
-        <Route path="/signup/doctor" element={<DoctorSignupPage />} />
-        <Route path="/doctor/signup" element={<DoctorSignupPage />} />
-        <Route path="/doctor/onboarding" element={<DoctorOnboardingPage />} />
-        <Route path="/doctor" element={<Login />} />
-        <Route path="/doctor/login" element={<Login />} />
+        {/* Single Unified Login & Sign Up Screen */}
         <Route path="/login" element={<Login />} />
 
-        {/* Dedicated single-role login portals — each locks the role
-            toggle and rejects a correctly-authenticated account whose
-            real role doesn't match this portal (see Login.tsx lockedRole
-            and AuthContext's loginWithSupabase wrong-portal check). */}
-        <Route path="/login/doctordashboard" element={<Login lockedRole="doctor" />} />
-        <Route path="/login/hospitaladministration" element={<Login lockedRole="hospital_admin" />} />
-        <Route path="/login/platformadmin" element={<Navigate to="/mrshahidbabu" replace />} />
+        {/* Redirect all other/legacy login and signup routes directly to /login */}
+        <Route path="/signup" element={<Navigate to="/login?tab=signup" replace />} />
+        <Route path="/signup/*" element={<Navigate to="/login?tab=signup" replace />} />
+        <Route path="/register" element={<Navigate to="/login?tab=signup" replace />} />
+        <Route path="/signup/doctor" element={<Navigate to="/login?tab=signup" replace />} />
+        <Route path="/doctor/signup" element={<Navigate to="/login?tab=signup" replace />} />
+        <Route path="/doctor/login" element={<Navigate to="/login" replace />} />
+        <Route path="/doctor" element={<Navigate to="/login" replace />} />
+        <Route path="/doctor/onboarding" element={<Navigate to="/onboarding" replace />} />
+        <Route path="/login/*" element={<Navigate to="/login" replace />} />
         <Route path="/hospitaladminmedtech" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
-        <Route path="/login/hospitaladminmedtech" element={<Navigate to="/login/hospitaladministration" replace />} />
-        <Route path="/login/hospitaladmin009" element={<Navigate to="/login/hospitaladministration" replace />} />
         <Route path="/hospitaladmin009" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
         <Route path="/hospitaladmin" element={<Navigate to="/hospitaldashboard/dashboard" replace />} />
+
+        {/* Auth Callback for Google OAuth */}
+        <Route path="/auth/callback" element={<AuthCallbackPage />} />
+
+        {/* Standalone Onboarding System (Dedicated layout, no website chrome) */}
+        <Route path="/onboarding" element={<OnboardingRoot />} />
+        <Route path="/onboarding/basic-details" element={<Step1BasicDetails />} />
+        <Route path="/onboarding/organization" element={<Step2OrganizationDetails />} />
+        <Route path="/onboarding/availability" element={<Step3Availability />} />
+        <Route path="/onboarding/consultation-fees" element={<Step4ConsultationFees />} />
+        <Route path="/onboarding/review" element={<Step5Review />} />
+        <Route path="/onboarding/payment" element={<Step6Payment />} />
+        <Route path="/onboarding/payment/success" element={<PaymentSuccessPage />} />
+        <Route path="/onboarding/payment/failed" element={<PaymentPendingOrFailedPage />} />
+        <Route path="/onboarding/payment/pending" element={<PaymentPendingOrFailedPage />} />
+
+        {/* Seamless backwards compatibility for legacy checkout / onboarding routes */}
+        <Route path="/onboarding/category" element={<Navigate to="/onboarding/basic-details" replace />} />
+        <Route path="/onboarding/profile" element={<Navigate to="/onboarding/organization" replace />} />
+        <Route path="/checkout/intro" element={<Navigate to="/onboarding/payment" replace />} />
+        <Route path="/checkout/pending" element={<Navigate to="/onboarding/payment/pending" replace />} />
+        <Route path="/checkout/verify" element={<Navigate to="/onboarding/payment/pending" replace />} />
+        <Route path="/checkout/status" element={<Navigate to="/onboarding/payment/pending" replace />} />
+
+        <Route path="/subscription" element={<SubscriptionDetailsPage />} />
+        <Route path="/subscription/renew" element={<SubscriptionDetailsPage />} />
+        <Route path="/subscription/expired" element={<SubscriptionExpiredPage />} />
+        <Route path="/hospital/inquiry-status" element={<HospitalInquiryStatusPage />} />
+        <Route path="/admin/hospital-inquiries" element={<AdminHospitalInquiriesPage />} />
 
         {/* Secret Platform Owner Control Portal */}
         <Route path="/mrshahidbabu" element={<OwnerAdmin />} />

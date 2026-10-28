@@ -47,37 +47,37 @@ export default function PaymentsPage() {
           doctor_name: 'Dr. Ashok Verma',
           patient_name: 'Ramesh Chandra Sharma',
           patient_phone: '9876543210',
-          gateway_provider: 'razorpay',
-          gateway_transaction_id: 'txn_rzp_8872199',
+          gateway_provider: 'cashfree',
+          gateway_transaction_id: 'txn_cf_8872199',
           status: 'paid',
           payment_method: 'UPI / GPay',
           timestamp: '23 Aug 2026, 10:14 AM'
         },
         {
-          id: 'pay_rzp_99210042',
+          id: 'pay_cf_99210042',
           appointment_id: 'appt-2026082302',
           amount_in_rupees: 500,
           doctor_name: 'Dr. Sunita Rao',
           patient_name: 'Ananya Roy',
           patient_phone: '9876543211',
-          gateway_provider: 'razorpay',
-          gateway_transaction_id: 'txn_rzp_8872200',
+          gateway_provider: 'cashfree',
+          gateway_transaction_id: 'txn_cf_8872200',
           status: 'paid',
           payment_method: 'Debit Card',
           timestamp: '23 Aug 2026, 10:28 AM'
         },
         {
-          id: 'pay_rzp_99210043',
+          id: 'pay_cf_99210043',
           appointment_id: 'appt-2026082303',
           amount_in_rupees: 600,
           doctor_name: 'Dr. Rajiv Menon',
           patient_name: 'Vikramjit Singh',
           patient_phone: '9876543212',
-          gateway_provider: 'razorpay',
-          gateway_transaction_id: 'txn_rzp_8872201',
+          gateway_provider: 'cashfree',
+          gateway_transaction_id: 'txn_cf_8872201',
           status: 'refunded',
           payment_method: 'UPI / PhonePe',
-          refund_transaction_id: 'rfnd_rzp_331002',
+          refund_transaction_id: 'rfnd_cf_331002',
           refund_reason: 'Doctor called away for emergency surgery',
           timestamp: '23 Aug 2026, 11:05 AM'
         }
@@ -140,7 +140,7 @@ export default function PaymentsPage() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold font-recoleta text-slate-900">Hospital Payment & Refund Console</h1>
-            <p className="text-xs text-slate-500">Track Razorpay consultation fee collections, transaction histories, and refunds</p>
+            <p className="text-xs text-slate-500">Track Cashfree consultation fee collections, transaction histories, and refunds</p>
           </div>
         </div>
 
@@ -162,7 +162,7 @@ export default function PaymentsPage() {
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-1">
             <p className="text-xs font-bold uppercase tracking-wider text-slate-400">Total Transactions</p>
             <p className="text-4xl font-black text-slate-900 font-mono">{payments.length}</p>
-            <p className="text-xs text-slate-500">Processed via Razorpay SDK</p>
+            <p className="text-xs text-slate-500">Processed via Cashfree SDK</p>
           </div>
 
           <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-md space-y-1">
@@ -259,7 +259,7 @@ export default function PaymentsPage() {
             <div className="bg-white border border-slate-200 rounded-3xl max-w-md w-full shadow-2xl p-6 space-y-4">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                 <h3 className="text-lg font-bold font-recoleta text-slate-900 flex items-center gap-2">
-                  <RotateCcw className="text-amber-600" size={20} /> Issue Razorpay Refund
+                  <RotateCcw className="text-amber-600" size={20} /> Issue Cashfree Refund
                 </h3>
                 <button onClick={() => setSelectedPayment(null)} className="text-slate-400 hover:text-slate-900">✕</button>
               </div>
