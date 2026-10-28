@@ -91,7 +91,7 @@
       "destination": "/refund-policy/index.html"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!api/).*)",
       "destination": "/spa.html"
     }
   ],
