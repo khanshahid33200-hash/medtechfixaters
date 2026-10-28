@@ -360,42 +360,7 @@ export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {
   }
 
   async createPaymentOrder(params: CreateOrderParams): Promise<CreateOrderResponse> {
-    // 1. Try Supabase Edge Function first
-    try {
-      const { data, error } = await supabase.functions.invoke('payments', {
-        body: {
-          action: 'create_order',
-          payload: {
-            plan_id: params.purpose === 'introductory_first_month' ? 'doctor_intro_500' : 'doctor_monthly_5000',
-            internal_order_id: params.internalOrderId,
-            phone: params.customer?.phone,
-            customer_name: params.customer?.name,
-          },
-        },
-      });
-
-      if (!error && data?.success && data?.payment_session_id) {
-        return {
-          success: true,
-          gatewayOrderId: data.order_id || data.internal_order_id,
-          amountPaise: data.amount,
-          currency: data.currency || 'INR',
-          checkoutUrl: undefined,
-          gatewayKeyId: this.appId,
-          metadata: {
-            gateway: 'cashfree',
-            paymentSessionId: data.payment_session_id,
-            orderId: data.order_id,
-            environment: data.environment || this.mode,
-            amountRupees: data.amount_rupees,
-          },
-        };
-      }
-    } catch (err) {
-      console.warn('[CashfreeAdapter] Edge Function invoke failed, trying /api/cashfree/create-order:', err);
-    }
-
-    // 2. Direct API call to /api/cashfree/create-order (handled by Vite dev middleware or Vercel serverless)
+    // 1. Direct API call to /api/cashfree/create-order (hosted on current domain)
     try {
       const res = await fetch('/api/cashfree/create-order', {
         method: 'POST',
@@ -429,7 +394,42 @@ export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {
         }
       }
     } catch (err) {
-      console.warn('[CashfreeAdapter] Direct /api/cashfree/create-order call failed:', err);
+      console.warn('[CashfreeAdapter] Direct /api/cashfree/create-order call failed, trying Edge Function:', err);
+    }
+
+    // 2. Try Supabase Edge Function fallback
+    try {
+      const { data, error } = await supabase.functions.invoke('payments', {
+        body: {
+          action: 'create_order',
+          payload: {
+            plan_id: params.purpose === 'introductory_first_month' ? 'doctor_intro_500' : 'doctor_monthly_5000',
+            internal_order_id: params.internalOrderId,
+            phone: params.customer?.phone,
+            customer_name: params.customer?.name,
+          },
+        },
+      });
+
+      if (!error && data?.success && data?.payment_session_id) {
+        return {
+          success: true,
+          gatewayOrderId: data.order_id || data.internal_order_id,
+          amountPaise: data.amount,
+          currency: data.currency || 'INR',
+          checkoutUrl: undefined,
+          gatewayKeyId: this.appId,
+          metadata: {
+            gateway: 'cashfree',
+            paymentSessionId: data.payment_session_id,
+            orderId: data.order_id,
+            environment: data.environment || this.mode,
+            amountRupees: data.amount_rupees,
+          },
+        };
+      }
+    } catch (err) {
+      console.warn('[CashfreeAdapter] Edge Function invoke failed:', err);
     }
 
     // 3. Fallback to mock adapter only if offline
@@ -439,31 +439,7 @@ export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {
   }
 
   async retrievePaymentStatus(gatewayOrderId: string): Promise<PaymentStatusResponse> {
-    // 1. Try Supabase Edge Function
-    try {
-      const { data, error } = await supabase.functions.invoke('payments', {
-        body: {
-          action: 'verify_cashfree_payment',
-          payload: { order_id: gatewayOrderId },
-        },
-      });
-
-      if (!error && data?.success) {
-        return {
-          success: true,
-          gatewayOrderId,
-          gatewayPaymentId: data.payment_id,
-          status: 'completed',
-          amountPaise: 50000,
-          currency: 'INR',
-          verifiedAt: new Date().toISOString(),
-        };
-      }
-    } catch (err) {
-      console.warn('[CashfreeAdapter] Edge Function retrieve status failed:', err);
-    }
-
-    // 2. Try direct /api/cashfree/order-status
+    // 1. Try direct /api/cashfree/order-status (hosted on current domain)
     try {
       const res = await fetch(`/api/cashfree/order-status?order_id=${encodeURIComponent(gatewayOrderId)}`);
       if (res.ok) {
@@ -492,6 +468,30 @@ export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {
       console.warn('[CashfreeAdapter] Direct order-status call error:', err);
     }
 
+    // 2. Try Supabase Edge Function fallback
+    try {
+      const { data, error } = await supabase.functions.invoke('payments', {
+        body: {
+          action: 'verify_cashfree_payment',
+          payload: { order_id: gatewayOrderId },
+        },
+      });
+
+      if (!error && data?.success) {
+        return {
+          success: true,
+          gatewayOrderId,
+          gatewayPaymentId: data.payment_id,
+          status: 'completed',
+          amountPaise: 50000,
+          currency: 'INR',
+          verifiedAt: new Date().toISOString(),
+        };
+      }
+    } catch (err) {
+      console.warn('[CashfreeAdapter] Edge Function retrieve status failed:', err);
+    }
+
     return {
       success: false,
       gatewayOrderId,
@@ -512,55 +512,55 @@ export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {
     let gatewayStatus: 'completed' | 'pending' | 'failed' | 'cancelled' = 'pending';
     let gatewayError: string | undefined;
 
-    // 1. Check with Supabase Edge Function
+    // 1. Check with direct /api/cashfree/verify endpoint first
     try {
-      const { data, error } = await supabase.functions.invoke('payments', {
-        body: {
-          action: 'verify_cashfree_payment',
-          payload: {
-            order_id: params.gatewayOrderId,
-            internal_order_id: params.internalOrderId,
-            cf_payment_id: params.gatewayPaymentId,
-          },
-        },
+      const res = await fetch('/api/cashfree/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_id: params.gatewayOrderId,
+          internal_order_id: params.internalOrderId,
+        }),
       });
-
-      if (!error && data?.success && data?.verified) {
-        verifiedOnGateway = true;
-        paymentId = data.payment_id || paymentId;
-        gatewayStatus = 'completed';
-      } else if (data?.status) {
-        gatewayStatus = data.status;
-        gatewayError = data.error;
+      if (res.ok) {
+        const vData = await res.json();
+        if (vData?.success && vData?.verified) {
+          verifiedOnGateway = true;
+          paymentId = vData.payment_id || paymentId;
+          gatewayStatus = 'completed';
+        } else if (vData?.status) {
+          gatewayStatus = vData.status;
+          gatewayError = vData.error;
+        }
       }
     } catch (err) {
-      console.warn('[CashfreeAdapter] Edge Function confirmation error:', err);
+      console.warn('[CashfreeAdapter] Direct verify API call failed:', err);
     }
 
-    // 2. Check with direct /api/cashfree/verify endpoint
-    if (!verifiedOnGateway) {
+    // 2. Fallback to Supabase Edge Function
+    if (!verifiedOnGateway && gatewayStatus === 'pending') {
       try {
-        const res = await fetch('/api/cashfree/verify', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            order_id: params.gatewayOrderId,
-            internal_order_id: params.internalOrderId,
-          }),
+        const { data, error } = await supabase.functions.invoke('payments', {
+          body: {
+            action: 'verify_cashfree_payment',
+            payload: {
+              order_id: params.gatewayOrderId,
+              internal_order_id: params.internalOrderId,
+              cf_payment_id: params.gatewayPaymentId,
+            },
+          },
         });
-        if (res.ok) {
-          const vData = await res.json();
-          if (vData?.success && vData?.verified) {
-            verifiedOnGateway = true;
-            paymentId = vData.payment_id || paymentId;
-            gatewayStatus = 'completed';
-          } else if (vData?.status) {
-            gatewayStatus = vData.status;
-            gatewayError = vData.error;
-          }
+
+        if (!error && data?.success && data?.verified) {
+          verifiedOnGateway = true;
+          paymentId = data.payment_id || paymentId;
+          gatewayStatus = 'completed';
+        } else if (data?.status) {
+          gatewayStatus = data.status;
+          gatewayError = data.error;
         }
       } catch (err) {
-        console.warn('[CashfreeAdapter] Direct verify API call failed:', err);
+        console.warn('[CashfreeAdapter] Edge Function confirmation error:', err);
       }
     }
 
