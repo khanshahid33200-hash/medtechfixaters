@@ -25,6 +25,15 @@ CREATE TABLE IF NOT EXISTS public.subscription_plans (
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+-- Safely drop old restrictive check constraints if they exist
+DO $$
+BEGIN
+    ALTER TABLE public.subscription_plans DROP CONSTRAINT IF EXISTS subscription_plans_billing_interval_check;
+    ALTER TABLE public.pricing_cards DROP CONSTRAINT IF EXISTS pricing_cards_billing_interval_check;
+EXCEPTION
+    WHEN OTHERS THEN NULL;
+END $$;
+
 -- Ensure all columns exist even if table pre-existed with older schema
 ALTER TABLE public.subscription_plans
     ADD COLUMN IF NOT EXISTS name TEXT,
@@ -40,6 +49,11 @@ ALTER TABLE public.subscription_plans
     ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
     ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
 
+-- Re-apply inclusive constraint supporting custom and annual intervals
+ALTER TABLE public.subscription_plans
+    ADD CONSTRAINT subscription_plans_billing_interval_check
+    CHECK (billing_interval IN ('one_time', 'month', 'year', 'custom', 'monthly', 'yearly', 'annual'));
+
 -- 2. PRICING CARDS TABLE (Configurable for public pricing page)
 CREATE TABLE IF NOT EXISTS public.pricing_cards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,7 +64,7 @@ CREATE TABLE IF NOT EXISTS public.pricing_cards (
     price_today_paise INTEGER NOT NULL,
     future_recurring_paise INTEGER NOT NULL DEFAULT 0,
     original_price_paise INTEGER NOT NULL,
-    billing_interval TEXT NOT NULL DEFAULT 'month' CHECK (billing_interval IN ('one_time', 'month', 'year', 'custom')),
+    billing_interval TEXT NOT NULL DEFAULT 'month' CHECK (billing_interval IN ('one_time', 'month', 'year', 'custom', 'monthly', 'yearly', 'annual')),
     savings_display TEXT,
     terms_disclosure TEXT,
     features JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -85,6 +99,11 @@ ALTER TABLE public.pricing_cards
     ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0,
     ADD COLUMN IF NOT EXISTS publication_status TEXT DEFAULT 'published',
     ADD COLUMN IF NOT EXISTS highlighted BOOLEAN DEFAULT false;
+
+-- Re-apply inclusive constraint on pricing_cards
+ALTER TABLE public.pricing_cards
+    ADD CONSTRAINT pricing_cards_billing_interval_check
+    CHECK (billing_interval IN ('one_time', 'month', 'year', 'custom', 'monthly', 'yearly', 'annual'));
 
 -- 3. PROMOTIONAL OFFERS TABLE
 CREATE TABLE IF NOT EXISTS public.promotional_offers (
