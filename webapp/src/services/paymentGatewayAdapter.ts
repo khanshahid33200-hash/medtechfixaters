@@ -328,25 +328,63 @@ declare global {
   }
 }
 
+let cashfreeSdkPromise: Promise<void> | null = null;
+
 export function loadCashfreeSDK(): Promise<void> {
   if (typeof window === 'undefined') return Promise.resolve();
   if (window.Cashfree) return Promise.resolve();
+  if (cashfreeSdkPromise) return cashfreeSdkPromise;
 
-  return new Promise((resolve, reject) => {
-    const existing = document.getElementById('cashfree-sdk-v3');
-    if (existing) {
-      existing.addEventListener('load', () => resolve());
-      existing.addEventListener('error', () => reject(new Error('Failed to load Cashfree SDK.')));
+  cashfreeSdkPromise = new Promise((resolve, reject) => {
+    if (window.Cashfree) {
+      resolve();
       return;
     }
+
+    const timeout = setTimeout(() => {
+      if (window.Cashfree) {
+        resolve();
+      } else {
+        cashfreeSdkPromise = null;
+        reject(new Error('Cashfree SDK load timeout (8s). Please check your network and try again.'));
+      }
+    }, 8000);
+
+    const onReady = () => {
+      clearTimeout(timeout);
+      resolve();
+    };
+
+    const existing = document.getElementById('cashfree-sdk-v3') as HTMLScriptElement | null;
+    if (existing) {
+      if (window.Cashfree) {
+        clearTimeout(timeout);
+        resolve();
+        return;
+      }
+      existing.addEventListener('load', onReady, { once: true });
+      existing.addEventListener('error', () => {
+        clearTimeout(timeout);
+        cashfreeSdkPromise = null;
+        reject(new Error('Failed to load Cashfree SDK script.'));
+      }, { once: true });
+      return;
+    }
+
     const script = document.createElement('script');
     script.id = 'cashfree-sdk-v3';
     script.src = 'https://sdk.cashfree.com/js/v3/cashfree.js';
     script.async = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Failed to load Cashfree Payment SDK from CDN.'));
+    script.onload = onReady;
+    script.onerror = () => {
+      clearTimeout(timeout);
+      cashfreeSdkPromise = null;
+      reject(new Error('Failed to load Cashfree Payment SDK from CDN.'));
+    };
     document.body.appendChild(script);
   });
+
+  return cashfreeSdkPromise;
 }
 
 export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {

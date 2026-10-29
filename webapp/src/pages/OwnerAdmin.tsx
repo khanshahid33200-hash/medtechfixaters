@@ -23,6 +23,7 @@ import TransactionsManager from '../components/admin/TransactionsManager'
 import RevenueDashboard from '../components/admin/RevenueDashboard'
 import ActivityLogsViewer from '../components/admin/ActivityLogsViewer'
 import DoctorsManager from '../components/admin/DoctorsManager'
+import PricingSubscriptionManager from '../components/admin/PricingSubscriptionManager'
 
 interface HospitalItem {
   id: string
@@ -583,7 +584,12 @@ export default function OwnerAdmin() {
     e.preventDefault()
     setLoginError('')
     setOwnerLoginLoading(true)
-    const em = loginForm.email.trim().toLowerCase()
+    let em = loginForm.email.trim().toLowerCase()
+    if (em === 'mrshahidbabu' || !em.includes('@')) {
+      if (em === 'mrshahidbabu') {
+        em = 'shahidbcsm@gmail.com'
+      }
+    }
     const pw = loginForm.password.trim()
 
     try {
@@ -2021,66 +2027,9 @@ export default function OwnerAdmin() {
           </div>
         )}
 
-        {/* ─── VIEW 6: SUBSCRIPTIONS & PLANS (CLEAN) ──────────── */}
-        {(activeNav === 'subscriptions' || activeNav === 'plans') && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">SaaS Subscription Plans & Pricing</h2>
-                <p className="text-xs text-slate-500">Manage tier limits, quota ceilings, and pricing models.</p>
-              </div>
-              <button
-                onClick={() => setShowPricingModal(true)}
-                className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow flex items-center gap-2"
-              >
-                <Plus size={15} /> Create Pricing Tier
-              </button>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {[
-                { name: 'Single OPD Clinic', price: '₹999', period: '/month', doctors: 'Up to 3 Doctors', features: ['Instant QR Registration', '30-sec WhatsApp Rx', 'Live Queue Display', 'Standard Analytics'] },
-                { name: 'Hospital Pro', price: '₹2,499', period: '/month', popular: true, doctors: 'Up to 15 Doctors', features: ['All Single OPD Features', 'Smart Hindi/Eng Voice Calling', 'ABDM M1/M2/M3 Signing', '50K Formulary DB', 'Multi-room TV Display'] },
-                { name: 'Multi-Specialty Enterprise', price: '₹7,999', period: '/month', doctors: 'Unlimited Doctors', features: ['All Hospital Pro Features', 'Dedicated Database Cluster', 'Custom Domain & Logo', '24/7 SLA Priority Support', 'Custom HIS/EMR Integration'] },
-              ].map((tier, idx) => (
-                <div key={idx} className={`bg-white rounded-3xl p-6 border shadow-sm flex flex-col justify-between space-y-6 ${tier.popular ? 'border-indigo-500 ring-2 ring-indigo-500/20' : 'border-slate-200'}`}>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-black text-base text-slate-900">{tier.name}</h3>
-                      {tier.popular && <span className="px-2.5 py-0.5 bg-indigo-600 text-white text-[9px] font-black rounded-full uppercase">Standard</span>}
-                    </div>
-
-                    <div>
-                      <span className="text-3xl font-black text-slate-900">{tier.price}</span>
-                      <span className="text-xs text-slate-500 font-semibold">{tier.period}</span>
-                      <span className="block text-xs font-bold text-indigo-600 mt-1">{tier.doctors}</span>
-                    </div>
-
-                    <div className="space-y-2 text-xs pt-2 border-t border-slate-100">
-                      {tier.features.map((feat, fIdx) => (
-                        <div key={fIdx} className="flex items-center gap-2 text-slate-700">
-                          <CheckCircle2 size={14} className="text-emerald-500 shrink-0" />
-                          <span>{feat}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="pt-4 border-t border-slate-100 flex items-center justify-between">
-                    <span className="text-xs font-bold text-slate-500">
-                      {hospitalsList.filter(h => h.plan === tier.name).length} Active Hospitals
-                    </span>
-                    <button
-                      onClick={() => setShowPricingModal(true)}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 font-bold text-xs rounded-xl"
-                    >
-                      Edit
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* ─── VIEW 6: SUBSCRIPTIONS & PLANS (DYNAMIC) ──────────── */}
+        {(activeNav === 'subscriptions' || activeNav === 'plans' || activeNav === 'pricing') && (
+          <PricingSubscriptionManager />
         )}
 
         {/* ─── VIEW 7: INTEGRATIONS HUB (CLEAN) ────────────────── */}

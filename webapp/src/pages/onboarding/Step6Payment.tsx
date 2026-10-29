@@ -12,6 +12,8 @@ import {
   Sparkles,
   CreditCard,
   Building,
+  Tag,
+  X as XIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 import { subscriptionService } from '../../services/subscriptionService';
@@ -23,6 +25,7 @@ import PaymentSimulatorPanel from '../../components/payment/PaymentSimulatorPane
 export default function Step6Payment() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [checkoutStage, setCheckoutStage] = useState<'idle' | 'creating_order' | 'opening_checkout' | 'verifying_payment'>('idle');
   const [initialLoading, setInitialLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState('');
@@ -30,6 +33,16 @@ export default function Step6Payment() {
   const [clinicName, setClinicName] = useState('');
   const [activeOrderId, setActiveOrderId] = useState<string>('');
   const [activeInternalOrderId, setActiveInternalOrderId] = useState<string>('');
+
+  // Coupon state
+  const [couponCode, setCouponCode] = useState('');
+  const [couponValidating, setCouponValidating] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<{
+    code: string;
+    discountRupees: number;
+    finalRupees: number;
+  } | null>(null);
+  const [couponError, setCouponError] = useState<string | null>(null);
 
   // Calculate renewal date (+1 month)
   const today = new Date();
@@ -45,6 +58,9 @@ export default function Step6Payment() {
   useEffect(() => {
     async function init() {
       try {
+        // Pre-warm Cashfree SDK in background so checkout opens instantly
+        loadCashfreeSDK().catch((e) => console.warn('[Payment] Prewarming Cashfree SDK notice:', e));
+
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
           navigate('/login');
@@ -69,56 +85,121 @@ export default function Step6Payment() {
     init();
   }, [navigate]);
 
+  const handleApplyCoupon = async () => {
+    const clean = couponCode.trim().toUpperCase();
+    if (!clean) return;
+
+    setCouponValidating(true);
+    setCouponError(null);
+    try {
+      const basePaise = 50000;
+      const { data, error: rpcErr } = await supabase.rpc('validate_and_apply_coupon', {
+        p_code: clean,
+        p_plan_id: 'doctor_intro_500',
+        p_order_amount_paise: basePaise,
+      });
+
+      if (rpcErr || !data?.valid) {
+        setCouponError(data?.error || rpcErr?.message || 'Invalid or expired coupon code.');
+        setAppliedCoupon(null);
+      } else {
+        const discountRupees = Math.round(data.discount_paise / 100);
+        const finalRupees = Math.max(1, Math.round(data.final_amount_paise / 100));
+        setAppliedCoupon({
+          code: data.code,
+          discountRupees,
+          finalRupees,
+        });
+      }
+    } catch (err: any) {
+      setCouponError(err.message || 'Unable to validate coupon.');
+    } finally {
+      setCouponValidating(false);
+    }
+  };
+
   const handlePayActivation = async () => {
     setLoading(true);
+    setCheckoutStage('creating_order');
     setError(null);
 
     try {
-      // 1. Server-side order creation strictly enforces ₹500
-      const order = await subscriptionService.createPaymentOrder('introductory_first_month');
+      // 1. Direct server-side order creation with plan_id, coupon_code, and customer details
+      const internalId = `MTF-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      
+      const res = await fetch('/api/cashfree/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          plan_id: 'doctor_intro_500',
+          internal_order_id: internalId,
+          coupon_code: appliedCoupon?.code,
+          customer_email: userEmail,
+          customer_name: clinicName,
+        }),
+      });
 
-      if (!order.success) {
-        throw new Error(order.error || 'Failed to initialize server payment order.');
+      let order: any = null;
+      if (res.ok) {
+        order = await res.json();
       }
 
-      setActiveOrderId(order.gatewayOrderId || '');
-      setActiveInternalOrderId(order.internalOrderId || '');
-
-      // 2. Open Cashfree Checkout Modal
-      if (order.paymentSessionId) {
-        await loadCashfreeSDK();
-
-        if (window.Cashfree) {
-          const cashfreeMode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox') as 'sandbox' | 'production';
-          const cashfree = window.Cashfree({ mode: cashfreeMode });
-
-          const checkoutResult = await cashfree.checkout({
-            paymentSessionId: order.paymentSessionId,
-            redirectTarget: '_modal',
-          });
-
-          if (checkoutResult?.error) {
-            console.log('Cashfree modal closed or error:', checkoutResult.error);
-            setLoading(false);
-            return;
-          }
-
-          // Modal finished payment capture -> route to server verification
-          navigate(
-            `/onboarding/payment/pending?internal_order_id=${encodeURIComponent(order.internalOrderId)}` +
-            `&gateway_order_id=${encodeURIComponent(order.gatewayOrderId || '')}` +
-            `&payment_id=${encodeURIComponent(checkoutResult?.paymentDetails?.payment_id || '')}`
-          );
-          return;
+      // Fallback to subscriptionService if direct API didn't return session
+      if (!order?.payment_session_id) {
+        const subOrder = await subscriptionService.createPaymentOrder('introductory_first_month');
+        if (subOrder.success) {
+          order = {
+            success: true,
+            order_id: subOrder.gatewayOrderId,
+            internal_order_id: subOrder.internalOrderId,
+            payment_session_id: subOrder.paymentSessionId,
+          };
         }
       }
 
-      // If no paymentSessionId was returned from Cashfree
-      throw new Error(order.error || 'Could not initialize Cashfree payment session. Please verify test credentials.');
+      if (!order?.payment_session_id) {
+        throw new Error(order?.error || 'Could not initialize Cashfree payment session. Please verify test credentials.');
+      }
+
+      setActiveOrderId(order.order_id || '');
+      setActiveInternalOrderId(order.internal_order_id || internalId);
+
+      // 2. Open Cashfree Checkout Modal
+      setCheckoutStage('opening_checkout');
+      await loadCashfreeSDK();
+
+      if (window.Cashfree) {
+        const cashfreeMode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox') as 'sandbox' | 'production';
+        const cashfree = window.Cashfree({ mode: cashfreeMode });
+
+        const checkoutResult = await cashfree.checkout({
+          paymentSessionId: order.payment_session_id,
+          redirectTarget: '_modal',
+        });
+
+        if (checkoutResult?.error) {
+          console.log('Cashfree modal closed or error:', checkoutResult.error);
+          setLoading(false);
+          setCheckoutStage('idle');
+          return;
+        }
+
+        // Modal finished payment capture -> route to server verification
+        setCheckoutStage('verifying_payment');
+        navigate(
+          `/onboarding/payment/pending?internal_order_id=${encodeURIComponent(order.internal_order_id || internalId)}` +
+          `&gateway_order_id=${encodeURIComponent(order.order_id || '')}` +
+          `&payment_id=${encodeURIComponent(checkoutResult?.paymentDetails?.payment_id || '')}`
+        );
+        return;
+      }
+
+      throw new Error('Cashfree Web SDK was not loaded. Please try again.');
     } catch (err: any) {
       console.error('Payment error:', err);
       setError(err.message || 'Unable to start Cashfree checkout session. Please try again.');
       setLoading(false);
+      setCheckoutStage('idle');
     }
   };
 
@@ -239,11 +320,79 @@ export default function Step6Payment() {
             </div>
           </div>
 
+          {/* Promotional Coupon Input */}
+          <div className="p-4 rounded-2xl bg-white/90 border border-orange-200/80 space-y-2.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Tag size={13} className="text-[#FF6A00]" />
+                <span>Have a Promotional Coupon?</span>
+              </label>
+              {appliedCoupon && (
+                <span className="text-[11px] font-black text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  Coupon Applied
+                </span>
+              )}
+            </div>
+
+            {appliedCoupon ? (
+              <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50/80 border border-emerald-200 text-xs">
+                <div>
+                  <span className="font-mono font-bold text-emerald-900">{appliedCoupon.code}</span>
+                  <span className="text-emerald-700 ml-2 font-medium">
+                    (Saved ₹{appliedCoupon.discountRupees.toLocaleString('en-IN')})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAppliedCoupon(null);
+                    setCouponCode('');
+                  }}
+                  className="text-xs font-bold text-rose-600 hover:text-rose-800 cursor-pointer"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  placeholder="e.g. CLINIC50"
+                  value={couponCode}
+                  onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                  className="flex-1 px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs font-bold uppercase outline-none focus:border-[#FF6A00]"
+                />
+                <button
+                  type="button"
+                  disabled={couponValidating || !couponCode.trim()}
+                  onClick={handleApplyCoupon}
+                  className="px-4 py-2.5 bg-slate-900 hover:bg-black text-white font-bold text-xs rounded-xl cursor-pointer disabled:opacity-40 transition-all"
+                >
+                  {couponValidating ? 'Checking...' : 'Apply'}
+                </button>
+              </div>
+            )}
+
+            {couponError && (
+              <p className="text-[11px] font-bold text-rose-600 flex items-center gap-1">
+                <AlertCircle size={12} />
+                <span>{couponError}</span>
+              </p>
+            )}
+          </div>
+
           {/* Billing Terms Notice */}
           <div className="p-4 rounded-2xl bg-white/80 border border-orange-100 text-xs text-slate-600 space-y-2">
             <div className="flex justify-between items-center text-slate-800 font-semibold">
               <span>Platform Activation Fee:</span>
-              <span className="font-mono text-emerald-600">₹500.00 INR</span>
+              <div className="flex items-center gap-2">
+                {appliedCoupon && (
+                  <span className="line-through text-slate-400 font-mono text-[11px]">₹500.00</span>
+                )}
+                <span className="font-mono text-emerald-600 font-bold">
+                  ₹{(appliedCoupon ? appliedCoupon.finalRupees : 500).toFixed(2)} INR
+                </span>
+              </div>
             </div>
             <div className="flex justify-between items-center text-slate-500 text-[11px]">
               <span>Next Renewal Date:</span>
@@ -275,12 +424,22 @@ export default function Step6Payment() {
             {loading ? (
               <>
                 <Loader2 size={18} className="animate-spin" />
-                <span>Initializing Secure Checkout...</span>
+                <span>
+                  {checkoutStage === 'creating_order'
+                    ? 'Securing Order on Server...'
+                    : checkoutStage === 'opening_checkout'
+                    ? 'Opening Cashfree Gateway...'
+                    : checkoutStage === 'verifying_payment'
+                    ? 'Verifying Bank Transaction...'
+                    : 'Initializing Secure Checkout...'}
+                </span>
               </>
             ) : (
               <>
                 <CreditCard size={18} />
-                <span>Pay ₹500 & Activate Workspace</span>
+                <span>
+                  Pay ₹{appliedCoupon ? appliedCoupon.finalRupees : 500} & Activate Workspace
+                </span>
                 <ArrowRight size={18} />
               </>
             )}

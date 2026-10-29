@@ -27,9 +27,31 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,400;1,600&family=Poppins:wght@400;500&display=swap" rel="stylesheet">
+    <!-- Cashfree Payment SDK Preconnect for Instant Checkout Opening -->
+    <link rel="preconnect" href="https://sdk.cashfree.com">
+    <link rel="dns-prefetch" href="https://sdk.cashfree.com">
   </head>
-  <body>
-    <div id="root"></div>
+  <body class="bg-[#F8FAFC]">
+    <div id="root">
+      <!-- Branded Clinical Preloader (Zero Flash of Unstyled Content) -->
+      <div id="app-preloader" style="min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0F172A;font-family:system-ui,-apple-system,sans-serif;color:#ffffff;text-align:center;padding:20px;box-sizing:border-box">
+        <div style="position:relative;width:68px;height:68px;margin-bottom:20px">
+          <div style="position:absolute;inset:0;border-radius:20px;background:linear-gradient(135deg,#6366F1,#4F46E5);opacity:0.35;filter:blur(14px)"></div>
+          <img src="/assets/brand-icon.png" alt="MedTech Fixaters" style="position:relative;width:68px;height:68px;object-fit:contain;border-radius:18px" onerror="this.style.display='none'">
+        </div>
+        <h1 style="font-size:22px;font-weight:800;letter-spacing:-0.03em;margin:0 0 6px 0;background:linear-gradient(to right,#ffffff,#94A3B8);-webkit-background-clip:text;-webkit-text-fill-color:transparent">MedTech Fixaters</h1>
+        <p style="font-size:12px;color:#94A3B8;font-weight:600;letter-spacing:0.04em;text-transform:uppercase;margin:0 0 24px 0">Clinical Operating System</p>
+        <div style="width:160px;height:4px;background:#1E293B;border-radius:999px;overflow:hidden">
+          <div style="width:50%;height:100%;background:linear-gradient(90deg,#6366F1,#818CF8);border-radius:999px;animation:loaderPulse 1.2s infinite ease-in-out"></div>
+        </div>
+        <style>
+          @keyframes loaderPulse {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(200%); }
+          }
+        </style>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

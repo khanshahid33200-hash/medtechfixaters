@@ -22,9 +22,49 @@ export default async function handler(req, res) {
   const host = isProd ? 'api.cashfree.com' : 'sandbox.cashfree.com';
 
   const data = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  const orderAmount = data.plan_id === 'doctor_monthly_5000' ? 5000 : 500;
+  
+  // Dynamic Plan Pricing Resolution
+  let baseAmount = 500;
+  if (data.plan_id === 'doctor_yearly_50000') {
+    baseAmount = 50000;
+  } else if (data.plan_id === 'doctor_monthly_5000') {
+    baseAmount = 5000;
+  } else if (data.amount_rupees && Number(data.amount_rupees) > 0) {
+    baseAmount = Number(data.amount_rupees);
+  } else if (data.order_amount && Number(data.order_amount) > 0) {
+    baseAmount = Number(data.order_amount);
+  }
+
+  // Coupon handling
+  let discountRupees = 0;
+  let appliedCoupon = null;
+  const supabase = getSupabase();
+
+  if (data.coupon_code && supabase) {
+    try {
+      const { data: cRes } = await supabase.rpc('validate_and_apply_coupon', {
+        p_code: String(data.coupon_code).trim().toUpperCase(),
+        p_plan_id: data.plan_id || 'doctor_intro_500',
+        p_order_amount_paise: baseAmount * 100,
+        p_user_id: data.user_id || null,
+      });
+      if (cRes?.valid && cRes?.discount_paise) {
+        discountRupees = Math.round(cRes.discount_paise / 100);
+        appliedCoupon = cRes.code;
+      }
+    } catch (cErr) {
+      console.warn('[cashfree:create-order] coupon validation error:', cErr.message);
+    }
+  }
+
+  const orderAmount = Math.max(1, baseAmount - discountRupees);
   const cfOrderId = `mtf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const internalOrderId = data.internal_order_id || `MTF-${Date.now().toString().slice(-8)}`;
+
+  // Dynamic origin resolution
+  const forwardedProto = req.headers['x-forwarded-proto'] || 'https';
+  const origin = req.headers.origin || (req.headers.host ? `${forwardedProto}://${req.headers.host}` : 'https://www.medtechfixaters.in');
+  const returnUrl = data.return_url || `${origin}/onboarding/payment/pending?order_id={order_id}&internal_order_id=${encodeURIComponent(internalOrderId)}`;
 
   const payload = JSON.stringify({
     order_id: cfOrderId,
@@ -37,9 +77,15 @@ export default async function handler(req, res) {
       customer_phone: String(data.customer_phone || data.phone || '9999999999').replace(/[^0-9]/g, '').slice(-10) || '9999999999',
     },
     order_meta: {
-      return_url: `https://www.medtechfixaters.in/onboarding/payment/pending?order_id={order_id}&internal_order_id=${encodeURIComponent(internalOrderId)}`,
+      return_url: returnUrl,
     },
-    order_note: data.order_note || (orderAmount === 500 ? 'Solo Doctor & Clinic — Platform Activation' : 'Doctor & Clinic — Monthly Subscription'),
+    order_note: data.order_note || (
+      data.plan_id === 'doctor_yearly_50000'
+        ? 'Doctor & Clinic — Annual Pro Subscription'
+        : orderAmount === 500
+        ? 'Solo Doctor & Clinic — Platform Activation'
+        : 'Doctor & Clinic — Monthly Subscription'
+    ),
   });
 
   const cfReq = https.request(
@@ -66,7 +112,6 @@ export default async function handler(req, res) {
           const isSuccess = cfRes.statusCode === 200;
 
           // Record transaction in Supabase payment_transactions
-          const supabase = getSupabase();
           if (supabase && isSuccess && parsed.order_id) {
             try {
               await supabase.from('payment_transactions').insert([{
@@ -77,6 +122,10 @@ export default async function handler(req, res) {
                 account_email: data.customer_email || 'doctor@medtechfixaters.in',
                 doctor_id: data.doctor_id || null,
                 amount_paise: orderAmount * 100,
+                original_amount_paise: baseAmount * 100,
+                discount_paise: discountRupees * 100,
+                coupon_code: appliedCoupon,
+                plan_id: data.plan_id || (baseAmount === 500 ? 'doctor_intro_500' : baseAmount === 50000 ? 'doctor_yearly_50000' : 'doctor_monthly_5000'),
                 currency: 'INR',
                 payment_status: 'pending',
                 provider_response: parsed,

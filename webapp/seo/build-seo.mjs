@@ -191,7 +191,7 @@ const stripHead = (html) =>
     .replace(/<meta\s+(name|property)="(description|robots|og:[^"]+|twitter:[^"]+)"[^>]*>\s*/gi, '')
     .replace(/<link\s+rel="canonical"[^>]*>\s*/gi, '')
 const base = stripHead(template)
-if (!base.includes('<div id="root"></div>')) throw new Error('build-seo: #root not found in dist/index.html')
+if (!base.includes('<div id="root">')) throw new Error('build-seo: #root not found in dist/index.html')
 
 // Generic shell for every non-prerendered URL (app screens, unknown paths): noindex.
 fs.writeFileSync(
@@ -200,9 +200,18 @@ fs.writeFileSync(
 )
 
 for (const route of site.routes) {
-  const html = base
-    .replace('</head>', `  ${headFor(route)}\n  </head>`)
-    .replace('<div id="root"></div>', `<div id="root">\n    ${snapshotFor(route)}\n    </div>`)
+  const rootStart = base.indexOf('<div id="root">')
+  const bodyClose = base.indexOf('</body>', rootStart)
+  const rootCloseIndex = base.lastIndexOf('</div>', bodyClose)
+
+  if (rootStart === -1 || bodyClose === -1 || rootCloseIndex === -1) {
+    throw new Error('build-seo: could not determine #root boundaries in dist/index.html')
+  }
+
+  const innerRoot = base.slice(rootStart + '<div id="root">'.length, rootCloseIndex).trim()
+  const newRoot = `<div id="root">\n    ${innerRoot}\n    <noscript>\n      ${snapshotFor(route)}\n    </noscript>\n  </div>`
+  let html = base.slice(0, rootStart) + newRoot + base.slice(rootCloseIndex + '</div>'.length)
+  html = html.replace('</head>', `  ${headFor(route)}\n  </head>`)
   const out = route.path === '/' ? path.join(dist, 'index.html') : path.join(dist, route.path.slice(1), 'index.html')
   fs.mkdirSync(path.dirname(out), { recursive: true })
   fs.writeFileSync(out, html)

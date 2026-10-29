@@ -154,11 +154,12 @@ export default function PricingPage() {
         </div>
       </section>
 
-      {/* 3 Pricing Cards Section */}
+      {/* 4 Pricing Cards Section */}
       <section className="py-8 sm:py-12 px-4 sm:px-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
           {PRICING_PLANS.map((plan) => {
             const isIntro = plan.id === 'doctor_intro_500';
+            const isYearly = plan.id === 'doctor_yearly_50000';
             const isEnterprise = plan.id === 'hospital_custom';
 
             return (
@@ -166,9 +167,11 @@ export default function PricingPage() {
                 key={plan.id}
                 whileHover={{ y: -6 }}
                 transition={{ duration: 0.2 }}
-                className={`relative rounded-[28px] p-8 flex flex-col justify-between transition-all ${
+                className={`relative rounded-[28px] p-6 sm:p-7 flex flex-col justify-between transition-all ${
                   isIntro
                     ? 'bg-white border-2 border-[#FF6A00] shadow-[0_20px_50px_-12px_rgba(255,106,0,0.18)] ring-4 ring-orange-500/10'
+                    : isYearly
+                    ? 'bg-white border-2 border-indigo-600 shadow-[0_20px_50px_-12px_rgba(79,70,229,0.18)] ring-4 ring-indigo-500/10'
                     : isEnterprise
                     ? 'bg-gradient-to-b from-[#171717] via-[#1F1F1F] to-[#171717] text-white border border-stone-800 shadow-xl'
                     : 'bg-white/95 border border-orange-100/90 shadow-sm'
@@ -176,15 +179,22 @@ export default function PricingPage() {
               >
                 {/* Prominent Badge */}
                 {isIntro && (
-                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[linear-gradient(135deg,#FF6A00,#FF8A3D)] text-white text-[11px] font-black uppercase tracking-wider shadow-md shadow-orange-500/30 flex items-center gap-1.5">
+                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[linear-gradient(135deg,#FF6A00,#FF8A3D)] text-white text-[11px] font-black uppercase tracking-wider shadow-md shadow-orange-500/30 flex items-center gap-1.5 whitespace-nowrap">
                     <Sparkles size={12} />
                     <span>90% OFF FIRST MONTH</span>
                   </span>
                 )}
 
+                {isYearly && (
+                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[linear-gradient(135deg,#4F46E5,#6366F1)] text-white text-[11px] font-black uppercase tracking-wider shadow-md shadow-indigo-500/30 flex items-center gap-1.5 whitespace-nowrap">
+                    <Sparkles size={12} />
+                    <span>2 MONTHS FREE + WEBSITE</span>
+                  </span>
+                )}
+
                 {isEnterprise && (
-                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-stone-800 border border-stone-700 text-orange-400 text-[11px] font-black uppercase tracking-wider shadow-md">
-                    <span>ENTERPRISE ARCHITECTURE</span>
+                  <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-stone-800 border border-stone-700 text-orange-400 text-[11px] font-black uppercase tracking-wider shadow-md whitespace-nowrap">
+                    <span>ENTERPRISE SCALE</span>
                   </span>
                 )}
 
@@ -192,7 +202,9 @@ export default function PricingPage() {
                   {/* Card Header */}
                   <div>
                     <div className="flex items-center justify-between">
-                      <span className={`text-xs font-extrabold uppercase tracking-wider ${isEnterprise ? 'text-orange-400' : 'text-[#C2410C]'}`}>
+                      <span className={`text-xs font-extrabold uppercase tracking-wider ${
+                        isEnterprise ? 'text-orange-400' : isYearly ? 'text-indigo-600' : 'text-[#C2410C]'
+                      }`}>
                         {plan.badge || 'Subscription'}
                       </span>
                       {isIntro && (
@@ -285,6 +297,8 @@ export default function PricingPage() {
                     className={`w-full py-3.5 px-6 rounded-2xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer flex items-center justify-center gap-2 ${
                       isIntro
                         ? PRIMARY_BUTTON
+                        : isYearly
+                        ? 'bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold shadow-lg shadow-indigo-500/25'
                         : isEnterprise
                         ? 'bg-[linear-gradient(135deg,#FF6A00,#FF8A3D)] hover:brightness-105 text-white font-extrabold shadow-lg shadow-orange-500/30'
                         : 'bg-[#171717] hover:bg-black text-white'

@@ -3,7 +3,7 @@
 // Note: All amounts are server-validated; clients cannot modify amounts payable.
 
 export interface PricingPlan {
-  id: 'doctor_intro_500' | 'doctor_monthly_5000' | 'hospital_custom';
+  id: 'doctor_intro_500' | 'doctor_monthly_5000' | 'doctor_yearly_50000' | 'hospital_custom';
   name: string;
   tagline: string;
   targetAudience: string;
@@ -111,6 +111,43 @@ export const PRICING_PLANS: PricingPlan[] = [
       'Ongoing monthly access with uninterrupted patient queues',
       'All doctor tools & AI triage included',
       'Direct priority WhatsApp & phone assistance',
+    ],
+  },
+  {
+    id: 'doctor_yearly_50000',
+    name: 'Yearly Doctor & Clinic Pro',
+    tagline: 'Annual subscription with 2 months free + custom clinic website',
+    targetAudience: 'Doctors & clinics wanting full web presence and annual savings',
+    price: 50000,
+    originalPrice: 60000,
+    discountBadge: '2 MONTHS FREE',
+    currency: '₹',
+    billingFrequency: 'per year (Save ₹10,000)',
+    secondaryBillingNote: 'Includes 2 months free + free custom clinic website design & hosting.',
+    termsDisclosure:
+      'Full 12-month license billed annually at ₹50,000. Includes complimentary custom clinic website build, Google SEO setup, ABDM readiness, and dedicated priority support.',
+    ctaText: 'Get Yearly Plan',
+    isPopular: false,
+    badge: 'Best Value (Annual)',
+    features: [
+      'Everything in Doctor and Clinic Plan',
+      '2 months completely free (₹10,000 savings)',
+      'Free custom clinic website & domain setup',
+      'Google Business Profile & Local SEO Optimization',
+      'ABDM M1 & M2 integration ready',
+      'Dedicated account manager & 24/7 SLA',
+      'Separate doctor workspace dashboard with data isolation',
+      'Administrative management tools for timings & daily collections',
+    ],
+    omittedFeatures: [
+      'Voice receptionist functionality (Hospital plan only)',
+      'Multi-department reception load balancing',
+    ],
+    highlights: [
+      '₹50,000 per year (Save ₹10,000)',
+      'Free Custom Clinic Website Designed & Hosted',
+      'Zero downtime priority server allocation',
+      'Full annual receipt for business expense claim',
     ],
   },
   {
