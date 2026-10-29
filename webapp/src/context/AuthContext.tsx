@@ -219,8 +219,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { data: { session } } = await supabase.auth.getSession()
       if (session?.user) {
         const isValid = await validateUserProfile(session.user)
-        if (!isValid && window.location.pathname !== '/account-blocked' && window.location.pathname !== '/login') {
-          window.location.href = '/account-blocked'
+        if (!isValid) {
+          const path = window.location.pathname
+          const isInternalDashboard = path.startsWith('/dashboard') ||
+                                     path.startsWith('/hospitaldashboard') ||
+                                     path === '/checkin' ||
+                                     path === '/medicines'
+          if (isInternalDashboard && path !== '/account-blocked' && path !== '/login') {
+            window.location.href = '/account-blocked'
+          }
         }
       }
     }, 60000)

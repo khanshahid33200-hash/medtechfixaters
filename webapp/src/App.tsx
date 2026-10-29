@@ -130,6 +130,7 @@ function App() {
 
         {/* Single Unified Login & Sign Up Screen */}
         <Route path="/login" element={<Login />} />
+        <Route path="/account-blocked" element={<AccountBlockedPage />} />
 
         {/* Redirect all other/legacy login and signup routes directly to /login */}
         <Route path="/signup" element={<Navigate to="/login?tab=signup" replace />} />
