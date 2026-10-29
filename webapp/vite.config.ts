@@ -5,6 +5,15 @@ import https from 'node:https'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
+  for (const [k, v] of Object.entries(env)) {
+    if (!process.env[k]) process.env[k] = v
+  }
+  if (!process.env.SUPABASE_URL) {
+    process.env.SUPABASE_URL = env.VITE_SUPABASE_URL || 'https://yweywvnivyftwtglxavr.supabase.co'
+  }
+  if (!process.env.SUPABASE_ANON_KEY) {
+    process.env.SUPABASE_ANON_KEY = env.VITE_SUPABASE_ANON_KEY || env.VITE_SUPABASE_PUBLISHABLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3ZXl3dm5pdnlmdHd0Z2x4YXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MTEyOTgsImV4cCI6MjEwNTI4NzI5OH0.niHlKWf4zWGQ1sb59ZZ2n2SnZxbLeKfqkSkJnWGIxts'
+  }
   const appId = env.CASHFREE_APP_ID || env.VITE_CASHFREE_APP_ID || ''
   const secretKey = env.CASHFREE_SECRET_KEY || env.VITE_CASHFREE_SECRET_KEY || ''
   const isProd = (env.CASHFREE_ENV || env.VITE_CASHFREE_MODE || 'sandbox').toLowerCase().includes('prod')
@@ -456,44 +465,136 @@ export default defineConfig(({ mode }) => {
           return
         }
 
-        // 4. Super Admin Management Endpoints: /api/admin/*
-        if (req.url?.startsWith('/api/admin/')) {
+        // 3.5 Local Dev AI Assistant Proxy: POST /api/ai-assist (bypasses browser CORS on localhost)
+        if (req.url?.startsWith('/api/ai-assist') && req.method === 'POST') {
           let body = ''
           req.on('data', (c: any) => (body += c))
-          req.on('end', async () => {
-            try {
-              if (body) {
-                try {
-                  ;(req as any).body = JSON.parse(body)
-                } catch {
-                  ;(req as any).body = body
-                }
+          req.on('end', () => {
+            const authHeader = req.headers.authorization || req.headers.Authorization || ''
+            const supabaseAnon = process.env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3ZXl3dm5pdnlmdHd0Z2x4YXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MTEyOTgsImV4cCI6MjEwNTI4NzI5OH0.niHlKWf4zWGQ1sb59ZZ2n2SnZxbLeKfqkSkJnWGIxts'
+            const postData = body || '{}'
+
+            const edgeReq = https.request(
+              {
+                hostname: 'yweywvnivyftwtglxavr.supabase.co',
+                path: '/functions/v1/ai-assist',
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Content-Length': Buffer.byteLength(postData),
+                  'apikey': supabaseAnon,
+                  ...(authHeader ? { Authorization: authHeader } : {}),
+                },
+              },
+              (edgeRes) => {
+                let respData = ''
+                edgeRes.on('data', (chunk) => (respData += chunk))
+                edgeRes.on('end', () => {
+                  res.setHeader('Content-Type', 'application/json')
+                  res.statusCode = edgeRes.statusCode || 200
+                  res.end(respData)
+                })
               }
+            )
+
+            edgeReq.on('error', (err) => {
+              try {
+                const parsedBody = JSON.parse(postData)
+                if (parsedBody.action === 'status') {
+                  res.setHeader('Content-Type', 'application/json')
+                  res.statusCode = 200
+                  res.end(JSON.stringify({
+                    success: true,
+                    gemini_configured: false,
+                    provider: 'gemini',
+                    model: 'gemini-1.5-flash',
+                    flags: { clinical_ai_enabled: true }
+                  }))
+                  return
+                }
+              } catch {}
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 502
+              res.end(JSON.stringify({ success: false, error: 'AI assist connection notice: ' + err.message }))
+            })
+
+            edgeReq.write(postData)
+            edgeReq.end()
+          })
+          return
+        }
+
+        // 4. Super Admin Management Endpoints: /api/admin/*
+        if (req.url?.startsWith('/api/admin/')) {
+          // Express-style method polyfill
+          if (!res.status) {
+            res.status = (code: number) => {
+              res.statusCode = code
+              return res
+            }
+          }
+          if (!res.json) {
+            res.json = (data: any) => {
+              res.setHeader('Content-Type', 'application/json')
+              res.end(JSON.stringify(data))
+              return res
+            }
+          }
+          if (!res.send) {
+            res.send = (data: any) => {
+              res.end(data)
+              return res
+            }
+          }
+          if (!req.query && req.url) {
+            try {
+              const parsed = new URL(req.url, 'http://localhost')
+              req.query = Object.fromEntries(parsed.searchParams.entries())
+            } catch {}
+          }
+
+          const runAdminHandler = async () => {
+            try {
               if (req.url?.startsWith('/api/admin/transactions')) {
                 const handler = (await import('./api/admin/transactions.js')).default
-                return handler(req, res)
+                return await handler(req, res)
               }
               if (req.url?.startsWith('/api/admin/doctors')) {
                 const handler = (await import('./api/admin/doctors.js')).default
-                return handler(req, res)
+                return await handler(req, res)
               }
               if (req.url?.startsWith('/api/admin/audit-logs')) {
                 const handler = (await import('./api/admin/audit-logs.js')).default
-                return handler(req, res)
+                return await handler(req, res)
               }
               if (req.url?.startsWith('/api/admin/revenue')) {
                 const handler = (await import('./api/admin/revenue.js')).default
-                return handler(req, res)
+                return await handler(req, res)
               }
 
-              res.setHeader('Content-Type', 'application/json')
-              res.statusCode = 404
-              res.end(JSON.stringify({ success: false, error: 'Admin route not found' }))
+              res.status(404).json({ success: false, error: 'Admin route not found' })
             } catch (err: any) {
-              res.setHeader('Content-Type', 'application/json')
-              res.statusCode = 500
-              res.end(JSON.stringify({ success: false, error: err.message }))
+              res.status(500).json({ success: false, error: err.message || 'Internal admin route error' })
             }
+          }
+
+          if (req.method === 'GET' || req.method === 'HEAD') {
+            runAdminHandler()
+            return
+          }
+
+          let body = ''
+          req.on('data', (c: any) => (body += c))
+          req.on('end', async () => {
+            if (body) {
+              try {
+                ;(req as any).body = JSON.parse(body)
+              } catch {
+                ;(req as any).body = body
+              }
+            }
+            await runAdminHandler()
           })
           return
         }

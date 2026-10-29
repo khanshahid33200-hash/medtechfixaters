@@ -81,7 +81,14 @@ export default function ActivityLogsViewer() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!res.ok) throw new Error(`Failed to load audit logs: ${res.statusText}`);
+      if (!res.ok) {
+        let errMsg = res.statusText;
+        try {
+          const errBody = await res.json();
+          if (errBody?.error) errMsg = errBody.error;
+        } catch {}
+        throw new Error(`Failed to load audit logs: ${errMsg}`);
+      }
       const data = await res.json();
       if (data.success) {
         setLogs(data.logs || []);

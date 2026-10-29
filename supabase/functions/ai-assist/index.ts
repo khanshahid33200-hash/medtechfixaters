@@ -335,8 +335,9 @@ const json = (body: unknown, status = 200) =>
 
 export async function handle(req: Request): Promise<Response> {
   const origin = req.headers.get('Origin') ?? ''
+  const isDevOrigin = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(origin)
   corsHeaders = {
-    'Access-Control-Allow-Origin': ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0],
+    'Access-Control-Allow-Origin': (ALLOWED_ORIGINS.includes(origin) || isDevOrigin) ? origin : ALLOWED_ORIGINS[0],
     'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
     'Access-Control-Allow-Methods': 'POST, OPTIONS',
     Vary: 'Origin',

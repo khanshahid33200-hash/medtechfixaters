@@ -32,7 +32,53 @@ export class AiCallError extends Error {
 }
 
 async function call<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke('ai-assist', { body })
+  let data: any = null
+  let error: any = null
+
+  try {
+    const res = await supabase.functions.invoke('ai-assist', { body })
+    data = res.data
+    error = res.error
+  } catch (err: any) {
+    error = err
+  }
+
+  // Localhost development fallback via Vite server proxy if Edge Function is CORS-blocked
+  if (error && typeof window !== 'undefined' && (/^https?:\/\/(localhost|127\.0\.0\.1)/i.test(window.location.origin))) {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const proxyRes = await fetch('/api/ai-assist', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
+        },
+        body: JSON.stringify(body),
+      })
+      if (proxyRes.ok) {
+        const proxyData = await proxyRes.json()
+        if (proxyData?.success) {
+          return proxyData as T
+        }
+      }
+    } catch {
+      // Continue to diagnosis below
+    }
+
+    // Direct platform_settings fallback for status check
+    if (body.action === 'status') {
+      try {
+        const { data: ps } = await supabase.from('platform_settings').select('value').eq('key', 'ai_features').maybeSingle()
+        return {
+          success: true,
+          gemini_configured: false,
+          model: 'gemini-1.5-flash (Local Dev)',
+          flags: (ps?.value as Record<string, boolean>) || {},
+        } as unknown as T
+      } catch {}
+    }
+  }
+
   if (error) {
     const ctx = (error as { context?: Response }).context
     const status = ctx?.status

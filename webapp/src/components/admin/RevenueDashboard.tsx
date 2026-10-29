@@ -74,7 +74,14 @@ export default function RevenueDashboard() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!res.ok) throw new Error(`Revenue fetch failed: ${res.statusText}`);
+      if (!res.ok) {
+        let errMsg = res.statusText;
+        try {
+          const errBody = await res.json();
+          if (errBody?.error) errMsg = errBody.error;
+        } catch {}
+        throw new Error(`Revenue fetch failed: ${errMsg}`);
+      }
       const json = await res.json();
       if (json.success) {
         setData(json);

@@ -126,7 +126,14 @@ export default function DoctorsManager() {
         headers: { Authorization: `Bearer ${token}` },
       });
 
-      if (!res.ok) throw new Error(`Failed to load doctors: ${res.statusText}`);
+      if (!res.ok) {
+        let errMsg = res.statusText;
+        try {
+          const errBody = await res.json();
+          if (errBody?.error) errMsg = errBody.error;
+        } catch {}
+        throw new Error(`Failed to load doctors: ${errMsg}`);
+      }
       const data = await res.json();
       if (data.success) {
         setDoctors(data.doctors || []);

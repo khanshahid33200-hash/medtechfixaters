@@ -94,7 +94,12 @@ export default function TransactionsManager() {
       });
 
       if (!res.ok) {
-        throw new Error(`Failed to load transactions: ${res.statusText}`);
+        let errMsg = res.statusText;
+        try {
+          const errBody = await res.json();
+          if (errBody?.error) errMsg = errBody.error;
+        } catch {}
+        throw new Error(`Failed to load transactions: ${errMsg}`);
       }
 
       const data = await res.json();
