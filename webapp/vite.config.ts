@@ -456,6 +456,48 @@ export default defineConfig(({ mode }) => {
           return
         }
 
+        // 4. Super Admin Management Endpoints: /api/admin/*
+        if (req.url?.startsWith('/api/admin/')) {
+          let body = ''
+          req.on('data', (c: any) => (body += c))
+          req.on('end', async () => {
+            try {
+              if (body) {
+                try {
+                  ;(req as any).body = JSON.parse(body)
+                } catch {
+                  ;(req as any).body = body
+                }
+              }
+              if (req.url?.startsWith('/api/admin/transactions')) {
+                const handler = (await import('./api/admin/transactions.js')).default
+                return handler(req, res)
+              }
+              if (req.url?.startsWith('/api/admin/doctors')) {
+                const handler = (await import('./api/admin/doctors.js')).default
+                return handler(req, res)
+              }
+              if (req.url?.startsWith('/api/admin/audit-logs')) {
+                const handler = (await import('./api/admin/audit-logs.js')).default
+                return handler(req, res)
+              }
+              if (req.url?.startsWith('/api/admin/revenue')) {
+                const handler = (await import('./api/admin/revenue.js')).default
+                return handler(req, res)
+              }
+
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 404
+              res.end(JSON.stringify({ success: false, error: 'Admin route not found' }))
+            } catch (err: any) {
+              res.setHeader('Content-Type', 'application/json')
+              res.statusCode = 500
+              res.end(JSON.stringify({ success: false, error: err.message }))
+            }
+          })
+          return
+        }
+
         next()
       })
     },

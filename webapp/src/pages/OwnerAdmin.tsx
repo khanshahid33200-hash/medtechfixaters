@@ -19,6 +19,10 @@ import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
 import { supabase } from '../lib/supabase'
 import PlatformAiSettings from '../components/ai/PlatformAiSettings'
+import TransactionsManager from '../components/admin/TransactionsManager'
+import RevenueDashboard from '../components/admin/RevenueDashboard'
+import ActivityLogsViewer from '../components/admin/ActivityLogsViewer'
+import DoctorsManager from '../components/admin/DoctorsManager'
 
 interface HospitalItem {
   id: string
@@ -1354,8 +1358,9 @@ export default function OwnerAdmin() {
               <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">OVERVIEW</span>
               {[
                 { id: 'dashboard', label: 'Dashboard', icon: <Layers size={16} /> },
+                { id: 'transactions', label: 'Transactions', icon: <CreditCard size={16} /> },
+                { id: 'revenue', label: 'Revenue Analytics', icon: <TrendingUp size={16} /> },
                 { id: 'analytics', label: 'Analytics', icon: <BarChart3 size={16} /> },
-                { id: 'revenue', label: 'Revenue', icon: <CreditCard size={16} /> },
                 { id: 'activity', label: 'Activity Logs', icon: <Activity size={16} /> },
               ].map(item => (
                 <button
@@ -1954,119 +1959,19 @@ export default function OwnerAdmin() {
           </div>
         )}
 
-        {/* ─── VIEW 3: REVENUE & FINANCE (CLEAN) ───────────────── */}
-        {activeNav === 'revenue' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">Platform Revenue & Billing Suite</h2>
-                <p className="text-xs text-slate-500">Real-time subscription collections, Cashfree settlements, and payout logs.</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {[
-                { title: 'Total Revenue MTD', val: `₹${totalRevenue.toLocaleString('en-IN')}`, badge: `${hospitalsList.length} Active Accounts` },
-                { title: 'Active Paid Accounts', val: hospitalsList.length.toString(), badge: 'Monthly Auto-Renewal' },
-                { title: 'Settlement Status', val: 'Active', badge: 'Cashfree Gateway Ready' },
-              ].map((f, i) => (
-                <div key={i} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-1">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase">{f.title}</span>
-                  <span className="text-2xl font-black text-slate-900 block">{f.val}</span>
-                  <span className="text-[10px] font-bold text-indigo-600">{f.badge}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="p-4 border-b border-slate-100">
-                <h3 className="font-black text-sm text-slate-900">Hospital Billing Ledger ({hospitalsList.length})</h3>
-              </div>
-              {hospitalsList.length === 0 ? (
-                <div className="p-12 text-center text-slate-400 space-y-2">
-                  <CreditCard size={32} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-600">No Invoices Generated Yet</p>
-                  <p className="text-[11px]">When hospitals are registered, their subscription invoices will be logged here.</p>
-                </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                      <th className="py-3 px-4">Hospital Tenant</th>
-                      <th className="py-3 px-4">Plan</th>
-                      <th className="py-3 px-4">Amount</th>
-                      <th className="py-3 px-4">Joined On</th>
-                      <th className="py-3 px-4 text-right">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {hospitalsList.map(h => (
-                      <tr key={h.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-black text-slate-900">{h.name}</td>
-                        <td className="py-3 px-4 text-slate-600 font-semibold">{h.plan}</td>
-                        <td className="py-3 px-4 font-black text-indigo-600">₹{(h.revenue || (h.plan === 'Enterprise' ? 7999 : h.plan === 'Hospital Pro' ? 2499 : 999)).toLocaleString('en-IN')}</td>
-                        <td className="py-3 px-4 text-slate-500">{h.joinedOn}</td>
-                        <td className="py-3 px-4 text-right">
-                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-black rounded-full border border-emerald-200">
-                            ACTIVE
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+        {/* ─── VIEW: TRANSACTIONS MANAGEMENT ───────────────────── */}
+        {activeNav === 'transactions' && (
+          <TransactionsManager />
         )}
 
-        {/* ─── VIEW 4: ACTIVITY AUDIT LOGS (CLEAN) ─────────────── */}
-        {activeNav === 'activity' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">Platform Security & Audit Trail</h2>
-                <p className="text-xs text-slate-500">Immutable chronological stream of administrative events and system telemetry.</p>
-              </div>
-            </div>
+        {/* ─── VIEW: REVENUE ANALYTICS ─────────────────────────── */}
+        {activeNav === 'revenue' && (
+          <RevenueDashboard />
+        )}
 
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {auditLogs.length === 0 ? (
-                <div className="p-12 text-center text-slate-400 space-y-2">
-                  <Activity size={32} className="mx-auto text-slate-300" />
-                  <p className="text-xs font-bold text-slate-600">No Activity Logs Yet</p>
-                  <p className="text-[11px]">System events and admin operations will be recorded here in real-time.</p>
-                </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                      <th className="py-3 px-4">Category</th>
-                      <th className="py-3 px-4">Actor</th>
-                      <th className="py-3 px-4">Action Details</th>
-                      <th className="py-3 px-4">Time</th>
-                      <th className="py-3 px-4 text-right">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredLogs.map(log => (
-                      <tr key={log.id} className="hover:bg-slate-50">
-                        <td className="py-3 px-4 font-bold text-slate-700">{log.category}</td>
-                        <td className="py-3 px-4 font-black text-slate-800">{log.actor}</td>
-                        <td className="py-3 px-4 text-slate-600">{log.action}</td>
-                        <td className="py-3 px-4 text-slate-400">{log.time}</td>
-                        <td className="py-3 px-4 text-right">
-                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-bold rounded-full">
-                            {log.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+        {/* ─── VIEW: ACTIVITY AUDIT LOGS ───────────────────────── */}
+        {activeNav === 'activity' && (
+          <ActivityLogsViewer />
         )}
 
         {/* ─── VIEW 5: DEPARTMENTS (CLEAN) ────────────────────── */}
@@ -2589,125 +2494,9 @@ export default function OwnerAdmin() {
           </div>
         )}
 
-        {/* ─── VIEW 10: DOCTORS DIRECTORY (CLEAN) ──────────────── */}
+        {/* ─── VIEW 10: DOCTORS MANAGEMENT ────────────────────── */}
         {activeNav === 'doctors' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h2 className="text-xl font-black text-slate-900">Consulting Doctors Directory ({doctorsList.length})</h2>
-                <p className="text-xs text-slate-500">Live roster of active OPD specialists and private clinic doctors across all hospital tenants.</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="px-3 py-1.5 bg-indigo-50 border border-indigo-100 rounded-xl text-xs font-bold text-indigo-700">
-                  {doctorsList.filter(d => d.is_active).length} Active / {doctorsList.length} Total
-                </span>
-              </div>
-            </div>
-
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {doctorsList.length === 0 ? (
-                <div className="p-16 text-center space-y-3">
-                  <Stethoscope size={36} className="mx-auto text-slate-300" />
-                  <h3 className="font-black text-base text-slate-800">No Doctors Registered Yet</h3>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    When hospital administrators or individual clinics onboard doctors, they will automatically appear in this master platform roster.
-                  </p>
-                </div>
-              ) : (
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="bg-slate-50 text-[10px] font-black text-slate-400 uppercase tracking-wider border-b border-slate-200">
-                      <th className="py-3 px-4">Doctor Name & ID</th>
-                      <th className="py-3 px-4">Hospital / Clinic</th>
-                      <th className="py-3 px-4">Specialty</th>
-                      <th className="py-3 px-4">Login Email</th>
-                      <th className="py-3 px-4">Auth Method</th>
-                      <th className="py-3 px-4">Today Consults</th>
-                      <th className="py-3 px-4">Account Status</th>
-                      <th className="py-3 px-4 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {filteredDoctors.map(doc => (
-                      <tr key={doc.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center font-black text-xs shrink-0">
-                              Dr
-                            </div>
-                            <div>
-                              <span className="font-extrabold text-slate-900 block text-sm">{doc.name}</span>
-                              <span className="text-[10px] font-mono font-bold text-slate-400">{doc.doctor_code || `ID: ${doc.id.slice(0, 8)}`}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4 font-semibold text-slate-700">{doc.hospital}</td>
-                        <td className="py-3.5 px-4">
-                          <span className="px-2.5 py-0.5 bg-indigo-50 text-indigo-700 font-bold rounded-lg text-[10px]">
-                            {doc.specialty}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-medium text-slate-600 block">{doc.email || '—'}</span>
-                          {doc.phone && <span className="text-[10px] text-slate-400">{doc.phone}</span>}
-                        </td>
-                        <td className="py-3.5 px-4">
-                          {doc.auth_provider === 'Google Auth' ? (
-                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-gradient-to-r from-blue-50 to-indigo-50 text-blue-700 border border-blue-200/80 rounded-full text-[10px] font-extrabold shadow-xs">
-                              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shrink-0" />
-                              <span>Google Account</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 bg-slate-100 text-slate-600 rounded-full text-[10px] font-bold">
-                              {doc.auth_provider || 'Email Auth'}
-                            </span>
-                          )}
-                        </td>
-                        <td className="py-3.5 px-4 font-black text-slate-800">
-                          <span className="px-2 py-0.5 bg-emerald-50 text-emerald-700 rounded-lg text-[11px] font-extrabold">
-                            {doc.todayConsults} Patients
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <button
-                            onClick={() => handleToggleDoctorStatus(doc)}
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition cursor-pointer ${
-                              doc.is_active
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700'
-                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-emerald-50 hover:text-emerald-700'
-                            }`}
-                            title="Click to toggle status"
-                          >
-                            {doc.is_active ? 'Active' : 'Suspended'}
-                          </button>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {doc.phone && (
-                              <a
-                                href={`https://wa.me/${doc.phone.replace(/[^0-9]/g, '')}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="px-2.5 py-1 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 text-slate-700 font-bold rounded-lg inline-flex items-center gap-1 text-[11px] transition"
-                              >
-                                <Phone size={11} /> WhatsApp
-                              </a>
-                            )}
-                            <button
-                              onClick={() => handleToggleDoctorStatus(doc)}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition"
-                            >
-                              {doc.is_active ? 'Suspend' : 'Activate'}
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </div>
+          <DoctorsManager />
         )}
 
         {/* ─── VIEW 11: STAFF & PATIENTS (CLEAN) ───────────────── */}

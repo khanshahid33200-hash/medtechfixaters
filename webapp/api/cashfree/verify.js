@@ -1,4 +1,15 @@
 import https from 'node:https';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://yweywvnivyftwtglxavr.supabase.co';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.PROJECT_SERVICE_ROLE_KEY || '';
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+
+function getSupabase() {
+  const key = SERVICE_ROLE_KEY || ANON_KEY;
+  if (!key) return null;
+  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } });
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST' && req.method !== 'GET') {
@@ -18,11 +29,30 @@ export default async function handler(req, res) {
     return res.status(400).json({ success: false, error: 'Missing order_id' });
   }
 
+  const supabase = getSupabase();
+
   // Check if simulated
   const simulatedOrders = globalThis.__simulatedOrders;
   if (simulatedOrders) {
     const sim = simulatedOrders.get(orderId) || simulatedOrders.get(internalOrderId);
     if (sim) {
+      if (supabase) {
+        try {
+          await supabase
+            .from('payment_transactions')
+            .update({
+              payment_status: sim.status,
+              provider_payment_id: sim.payment_id || null,
+              review_notes: sim.error || `Simulated ${sim.status}`,
+              reconciliation_evidence: { simulated: true },
+              updated_at: new Date().toISOString(),
+            })
+            .or(`provider_order_id.eq.${orderId},internal_transaction_id.eq.${internalOrderId}`);
+        } catch (dbErr) {
+          console.warn('[verify:simulate] db update notice:', dbErr);
+        }
+      }
+
       if (sim.status === 'completed') {
         return res.status(200).json({
           success: true,
@@ -69,7 +99,7 @@ export default async function handler(req, res) {
   const cfReq = https.request(
     {
       hostname: host,
-      path: `/pg/orders/${orderId}/payments`,
+      path: `/pg/orders/${encodeURIComponent(orderId)}/payments`,
       method: 'GET',
       headers: {
         'x-client-id': appId,
@@ -81,7 +111,7 @@ export default async function handler(req, res) {
     (cfRes) => {
       let cfBody = '';
       cfRes.on('data', (c) => (cfBody += c));
-      cfRes.on('end', () => {
+      cfRes.on('end', async () => {
         res.setHeader('Content-Type', 'application/json');
         res.status(cfRes.statusCode || 200);
         try {
@@ -95,6 +125,39 @@ export default async function handler(req, res) {
           const cancelledPayment = Array.isArray(payments)
             ? payments.find((p) => p.payment_status === 'USER_DROPPED' || p.payment_status === 'CANCELLED')
             : null;
+
+          // Synchronize status with Supabase payment_transactions
+          if (supabase && orderId) {
+            try {
+              const updatePayload = {
+                updated_at: new Date().toISOString(),
+                provider_response: Array.isArray(payments) ? { payments } : payments,
+              };
+
+              if (successfulPayment) {
+                updatePayload.payment_status = 'completed';
+                updatePayload.provider_payment_id = successfulPayment.cf_payment_id || successfulPayment.payment_id;
+                updatePayload.payment_method = successfulPayment.payment_group || successfulPayment.payment_method || 'online';
+                updatePayload.provider_reference = successfulPayment.bank_reference || String(updatePayload.provider_payment_id);
+                updatePayload.reconciliation_status = 'verified_success';
+                updatePayload.reconciliation_evidence = successfulPayment;
+              } else if (failedPayment) {
+                updatePayload.payment_status = 'failed';
+                updatePayload.provider_payment_id = failedPayment.cf_payment_id || failedPayment.payment_id;
+                updatePayload.review_notes = failedPayment.payment_message || 'Payment declined by bank or issuer';
+              } else if (cancelledPayment) {
+                updatePayload.payment_status = 'cancelled';
+                updatePayload.review_notes = 'Payment cancelled or abandoned by user';
+              }
+
+              await supabase
+                .from('payment_transactions')
+                .update(updatePayload)
+                .or(`provider_order_id.eq.${orderId},internal_transaction_id.eq.${internalOrderId}`);
+            } catch (dbErr) {
+              console.warn('[cashfree:verify] payment_transactions update warning:', dbErr);
+            }
+          }
 
           if (successfulPayment) {
             return res.json({

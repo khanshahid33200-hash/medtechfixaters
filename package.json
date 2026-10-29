@@ -1,0 +1,13 @@
+{
+  "name": "medtechfixaters-root",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "cd webapp && npm install && npm run build",
+    "provision:admin": "node scripts/provision_super_admin.mjs"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.112.4"
+  }
+}

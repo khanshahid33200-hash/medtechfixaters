@@ -1,4 +1,15 @@
 import https from 'node:https';
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || 'https://yweywvnivyftwtglxavr.supabase.co';
+const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.PROJECT_SERVICE_ROLE_KEY || '';
+const ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || '';
+
+function getSupabase() {
+  const key = SERVICE_ROLE_KEY || ANON_KEY;
+  if (!key) return null;
+  return createClient(SUPABASE_URL, key, { auth: { persistSession: false } });
+}
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -47,13 +58,38 @@ export default async function handler(req, res) {
     (cfRes) => {
       let cfBody = '';
       cfRes.on('data', (c) => (cfBody += c));
-      cfRes.on('end', () => {
+      cfRes.on('end', async () => {
         res.setHeader('Content-Type', 'application/json');
         res.status(cfRes.statusCode || 200);
         try {
           const parsed = JSON.parse(cfBody);
+          const isSuccess = cfRes.statusCode === 200;
+
+          // Record transaction in Supabase payment_transactions
+          const supabase = getSupabase();
+          if (supabase && isSuccess && parsed.order_id) {
+            try {
+              await supabase.from('payment_transactions').insert([{
+                internal_transaction_id: internalOrderId,
+                provider_name: 'cashfree',
+                provider_order_id: parsed.order_id,
+                provider_session_id: parsed.payment_session_id || null,
+                account_email: data.customer_email || 'doctor@medtechfixaters.in',
+                doctor_id: data.doctor_id || null,
+                amount_paise: orderAmount * 100,
+                currency: 'INR',
+                payment_status: 'pending',
+                provider_response: parsed,
+                initiated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString()
+              }]);
+            } catch (dbErr) {
+              console.warn('[cashfree:create-order] payment_transactions insert warning:', dbErr);
+            }
+          }
+
           res.json({
-            success: cfRes.statusCode === 200,
+            success: isSuccess,
             gateway: 'cashfree',
             environment: isProd ? 'PROD' : 'TEST',
             payment_session_id: parsed.payment_session_id,
