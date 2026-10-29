@@ -25,6 +25,21 @@ CREATE TABLE IF NOT EXISTS public.subscription_plans (
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
 
+-- Ensure all columns exist even if table pre-existed with older schema
+ALTER TABLE public.subscription_plans
+    ADD COLUMN IF NOT EXISTS name TEXT,
+    ADD COLUMN IF NOT EXISTS tagline TEXT,
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS target_audience TEXT,
+    ADD COLUMN IF NOT EXISTS billing_interval TEXT DEFAULT 'month',
+    ADD COLUMN IF NOT EXISTS duration_days INTEGER DEFAULT 30,
+    ADD COLUMN IF NOT EXISTS introductory_price_paise INTEGER DEFAULT 50000,
+    ADD COLUMN IF NOT EXISTS recurring_price_paise INTEGER DEFAULT 500000,
+    ADD COLUMN IF NOT EXISTS original_price_paise INTEGER DEFAULT 500000,
+    ADD COLUMN IF NOT EXISTS is_trial BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true,
+    ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}'::jsonb;
+
 -- 2. PRICING CARDS TABLE (Configurable for public pricing page)
 CREATE TABLE IF NOT EXISTS public.pricing_cards (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,6 +64,27 @@ CREATE TABLE IF NOT EXISTS public.pricing_cards (
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+-- Ensure all columns exist even if pricing_cards pre-existed
+ALTER TABLE public.pricing_cards
+    ADD COLUMN IF NOT EXISTS plan_id TEXT,
+    ADD COLUMN IF NOT EXISTS display_title TEXT,
+    ADD COLUMN IF NOT EXISTS subtitle TEXT,
+    ADD COLUMN IF NOT EXISTS badge_label TEXT,
+    ADD COLUMN IF NOT EXISTS price_today_paise INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS future_recurring_paise INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS original_price_paise INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS billing_interval TEXT DEFAULT 'month',
+    ADD COLUMN IF NOT EXISTS savings_display TEXT,
+    ADD COLUMN IF NOT EXISTS terms_disclosure TEXT,
+    ADD COLUMN IF NOT EXISTS features JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS omitted_features JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS highlights JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS cta_text TEXT DEFAULT 'Get Started',
+    ADD COLUMN IF NOT EXISTS cta_link TEXT DEFAULT '/signup',
+    ADD COLUMN IF NOT EXISTS display_order INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS publication_status TEXT DEFAULT 'published',
+    ADD COLUMN IF NOT EXISTS highlighted BOOLEAN DEFAULT false;
 
 -- 3. PROMOTIONAL OFFERS TABLE
 CREATE TABLE IF NOT EXISTS public.promotional_offers (
@@ -87,6 +123,21 @@ CREATE TABLE IF NOT EXISTS public.coupon_codes (
     created_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT TIMEZONE('utc'::text, NOW()) NOT NULL
 );
+
+-- Ensure all columns exist even if coupon_codes pre-existed
+ALTER TABLE public.coupon_codes
+    ADD COLUMN IF NOT EXISTS description TEXT,
+    ADD COLUMN IF NOT EXISTS discount_type TEXT DEFAULT 'percentage',
+    ADD COLUMN IF NOT EXISTS discount_value INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS applicable_plan_ids JSONB DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS valid_from TIMESTAMPTZ DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS valid_until TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS max_uses INTEGER DEFAULT NULL,
+    ADD COLUMN IF NOT EXISTS times_used INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS per_user_limit INTEGER DEFAULT 1,
+    ADD COLUMN IF NOT EXISTS min_order_value_paise INTEGER DEFAULT 0,
+    ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT false,
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
 
 -- 5. COUPON REDEMPTIONS TABLE (Audit & Limit Tracking)
 CREATE TABLE IF NOT EXISTS public.coupon_redemptions (
