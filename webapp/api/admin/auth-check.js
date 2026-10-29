@@ -4,7 +4,11 @@ const DEFAULT_SUPABASE_URL = 'https://yweywvnivyftwtglxavr.supabase.co';
 const DEFAULT_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inl3ZXl3dm5pdnlmdHd0Z2x4YXZyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk3MTEyOTgsImV4cCI6MjEwNTI4NzI5OH0.niHlKWf4zWGQ1sb59ZZ2n2SnZxbLeKfqkSkJnWGIxts';
 
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || DEFAULT_SUPABASE_URL;
-const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || DEFAULT_ANON_KEY;
+const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY && !process.env.SUPABASE_ANON_KEY.startsWith('sb_publishable_'))
+  ? process.env.SUPABASE_ANON_KEY
+  : (process.env.VITE_SUPABASE_ANON_KEY && !process.env.VITE_SUPABASE_ANON_KEY.startsWith('sb_publishable_'))
+    ? process.env.VITE_SUPABASE_ANON_KEY
+    : DEFAULT_ANON_KEY;
 const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.PROJECT_SERVICE_ROLE_KEY || '';
 
 export function polyfillReqRes(req, res) {
@@ -56,7 +60,7 @@ export async function verifySuperAdmin(req, res) {
       global: { headers: { Authorization: `Bearer ${token}` } },
     });
 
-    const { data: { user }, error: userErr } = await client.auth.getUser();
+    const { data: { user }, error: userErr } = await client.auth.getUser(token);
 
     if (userErr || !user) {
       res.status(401).json({ success: false, error: 'Invalid or expired session token.' });
@@ -85,4 +89,17 @@ export async function verifySuperAdmin(req, res) {
     res.status(500).json({ success: false, error: 'Internal authorization error: ' + err.message });
     return null;
   }
+}
+
+export default async function handler(req, res) {
+  const auth = await verifySuperAdmin(req, res);
+  if (!auth) return;
+  return res.status(200).json({
+    success: true,
+    user: {
+      id: auth.user.id,
+      email: auth.user.email,
+    },
+    profile: auth.profile
+  });
 }

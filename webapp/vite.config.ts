@@ -569,6 +569,10 @@ export default defineConfig(({ mode }) => {
 
           const runAdminHandler = async () => {
             try {
+              if (req.url?.startsWith('/api/admin/auth-check')) {
+                const handler = (await import('./api/admin/auth-check.js')).default
+                return await handler(req, res)
+              }
               if (req.url?.startsWith('/api/admin/transactions')) {
                 const handler = (await import('./api/admin/transactions.js')).default
                 return await handler(req, res)
