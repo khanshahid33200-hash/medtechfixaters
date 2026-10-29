@@ -25,16 +25,18 @@ import PublicFooter from '../components/PublicFooter';
 import AmbientBackground from '../components/motion/AmbientBackground';
 import { useSEO } from '../hooks/useSEO';
 import {
-  PRICING_PLANS,
   FEATURE_COMPARISON_MATRIX,
   PRICING_FAQS,
   PricingPlan,
 } from '../config/pricing';
+import { usePricingPlans } from '../hooks/usePricingPlans';
 import { trackPricingEvent } from '../utils/analytics';
 import { subscriptionService } from '../services/subscriptionService';
 import { PRIMARY_BUTTON } from '../lib/motion';
 
 export default function PricingPage() {
+  const { plans: dynamicPlans } = usePricingPlans();
+
   useSEO({
     title: 'Transparent Healthcare Pricing — Solo Doctor, Clinic & Hospital Plans | MedTechFixaters',
     description:
@@ -157,7 +159,7 @@ export default function PricingPage() {
       {/* 4 Pricing Cards Section */}
       <section className="py-8 sm:py-12 px-4 sm:px-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-stretch">
-          {PRICING_PLANS.map((plan) => {
+          {dynamicPlans.map((plan) => {
             const isIntro = plan.id === 'doctor_intro_500';
             const isYearly = plan.id === 'doctor_yearly_50000';
             const isEnterprise = plan.id === 'hospital_custom';
@@ -181,22 +183,23 @@ export default function PricingPage() {
                 {isIntro && (
                   <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[linear-gradient(135deg,#FF6A00,#FF8A3D)] text-white text-[11px] font-black uppercase tracking-wider shadow-md shadow-orange-500/30 flex items-center gap-1.5 whitespace-nowrap">
                     <Sparkles size={12} />
-                    <span>90% OFF FIRST MONTH</span>
+                    <span>{plan.discountBadge || '90% OFF FIRST MONTH'}</span>
                   </span>
                 )}
 
                 {isYearly && (
                   <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-[linear-gradient(135deg,#4F46E5,#6366F1)] text-white text-[11px] font-black uppercase tracking-wider shadow-md shadow-indigo-500/30 flex items-center gap-1.5 whitespace-nowrap">
                     <Sparkles size={12} />
-                    <span>2 MONTHS FREE + WEBSITE</span>
+                    <span>{plan.discountBadge || '2 MONTHS FREE + WEBSITE'}</span>
                   </span>
                 )}
 
                 {isEnterprise && (
                   <span className="absolute -top-3.5 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-stone-800 border border-stone-700 text-orange-400 text-[11px] font-black uppercase tracking-wider shadow-md whitespace-nowrap">
-                    <span>ENTERPRISE SCALE</span>
+                    <span>{plan.discountBadge || 'ENTERPRISE SCALE'}</span>
                   </span>
                 )}
+
 
                 <div className="space-y-6">
                   {/* Card Header */}

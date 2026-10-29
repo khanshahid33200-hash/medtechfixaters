@@ -5,6 +5,8 @@ import { Stethoscope, Building2, Check, X, ArrowRight, Sparkles, ShieldCheck } f
 import seoContent from '../../content/seoRoutes.json'
 import { Reveal } from '../motion'
 import { EASE_OUT, SPRING_UI, PRIMARY_BUTTON } from '../../lib/motion'
+import { usePricingPlans } from '../../hooks/usePricingPlans'
+
 
 type Plan = { name: string; tag: string; priceMonthly: number; priceAnnual: number }
 const plans = (seoContent.routes.find((r) => r.path === '/pricing')?.pricing || []) as Plan[]
@@ -66,6 +68,11 @@ export default function AudienceTabs() {
   const tabRefs = useRef<(HTMLButtonElement | null)[]>([])
   const reduce = useReducedMotion()
   const a = AUDIENCES[active]
+
+  const { getPlan } = usePricingPlans()
+  const introPlan = getPlan('doctor_intro_500')
+  const monthlyPlan = getPlan('doctor_monthly_5000')
+  const hospitalPlan = getPlan('hospital_custom')
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
@@ -180,42 +187,41 @@ export default function AudienceTabs() {
                       <span className="text-[11px] sm:text-xs font-bold text-[#6B6B6B] uppercase tracking-wider">
                         Suggested Plan
                       </span>
-                      {a.plan.priceMonthly === 500 ? (
+                      {a.id === 'clinic' ? (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FF6A00] text-white text-[11px] font-bold shadow-xs">
-                          <Sparkles size={11} /> 90% OFF First Month
-                        </span>
-                      ) : a.plan.priceMonthly === 5000 ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-100 text-[#C2410C] border border-orange-200 text-[11px] font-bold">
-                          Standard Plan
+                          <Sparkles size={11} /> {introPlan?.discountBadge || '90% OFF First Month'}
                         </span>
                       ) : (
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-stone-900 text-white text-[11px] font-bold">
-                          <ShieldCheck size={11} /> Enterprise
+                          <ShieldCheck size={11} /> {hospitalPlan?.badge || 'Enterprise'}
                         </span>
                       )}
                     </div>
 
-                    <h4 className="mt-2 text-base sm:text-lg font-bold text-[#171717]">{a.plan.name}</h4>
+                    <h4 className="mt-2 text-base sm:text-lg font-bold text-[#171717]">
+                      {a.id === 'clinic' ? (introPlan?.name || 'First Month Special Offer') : (hospitalPlan?.name || 'Hospital Solutions')}
+                    </h4>
 
-                    {a.plan.priceMonthly === 500 ? (
+                    {a.id === 'clinic' ? (
                       <div className="mt-2">
                         <div className="flex items-baseline gap-2">
-                          <span className="text-sm sm:text-base font-semibold text-stone-400 line-through">₹5,000</span>
-                          <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#171717]">₹500</span>
-                          <span className="text-xs sm:text-sm font-semibold text-[#6B6B6B]">/ first month</span>
+                          {introPlan?.originalPrice ? (
+                            <span className="text-sm sm:text-base font-semibold text-stone-400 line-through">
+                              ₹{introPlan.originalPrice.toLocaleString('en-IN')}
+                            </span>
+                          ) : (
+                            <span className="text-sm sm:text-base font-semibold text-stone-400 line-through">₹5,000</span>
+                          )}
+                          <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#171717]">
+                            ₹{(introPlan?.price ?? 500).toLocaleString('en-IN')}
+                          </span>
+                          <span className="text-xs sm:text-sm font-semibold text-[#6B6B6B]">
+                            / {introPlan?.billingFrequency || 'first month'}
+                          </span>
                         </div>
                         <p className="mt-1.5 text-xs text-[#6B6B6B]">
-                          Introductory pricing applies to month 1. From month 2: ₹5,000/month.
-                        </p>
-                      </div>
-                    ) : a.plan.priceMonthly === 5000 ? (
-                      <div className="mt-2">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#171717]">₹5,000</span>
-                          <span className="text-xs sm:text-sm font-semibold text-[#6B6B6B]">/ month</span>
-                        </div>
-                        <p className="mt-1.5 text-xs text-[#6B6B6B]">
-                          Eligible new practices get their first month for ₹500 (90% discount).
+                          {introPlan?.secondaryBillingNote ||
+                            `Introductory pricing applies to month 1. From month 2: ₹${(monthlyPlan?.price ?? 5000).toLocaleString('en-IN')}/month.`}
                         </p>
                       </div>
                     ) : (
@@ -224,7 +230,7 @@ export default function AudienceTabs() {
                           <span className="text-2xl sm:text-3xl font-extrabold tracking-tight text-[#171717]">Custom Pricing</span>
                         </div>
                         <p className="mt-1.5 text-xs text-[#6B6B6B]">
-                          Tailored quote based on department count, beds, and integration scope. No automatic charge.
+                          {hospitalPlan?.termsDisclosure || 'Tailored quote based on department count, beds, and integration scope. No automatic charge.'}
                         </p>
                       </div>
                     )}
@@ -243,12 +249,16 @@ export default function AudienceTabs() {
 
                   <div className="mt-5 pt-3 border-t border-orange-100/80">
                     <Link
-                      to={a.plan.priceMonthly === 500 ? '/login?tab=signup' : '/pricing'}
+                      to={a.id === 'clinic' ? '/login?tab=signup' : '/pricing'}
                       className={`w-full py-2.5 px-4 rounded-xl text-center text-xs sm:text-sm font-bold flex items-center justify-center gap-2 ${
-                        a.plan.priceMonthly === 500 ? PRIMARY_BUTTON : 'bg-white hover:bg-orange-50 text-[#C2410C] border border-orange-300 transition-colors'
+                        a.id === 'clinic' ? PRIMARY_BUTTON : 'bg-white hover:bg-orange-50 text-[#C2410C] border border-orange-300 transition-colors'
                       }`}
                     >
-                      {a.plan.priceMonthly === 500 ? 'Get Started for ₹500' : a.plan.priceMonthly === 5000 ? 'View Plan Details' : 'Request Hospital Consultation'}
+                      <span>
+                        {a.id === 'clinic'
+                          ? (introPlan?.ctaText || `Get Started for ₹${(introPlan?.price ?? 500).toLocaleString('en-IN')}`)
+                          : (hospitalPlan?.ctaText || 'Request Hospital Consultation')}
+                      </span>
                       <ArrowRight size={14} />
                     </Link>
                     <div className="mt-2 text-center">

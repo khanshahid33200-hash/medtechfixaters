@@ -217,23 +217,26 @@ ALTER TABLE public.promotional_offers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coupon_codes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.coupon_redemptions ENABLE ROW LEVEL SECURITY;
 
--- Public read policies
+-- Public read policies (unrestricted for published/active catalog items)
 DROP POLICY IF EXISTS "Public can view active plans" ON public.subscription_plans;
 CREATE POLICY "Public can view active plans"
     ON public.subscription_plans FOR SELECT
-    USING (is_active = true OR public.is_super_admin());
+    TO anon, authenticated
+    USING (is_active = true);
 
 DROP POLICY IF EXISTS "Public can view published pricing cards" ON public.pricing_cards;
 CREATE POLICY "Public can view published pricing cards"
     ON public.pricing_cards FOR SELECT
-    USING (publication_status = 'published' OR public.is_super_admin());
+    TO anon, authenticated
+    USING (publication_status = 'published');
 
 DROP POLICY IF EXISTS "Public can view active coupons" ON public.coupon_codes;
 CREATE POLICY "Public can view active coupons"
     ON public.coupon_codes FOR SELECT
-    USING (is_active = true OR public.is_super_admin());
+    TO anon, authenticated
+    USING (is_active = true);
 
--- Super Admin policies
+-- Super Admin management policies
 DROP POLICY IF EXISTS "Super admins manage subscription_plans" ON public.subscription_plans;
 CREATE POLICY "Super admins manage subscription_plans"
     ON public.subscription_plans FOR ALL
@@ -268,6 +271,13 @@ CREATE POLICY "Super admins manage coupon_redemptions"
     TO authenticated
     USING (public.is_super_admin())
     WITH CHECK (public.is_super_admin());
+
+-- Role Grants
+GRANT SELECT ON public.subscription_plans TO anon, authenticated;
+GRANT SELECT ON public.pricing_cards TO anon, authenticated;
+GRANT SELECT ON public.coupon_codes TO anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_super_admin() TO anon, authenticated, service_role;
+
 
 -- 7. STORED PROCEDURE: VALIDATE AND APPLY COUPON
 CREATE OR REPLACE FUNCTION public.validate_and_apply_coupon(

@@ -465,6 +465,19 @@ export default defineConfig(({ mode }) => {
           return
         }
 
+        // 3.4 Public Dynamic Pricing Endpoint: GET /api/pricing
+        if (req.url?.startsWith('/api/pricing')) {
+          try {
+            const handler = (await import('./api/pricing.js')).default
+            return handler(req, res)
+          } catch (err: any) {
+            res.setHeader('Content-Type', 'application/json')
+            res.statusCode = 500
+            res.end(JSON.stringify({ success: false, error: err.message }))
+            return
+          }
+        }
+
         // 3.5 Local Dev AI Assistant Proxy: POST /api/ai-assist (bypasses browser CORS on localhost)
         if (req.url?.startsWith('/api/ai-assist') && req.method === 'POST') {
           let body = ''

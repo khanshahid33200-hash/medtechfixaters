@@ -35,14 +35,19 @@ export interface PlanItem {
   tagline: string;
   description: string;
   target_audience: string;
-  billing_interval: 'month' | 'year' | 'custom' | 'one_time';
+  billing_interval: 'month' | 'year' | 'custom' | 'one_time' | string;
   introductory_price_paise: number;
   recurring_price_paise: number;
   original_price_paise: number;
   is_trial: boolean;
   is_active: boolean;
+  badge_label?: string;
+  savings_display?: string;
+  cta_text?: string;
+  terms_disclosure?: string;
   metadata?: any;
 }
+
 
 export interface CouponItem {
   id: string;
@@ -134,6 +139,10 @@ export default function PricingSubscriptionManager() {
       introductory_price_paise: 50000,
       recurring_price_paise: 500000,
       original_price_paise: 500000,
+      badge_label: '90% OFF FIRST MONTH',
+      savings_display: 'From month two, ₹5,000 per month.',
+      cta_text: 'Get Started for ₹500',
+      terms_disclosure: 'Introductory pricing applies to your first month only. From month two, regular ₹5,000 per month applies. No automatic deduction without prior renewal confirmation.',
       is_trial: true,
       is_active: true,
     },
@@ -147,6 +156,10 @@ export default function PricingSubscriptionManager() {
       introductory_price_paise: 500000,
       recurring_price_paise: 500000,
       original_price_paise: 650000,
+      badge_label: 'Monthly Subscription',
+      savings_display: 'Standard monthly subscription. Cancel or renew anytime.',
+      cta_text: 'Subscribe Now',
+      terms_disclosure: 'A monthly subscription for eligible individual doctors and clinics. Billed at ₹5,000 per month. You can review all terms before final checkout.',
       is_trial: false,
       is_active: true,
     },
@@ -160,6 +173,10 @@ export default function PricingSubscriptionManager() {
       introductory_price_paise: 5000000,
       recurring_price_paise: 5000000,
       original_price_paise: 6000000,
+      badge_label: '2 MONTHS FREE + WEBSITE',
+      savings_display: 'Save ₹10,000/year + Free Custom Clinic Website',
+      cta_text: 'Get Yearly Plan',
+      terms_disclosure: 'Full 12-month license billed annually. Includes free custom clinic website build, Google SEO optimization, ABDM M1/M2 readiness, and dedicated priority support.',
       is_trial: false,
       is_active: true,
     },
@@ -173,6 +190,10 @@ export default function PricingSubscriptionManager() {
       introductory_price_paise: 0,
       recurring_price_paise: 0,
       original_price_paise: 0,
+      badge_label: 'ENTERPRISE SCALE',
+      savings_display: 'Enterprise SLA & dedicated engineering team included.',
+      cta_text: 'Contact MedTechFixaters',
+      terms_disclosure: 'Pricing depends on hospital requirements, number of doctors, facilities, deployment needs, and required integrations. Contact our enterprise team for a custom quote.',
       is_trial: false,
       is_active: true,
     },
@@ -215,14 +236,39 @@ export default function PricingSubscriptionManager() {
     setError(null);
 
     try {
-      // 1. Fetch Plans
-      const { data: plansData, error: plansErr } = await supabase
-        .from('subscription_plans')
-        .select('*')
-        .order('introductory_price_paise', { ascending: true });
+      // 1. Fetch Plans AND Pricing Cards in parallel
+      const [plansRes, cardsRes] = await Promise.all([
+        supabase.from('subscription_plans').select('*').order('introductory_price_paise', { ascending: true }),
+        supabase.from('pricing_cards').select('*'),
+      ]);
 
-      if (!plansErr && plansData && plansData.length > 0) {
-        setPlans(plansData);
+      const plansData = plansRes.data;
+      const cardsData = cardsRes.data;
+
+      if (plansData && plansData.length > 0) {
+        const mergedPlans: PlanItem[] = plansData.map((plan: any) => {
+          const card = cardsData?.find((c: any) => c.plan_id === plan.id);
+          const defaultPlan = defaultPlans.find((dp) => dp.id === plan.id);
+          return {
+            id: plan.id,
+            name: card?.display_title || plan.name,
+            tagline: card?.subtitle || plan.tagline || defaultPlan?.tagline || '',
+            description: plan.description || defaultPlan?.description || '',
+            target_audience: plan.target_audience || defaultPlan?.target_audience || '',
+            billing_interval: card?.billing_interval || plan.billing_interval || defaultPlan?.billing_interval || 'month',
+            introductory_price_paise: card?.price_today_paise ?? plan.introductory_price_paise ?? 0,
+            recurring_price_paise: card?.future_recurring_paise ?? plan.recurring_price_paise ?? 0,
+            original_price_paise: card?.original_price_paise ?? plan.original_price_paise ?? 0,
+            badge_label: card?.badge_label || defaultPlan?.badge_label || '',
+            savings_display: card?.savings_display || defaultPlan?.savings_display || '',
+            cta_text: card?.cta_text || defaultPlan?.cta_text || 'Get Started',
+            terms_disclosure: card?.terms_disclosure || defaultPlan?.terms_disclosure || '',
+            is_trial: Boolean(plan.is_trial),
+            is_active: card ? card.publication_status === 'published' : Boolean(plan.is_active),
+            metadata: plan.metadata,
+          };
+        });
+        setPlans(mergedPlans);
       } else {
         setPlans(defaultPlans);
       }
@@ -293,42 +339,197 @@ export default function PricingSubscriptionManager() {
 
     setActionLoading(true);
     try {
+      const nowIso = new Date().toISOString();
+      const introPaise = Number(editingPlan.introductory_price_paise);
+      const recurringPaise = Number(editingPlan.recurring_price_paise);
+      const originalPaise = Number(editingPlan.original_price_paise);
+
+      // Clean and guarantee valid billing_interval & duration_days
+      const cleanInterval = ['month', 'year', 'custom', 'one_time'].includes(editingPlan.billing_interval)
+        ? editingPlan.billing_interval
+        : (editingPlan.id.includes('yearly') ? 'year' : editingPlan.id.includes('custom') ? 'custom' : 'month');
+
+      const durationDays = cleanInterval === 'year' ? 365 : cleanInterval === 'custom' ? 365 : 30;
+
+      // 1. Update subscription_plans table in Supabase
+      const planPayload = {
+        name: editingPlan.name.trim(),
+        tagline: editingPlan.tagline?.trim() || null,
+        description: editingPlan.description?.trim() || null,
+        target_audience: editingPlan.target_audience?.trim() || null,
+        billing_interval: cleanInterval,
+        duration_days: durationDays,
+        introductory_price_paise: introPaise,
+        recurring_price_paise: recurringPaise,
+        original_price_paise: originalPaise,
+        is_trial: Boolean(editingPlan.is_trial),
+        is_active: Boolean(editingPlan.is_active),
+        updated_at: nowIso,
+      };
+
       const { error: upErr } = await supabase
         .from('subscription_plans')
-        .upsert([
-          {
-            id: editingPlan.id,
-            name: editingPlan.name.trim(),
-            tagline: editingPlan.tagline?.trim(),
-            description: editingPlan.description?.trim(),
-            target_audience: editingPlan.target_audience?.trim(),
-            introductory_price_paise: Number(editingPlan.introductory_price_paise),
-            recurring_price_paise: Number(editingPlan.recurring_price_paise),
-            original_price_paise: Number(editingPlan.original_price_paise),
-            is_trial: Boolean(editingPlan.is_trial),
-            is_active: Boolean(editingPlan.is_active),
-            updated_at: new Date().toISOString(),
-          },
-        ]);
+        .update(planPayload)
+        .eq('id', editingPlan.id);
 
       if (upErr) {
-        throw new Error(upErr.message);
+        console.warn('subscription_plans update error:', upErr);
       }
 
-      // Also update pricing_cards
-      await supabase
+      // Sync alias row if exists (e.g. plan_trial_500 vs doctor_intro_500)
+      const aliasId =
+        editingPlan.id === 'doctor_intro_500'
+          ? 'plan_trial_500'
+          : editingPlan.id === 'plan_trial_500'
+          ? 'doctor_intro_500'
+          : editingPlan.id === 'doctor_monthly_5000'
+          ? 'plan_monthly_5000'
+          : editingPlan.id === 'plan_monthly_5000'
+          ? 'doctor_monthly_5000'
+          : editingPlan.id === 'doctor_yearly_50000'
+          ? 'plan_yearly_50000'
+          : editingPlan.id === 'plan_yearly_50000'
+          ? 'doctor_yearly_50000'
+          : null;
+
+      if (aliasId) {
+        await supabase
+          .from('subscription_plans')
+          .update(planPayload)
+          .eq('id', aliasId);
+      }
+
+      // 2. Update pricing_cards table in Supabase
+      const cardPayload = {
+        display_title: editingPlan.name.trim(),
+        subtitle: editingPlan.tagline?.trim() || null,
+        badge_label: editingPlan.badge_label?.trim() || null,
+        price_today_paise: introPaise,
+        future_recurring_paise: recurringPaise,
+        original_price_paise: originalPaise,
+        billing_interval: cleanInterval,
+        savings_display: editingPlan.savings_display?.trim() || null,
+        cta_text: editingPlan.cta_text?.trim() || 'Get Started',
+        terms_disclosure: editingPlan.terms_disclosure?.trim() || null,
+        publication_status: editingPlan.is_active ? 'published' : 'draft',
+        updated_at: nowIso,
+      };
+
+      const { error: cardErr } = await supabase
         .from('pricing_cards')
-        .update({
-          display_title: editingPlan.name.trim(),
-          subtitle: editingPlan.tagline?.trim(),
-          price_today_paise: Number(editingPlan.introductory_price_paise),
-          future_recurring_paise: Number(editingPlan.recurring_price_paise),
-          original_price_paise: Number(editingPlan.original_price_paise),
-          updated_at: new Date().toISOString(),
-        })
+        .update(cardPayload)
         .eq('plan_id', editingPlan.id);
 
-      setNotice(`Plan ${editingPlan.name} updated successfully!`);
+      if (cardErr) {
+        console.warn('pricing_cards update error:', cardErr);
+      }
+
+      if (aliasId) {
+        await supabase
+          .from('pricing_cards')
+          .update(cardPayload)
+          .eq('plan_id', aliasId);
+      }
+
+      // 3. Prepare mapped frontend PricingPlan object
+      const isIntro = editingPlan.id === 'doctor_intro_500';
+      const isYearly = editingPlan.id === 'doctor_yearly_50000';
+      const isEnterprise = editingPlan.id === 'hospital_custom' || editingPlan.billing_interval === 'custom';
+
+      let billingFrequency = 'per month';
+      if (editingPlan.billing_interval === 'year') {
+        billingFrequency = 'per year';
+      } else if (isIntro) {
+        billingFrequency = 'for your first month';
+      } else if (isEnterprise) {
+        billingFrequency = 'custom quotation';
+      }
+
+      const mappedPrice = isEnterprise ? null : Math.round(introPaise / 100);
+      const mappedPlanForFrontend = {
+        id: editingPlan.id,
+        name: editingPlan.name.trim(),
+        tagline: editingPlan.tagline?.trim() || '',
+        targetAudience: editingPlan.target_audience?.trim() || '',
+        price: mappedPrice,
+        originalPrice: originalPaise > 0 ? Math.round(originalPaise / 100) : undefined,
+        discountBadge: editingPlan.badge_label?.trim() || undefined,
+        currency: '₹',
+        billingFrequency,
+        secondaryBillingNote: editingPlan.savings_display?.trim() || undefined,
+        termsDisclosure: editingPlan.terms_disclosure?.trim() || editingPlan.description?.trim() || '',
+        ctaText: editingPlan.cta_text?.trim() || (isEnterprise ? 'Contact MedTechFixaters' : `Get Started for ₹${(mappedPrice ?? 0).toLocaleString('en-IN')}`),
+        badge: editingPlan.badge_label?.trim() || undefined,
+        isPopular: Boolean(editingPlan.is_trial || isIntro),
+        isEnterprise,
+      };
+
+      // 4. Update localStorage cache & broadcast for instant live website update
+      const CACHE_KEY = 'medtech_live_pricing_overrides';
+      let currentCache: any[] = [];
+      try {
+        const raw = localStorage.getItem(CACHE_KEY);
+        if (raw) currentCache = JSON.parse(raw);
+      } catch {
+        // ignore
+      }
+      const existingIdx = currentCache.findIndex((p: any) => p.id === editingPlan.id);
+      if (existingIdx >= 0) {
+        currentCache[existingIdx] = { ...currentCache[existingIdx], ...mappedPlanForFrontend };
+      } else {
+        currentCache.push(mappedPlanForFrontend);
+      }
+      localStorage.setItem(CACHE_KEY, JSON.stringify(currentCache));
+
+      // Dispatch event in current window
+      window.dispatchEvent(new CustomEvent('medtech_pricing_updated', { detail: currentCache }));
+
+      // Broadcast across tabs
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          const bc = new BroadcastChannel('medtech_pricing_channel');
+          bc.postMessage({ type: 'PRICING_UPDATED', plans: currentCache });
+          bc.close();
+        } catch {
+          // ignore
+        }
+      }
+
+      // 5. POST to /api/pricing to update server memory cache
+      try {
+        const { data: sessionData } = await supabase.auth.getSession();
+        const token = sessionData?.session?.access_token || '';
+        await fetch('/api/pricing', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            plan: mappedPlanForFrontend,
+            plans: currentCache,
+          }),
+        });
+      } catch (postErr) {
+        console.warn('Failed to POST to /api/pricing:', postErr);
+      }
+
+      // 6. Update platform_settings in Supabase
+      try {
+        await supabase
+          .from('platform_settings')
+          .upsert([
+            {
+              key: 'live_pricing',
+              value: currentCache,
+              updated_at: nowIso,
+            },
+          ]);
+      } catch {
+        // ignore
+      }
+
+      setNotice(`Plan "${editingPlan.name}" updated successfully! Changes are live across the website.`);
       setEditingPlan(null);
       fetchData();
     } catch (err: any) {
@@ -1139,7 +1340,7 @@ export default function PricingSubscriptionManager() {
               </button>
             </div>
 
-            <form onSubmit={handleSavePlan} className="space-y-3.5 text-xs">
+            <form onSubmit={handleSavePlan} className="space-y-3.5 text-xs max-h-[75vh] overflow-y-auto pr-1">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Plan Display Name *</label>
                 <input
@@ -1152,7 +1353,7 @@ export default function PricingSubscriptionManager() {
               </div>
 
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Tagline / Headline</label>
+                <label className="block font-bold text-slate-700 mb-1">Tagline / Subtitle</label>
                 <input
                   type="text"
                   value={editingPlan.tagline || ''}
@@ -1161,10 +1362,11 @@ export default function PricingSubscriptionManager() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* 3 Price Fields */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Introductory / First Cycle (₹)
+                    Price Today / Intro (₹)
                   </label>
                   <input
                     type="number"
@@ -1179,11 +1381,32 @@ export default function PricingSubscriptionManager() {
                     }
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-[#FF6A00]"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Visible card price</span>
                 </div>
 
                 <div>
                   <label className="block font-bold text-slate-700 mb-1">
-                    Recurring Monthly/Annual (₹)
+                    Original Price (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={editingPlan.original_price_paise / 100}
+                    onChange={(e) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        original_price_paise: Number(e.target.value) * 100,
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-[#FF6A00]"
+                  />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Strikethrough discount</span>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Recurring Price (₹)
                   </label>
                   <input
                     type="number"
@@ -1198,6 +1421,71 @@ export default function PricingSubscriptionManager() {
                     }
                     className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono font-bold outline-none focus:border-[#FF6A00]"
                   />
+                  <span className="text-[10px] text-slate-400 mt-0.5 block">Subsequent renewals</span>
+                </div>
+              </div>
+
+              {/* Billing Interval & Promo Badge */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Billing Interval</label>
+                  <select
+                    value={editingPlan.billing_interval || 'month'}
+                    onChange={(e) =>
+                      setEditingPlan({
+                        ...editingPlan,
+                        billing_interval: e.target.value as any,
+                      })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:border-[#FF6A00]"
+                  >
+                    <option value="month">Monthly (/month)</option>
+                    <option value="year">Yearly (/year)</option>
+                    <option value="custom">Custom Quotation</option>
+                    <option value="one_time">One-Time Fee</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Promo Badge Label</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. 90% OFF FIRST MONTH"
+                    value={editingPlan.badge_label || ''}
+                    onChange={(e) =>
+                      setEditingPlan({ ...editingPlan, badge_label: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:border-[#FF6A00]"
+                  />
+                </div>
+              </div>
+
+              {/* CTA Text & Savings Display */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Call To Action (CTA)</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Get Started for ₹500"
+                    value={editingPlan.cta_text || ''}
+                    onChange={(e) =>
+                      setEditingPlan({ ...editingPlan, cta_text: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:border-[#FF6A00]"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Savings / Secondary Note</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. From month two, ₹5,000 per month."
+                    value={editingPlan.savings_display || ''}
+                    onChange={(e) =>
+                      setEditingPlan({ ...editingPlan, savings_display: e.target.value })
+                    }
+                    className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:border-[#FF6A00]"
+                  />
                 </div>
               </div>
 
@@ -1210,6 +1498,19 @@ export default function PricingSubscriptionManager() {
                     setEditingPlan({ ...editingPlan, target_audience: e.target.value })
                   }
                   className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl font-semibold outline-none focus:border-[#FF6A00]"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Terms & Renewal Disclosure</label>
+                <textarea
+                  rows={2}
+                  value={editingPlan.terms_disclosure || ''}
+                  onChange={(e) =>
+                    setEditingPlan({ ...editingPlan, terms_disclosure: e.target.value })
+                  }
+                  placeholder="Legal and renewal terms displayed beneath card CTA"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium outline-none focus:border-[#FF6A00]"
                 />
               </div>
 
@@ -1235,7 +1536,7 @@ export default function PricingSubscriptionManager() {
                     }
                     className="w-4 h-4 text-orange-600 rounded"
                   />
-                  <span>Active & Published</span>
+                  <span>Active & Published on Website</span>
                 </label>
               </div>
 
@@ -1250,9 +1551,9 @@ export default function PricingSubscriptionManager() {
                 <button
                   type="submit"
                   disabled={actionLoading}
-                  className="px-5 py-2 bg-[#FF6A00] hover:bg-[#E55F00] text-white font-extrabold rounded-xl shadow cursor-pointer disabled:opacity-50"
+                  className="px-5 py-2 bg-[#FF6A00] hover:bg-[#E55F00] text-white font-extrabold rounded-xl shadow cursor-pointer disabled:opacity-50 flex items-center gap-2"
                 >
-                  {actionLoading ? 'Saving...' : 'Save Changes'}
+                  {actionLoading ? 'Publishing Live...' : 'Save & Publish Live'}
                 </button>
               </div>
             </form>
