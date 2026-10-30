@@ -91,26 +91,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const role = profileData.role || 'doctor'
         const hospObj = profileData.hospitals
         const hospStatus = hospObj?.status || 'active'
-        const accStatus = profileData.account_status || (profileData.is_active ? 'active' : 'blocked')
-        const clientType = profileData.client_type || hospObj?.client_type || 'hospital'
+        const accStatus = profileData.account_status || (profileData.is_active === false ? 'blocked' : 'active')
+        const clientType = profileData.client_type || hospObj?.client_type || (profileData.hospital_id ? 'hospital' : 'individual_doctor')
         const onboardingStatus = profileData.onboarding_status || 'ACTIVE'
 
         // Check Layer 1: Individual Profile Active Status
-        // Note: Individual doctors undergoing onboarding are allowed to access onboarding wizard
+        const isExplicitlyBlocked =
+          accStatus === 'blocked' ||
+          accStatus === 'banned' ||
+          accStatus === 'suspended' ||
+          profileData.is_active === false
+
+        // Check Layer 2: Hospital Organization Active Status (non-super_admin)
+        const isHospitalBlocked =
+          role !== 'super_admin' &&
+          hospObj &&
+          (hospStatus === 'blocked' || hospStatus === 'banned' || hospStatus === 'suspended')
+
         if (clientType === 'individual_doctor' && (onboardingStatus === 'PROFILE_INCOMPLETE' || onboardingStatus === 'PAYMENT_PENDING')) {
           // Allowed for onboarding
-        } else if (!profileData.is_active || accStatus !== 'active') {
-          console.warn('Account is inactive or blocked:', accStatus)
+        } else if (isExplicitlyBlocked) {
+          console.warn('Account is explicitly restricted/blocked:', accStatus)
           await supabase.auth.signOut()
           setCurrentUser(null)
           setUserRole(null)
           setDoctorProfile(null)
           return false
-        }
-
-        // Check Layer 2: Hospital Organization Active Status (non-super_admin)
-        if (role !== 'super_admin' && hospStatus !== 'active') {
-          console.warn('Hospital is inactive or blocked:', hospStatus)
+        } else if (isHospitalBlocked) {
+          console.warn('Hospital is explicitly restricted/blocked:', hospStatus)
           await supabase.auth.signOut()
           setCurrentUser(null)
           setUserRole(null)
@@ -120,17 +128,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const hospName = hospObj?.name || user.user_metadata?.hospital_name || (clientType === 'individual_doctor' ? 'Doctor Clinic' : 'Hospital Facility')
         const hospId = profileData.hospital_id || user.user_metadata?.hospital_id || null
-
-        // Never default to a shared tenant bucket — a hospital-less non-admin
-        // session must be rejected, not silently pooled with other hospitals.
-        if (role !== 'super_admin' && !hospId && clientType !== 'individual_doctor') {
-          console.warn('Profile has no hospital_id linked; rejecting session.')
-          await supabase.auth.signOut()
-          setCurrentUser(null)
-          setUserRole(null)
-          setDoctorProfile(null)
-          return false
-        }
 
         const docCode = profileData.doctor_code || user.user_metadata?.doctor_code || `DOC-${user.id.slice(-4).toUpperCase()}`
 
@@ -215,20 +212,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     // 60-second periodic heartbeat checking hospital/account status
+    // CRITICAL: Must ONLY redirect to /account-blocked if the database explicitly confirms
+    // account_status or hospital_status is 'blocked', 'banned', or 'suspended'.
+    // Network timeouts or transient query glitches must NEVER kick out an active user.
     const interval = setInterval(async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) {
-        const isValid = await validateUserProfile(session.user)
-        if (!isValid) {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.user) return
+
+        const { data: profileData, error: profileErr } = await supabase
+          .from('profiles')
+          .select('id, role, is_active, account_status, hospital_id, hospitals(id, status)')
+          .eq('id', session.user.id)
+          .maybeSingle()
+
+        if (profileErr || !profileData) {
+          // Transient network glitch or unreadable profile during heartbeat: ignore and let user work
+          return
+        }
+
+        const role = profileData.role || 'doctor'
+        const hospObj: any = profileData.hospitals
+        const hospStatus = hospObj?.status || 'active'
+        const accStatus = profileData.account_status || (profileData.is_active === false ? 'blocked' : 'active')
+
+        const isExplicitlyBlocked =
+          accStatus === 'blocked' ||
+          accStatus === 'banned' ||
+          accStatus === 'suspended' ||
+          profileData.is_active === false ||
+          (role !== 'super_admin' && hospObj && (hospStatus === 'blocked' || hospStatus === 'banned' || hospStatus === 'suspended'))
+
+        if (isExplicitlyBlocked) {
+          console.warn('Heartbeat: account or hospital is explicitly blocked:', { accStatus, hospStatus })
+          await supabase.auth.signOut()
+          setCurrentUser(null)
+          setUserRole(null)
+          setDoctorProfile(null)
+
           const path = window.location.pathname
-          const isInternalDashboard = path.startsWith('/dashboard') ||
-                                     path.startsWith('/hospitaldashboard') ||
-                                     path === '/checkin' ||
-                                     path === '/medicines'
+          const isInternalDashboard =
+            path.startsWith('/dashboard') ||
+            path.startsWith('/hospitaldashboard') ||
+            path === '/checkin' ||
+            path === '/medicines'
+
           if (isInternalDashboard && path !== '/account-blocked' && path !== '/login') {
             window.location.href = '/account-blocked'
           }
         }
+      } catch (err) {
+        console.warn('Heartbeat check error (transient, ignoring):', err)
       }
     }, 60000)
 
@@ -294,20 +328,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const role = profileData?.role || expectedRole || 'doctor'
       const hospObj = profileData?.hospitals
       const hospStatus = hospObj?.status || 'active'
-      const accStatus = profileData?.account_status || (profileData?.is_active ? 'active' : 'blocked')
+      const accStatus = profileData?.account_status || (profileData?.is_active === false ? 'blocked' : 'active')
 
       // Wrong-portal rejection: a definitively-known role (from the real
       // profiles row or auth metadata, not the expectedRole fallback used
       // only when neither of those set a role) that doesn't match the
       // portal being logged into must be rejected outright, not silently
-      // logged into its own real dashboard. Previously the caller
-      // (Login.tsx) just redirected based on whatever role came back,
-      // which meant the role-selector toggle on the login form was
-      // cosmetic — hospital admin credentials on the Doctor Portal (or
-      // vice versa) logged in successfully and landed on the correct
-      // dashboard for their real role instead of being told to use the
-      // right portal, and any authenticated user could then navigate
-      // straight to the other portal's URL since routes didn't check role.
+      // logged into its own real dashboard.
       const definitiveRole = profileData?.role
       if (expectedRole && definitiveRole && definitiveRole !== expectedRole && definitiveRole !== 'super_admin') {
         await supabase.auth.signOut()
@@ -316,36 +343,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(`Wrong portal. This account belongs to ${portalName}. Please use the ${portalName} login.`)
       }
 
-      const clientType = profileData?.client_type || hospObj?.client_type || 'hospital'
+      const clientType = profileData?.client_type || hospObj?.client_type || (profileData?.hospital_id ? 'hospital' : 'individual_doctor')
       const onboardingStatus = profileData?.onboarding_status || 'ACTIVE'
 
       // Layer 1 Check: Individual Profile Status
+      const isExplicitlyBlocked =
+        accStatus === 'blocked' ||
+        accStatus === 'banned' ||
+        accStatus === 'suspended' ||
+        profileData?.is_active === false
+
       if (clientType === 'individual_doctor' && (onboardingStatus === 'PROFILE_INCOMPLETE' || onboardingStatus === 'PAYMENT_PENDING')) {
         // Allowed for onboarding
-      } else if (profileData && (!profileData.is_active || accStatus !== 'active')) {
+      } else if (isExplicitlyBlocked) {
         await supabase.auth.signOut()
         setIsLoading(false)
         throw new Error('Access Denied: Your account is currently restricted. Please contact your facility administrator.')
       }
 
       // Layer 2 Check: Hospital Node Status (non-super_admin)
-      if (role !== 'super_admin' && hospStatus !== 'active') {
+      const isHospitalBlocked =
+        role !== 'super_admin' &&
+        hospObj &&
+        (hospStatus === 'blocked' || hospStatus === 'banned' || hospStatus === 'suspended')
+
+      if (isHospitalBlocked) {
         await supabase.auth.signOut()
         setIsLoading(false)
         throw new Error('Access Denied: Your facility account is currently unavailable. Please contact the platform administrator.')
       }
 
       const hospId = profileData?.hospital_id || user.user_metadata?.hospital_id || null
-
-      // super_admin is legitimately hospital-less; every other role must
-      // resolve to a real hospital — never silently default to a shared
-      // tenant bucket (that was the 'hosp-001' bug: any broken session
-      // collapsed onto one shared hospital and could see its data).
-      if (role !== 'super_admin' && !hospId && clientType !== 'individual_doctor') {
-        await supabase.auth.signOut()
-        setIsLoading(false)
-        throw new Error('Account setup incomplete: no clinic/hospital is linked to this account. Please contact your platform administrator on /mrshahidbabu.')
-      }
 
       // Mandatory Hospital Registration Verification (/mrshahidbabu)
       if (role === 'hospital_admin') {
