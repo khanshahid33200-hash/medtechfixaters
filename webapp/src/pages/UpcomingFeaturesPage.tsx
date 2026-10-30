@@ -20,6 +20,11 @@ import PublicHeader from '../components/PublicHeader'
 import PublicFooter from '../components/PublicFooter'
 import ContactModal from '../components/ContactModal'
 import { useSEO } from '../hooks/useSEO'
+import AmbientBackground from '../components/motion/AmbientBackground'
+import { AnimatedSection } from '../components/motion'
+import AudienceTabs from '../components/home/AudienceTabs'
+import TrustSection from '../components/home/TrustSection'
+import FinalCta from '../components/home/FinalCta'
 
 interface UpcomingFeature {
   id: string
@@ -178,7 +183,8 @@ export default function UpcomingFeaturesPage() {
       : UPCOMING_FEATURES.filter(f => f.category === activeCategory)
 
   return (
-    <div className="min-h-screen bg-[#F7F8FC] text-slate-900 font-sans antialiased selection:bg-[#0080E6] selection:text-white">
+    <div className="relative min-h-[100dvh] text-[#171717] selection:bg-orange-200 font-sans antialiased overflow-x-hidden">
+      <AmbientBackground />
       <PublicHeader />
 
       {/* ─── HERO SECTION WITH AMBIENT GLOWS ─── */}
@@ -450,6 +456,19 @@ export default function UpcomingFeaturesPage() {
           </button>
         </div>
       </section>
+
+      {/* Target Audience & Facility Solutions */}
+      <AnimatedSection>
+        <AudienceTabs />
+      </AnimatedSection>
+
+      {/* Verified Healthcare Credibility */}
+      <AnimatedSection>
+        <TrustSection />
+      </AnimatedSection>
+
+      {/* Master Platform Call to Action */}
+      <FinalCta />
 
       <PublicFooter />
       <ContactModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />

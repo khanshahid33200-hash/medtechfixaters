@@ -33,6 +33,10 @@ import { usePricingPlans } from '../hooks/usePricingPlans';
 import { trackPricingEvent } from '../utils/analytics';
 import { subscriptionService } from '../services/subscriptionService';
 import { PRIMARY_BUTTON } from '../lib/motion';
+import AudienceTabs from '../components/home/AudienceTabs';
+import TrustSection from '../components/home/TrustSection';
+import FinalCta from '../components/home/FinalCta';
+import { AnimatedSection } from '../components/motion';
 
 export default function PricingPage() {
   const { plans: dynamicPlans } = usePricingPlans();
@@ -461,6 +465,19 @@ export default function PricingPage() {
           })}
         </div>
       </section>
+
+      {/* Target Audience & Facility Match */}
+      <AnimatedSection>
+        <AudienceTabs />
+      </AnimatedSection>
+
+      {/* Trust & Clinical Leadership */}
+      <AnimatedSection>
+        <TrustSection />
+      </AnimatedSection>
+
+      {/* Final Call to Action */}
+      <FinalCta />
 
       {/* Hospital Consultation Modal */}
       {hospitalModalOpen && (

@@ -132,9 +132,10 @@ export function usePricingPlans() {
     };
     window.addEventListener('storage', handleStorage);
 
-    // 4. Supabase Realtime channel on pricing_cards table
+    // 4. Supabase Realtime channel on pricing_cards table (unique channel name per hook instance to prevent callback collision)
+    const channelName = `public_pricing_cards_${Math.random().toString(36).slice(2, 9)}`;
     const channel = supabase
-      .channel('public_pricing_cards_live')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pricing_cards' },

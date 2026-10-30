@@ -11,6 +11,8 @@ import PublicFooter from '../components/PublicFooter'
 import AmbientBackground from '../components/motion/AmbientBackground'
 import { AnimatedSection, MotionCard, Reveal, StaggerContainer } from '../components/motion'
 import FinalCta from '../components/home/FinalCta'
+import AudienceTabs from '../components/home/AudienceTabs'
+import TrustSection from '../components/home/TrustSection'
 import { useSEO } from '../hooks/useSEO'
 import { EASE_OUT, PRIMARY_BUTTON, SPRING_UI } from '../lib/motion'
 
@@ -382,6 +384,12 @@ export default function HowItWorksPage() {
             </Link>
           </motion.div>
         </div>
+        <AnimatedSection>
+          <AudienceTabs />
+        </AnimatedSection>
+        <AnimatedSection>
+          <TrustSection />
+        </AnimatedSection>
         <FinalCta />
       </main>
 

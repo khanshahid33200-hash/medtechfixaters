@@ -18,6 +18,10 @@ import {
 } from "lucide-react";
 import PublicHeader from "../PublicHeader";
 import PublicFooter from "../PublicFooter";
+import AmbientBackground from "../motion/AmbientBackground";
+import { AnimatedSection } from "../motion";
+import TrustSection from "../home/TrustSection";
+import FinalCta from "../home/FinalCta";
 
 export interface LegalSection {
   id: string;
@@ -119,9 +123,9 @@ export default function LegalPageLayout({
   };
 
   return (
-    <div className="min-h-screen bg-[#F8FAFC] text-slate-900 font-sans flex flex-col justify-between selection:bg-blue-600 selection:text-white">
-      {/* Screen Navigation */}
+    <div className="relative min-h-[100dvh] text-[#171717] selection:bg-orange-200 font-sans antialiased overflow-x-hidden flex flex-col justify-between">
       <div className="print:hidden">
+        <AmbientBackground />
         <PublicHeader />
       </div>
 
@@ -484,6 +488,14 @@ export default function LegalPageLayout({
           <ArrowUp size={18} />
         </button>
       )}
+
+      {/* Trust & Healthcare Credibility */}
+      <div className="print:hidden">
+        <AnimatedSection>
+          <TrustSection />
+        </AnimatedSection>
+        <FinalCta />
+      </div>
 
       {/* Footer */}
       <PublicFooter />

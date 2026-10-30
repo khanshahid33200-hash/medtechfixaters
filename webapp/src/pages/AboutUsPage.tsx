@@ -24,6 +24,12 @@ import About3DStoryScene from '../components/about3d/About3DStoryScene'
 import About3DMissionSphere from '../components/about3d/About3DMissionSphere'
 import About3DAICore from '../components/about3d/About3DAICore'
 import { useSEO } from '../hooks/useSEO'
+import AmbientBackground from '../components/motion/AmbientBackground'
+import { AnimatedSection } from '../components/motion'
+import AudienceTabs from '../components/home/AudienceTabs'
+import SetupSteps from '../components/home/SetupSteps'
+import TrustSection from '../components/home/TrustSection'
+import FinalCta from '../components/home/FinalCta'
 
 export default function AboutUsPage() {
   useSEO({
@@ -59,7 +65,8 @@ export default function AboutUsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#F7F8FC] text-slate-900 font-sans antialiased selection:bg-[#0080E6] selection:text-white">
+    <div className="relative min-h-[100dvh] text-[#171717] selection:bg-orange-200 font-sans antialiased overflow-x-hidden">
+      <AmbientBackground />
       <PublicHeader />
 
       {/* ─── 1. HERO SECTION WITH 3D INTERACTIVE THREE.JS LAYER ─── */}
@@ -803,6 +810,24 @@ export default function AboutUsPage() {
           </div>
         </motion.div>
       </section>
+
+      {/* Target Audience & Facility Solutions */}
+      <AnimatedSection>
+        <AudienceTabs />
+      </AnimatedSection>
+
+      {/* Simple 3-Step Setup */}
+      <AnimatedSection>
+        <SetupSteps />
+      </AnimatedSection>
+
+      {/* Verified Healthcare Credibility & Trust */}
+      <AnimatedSection>
+        <TrustSection />
+      </AnimatedSection>
+
+      {/* Master Platform Call to Action */}
+      <FinalCta />
 
       <PublicFooter />
       <ContactModal isOpen={contactModalOpen} onClose={() => setContactModalOpen(false)} />
