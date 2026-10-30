@@ -196,10 +196,13 @@ export default function Step6Payment() {
 
       // If user selected Full-Page Redirect (Default & Recommended)
       if (targetMode === '_self') {
-        await cashfree.checkout({
+        const checkoutResult = await cashfree.checkout({
           paymentSessionId: order.payment_session_id,
           redirectTarget: '_self',
         });
+        if (checkoutResult?.error) {
+          throw new Error(checkoutResult.error.message || 'Cashfree gateway reported a launch error.');
+        }
         return;
       }
 

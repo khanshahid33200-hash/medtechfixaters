@@ -81,10 +81,13 @@ export default function IntroductoryCheckoutPage() {
           const cashfree = window.Cashfree({ mode: cashfreeMode });
 
           if (targetMode === '_self') {
-            await cashfree.checkout({
+            const checkoutResult = await cashfree.checkout({
               paymentSessionId: order.paymentSessionId,
               redirectTarget: '_self',
             });
+            if (checkoutResult?.error) {
+              throw new Error(checkoutResult.error.message || 'Cashfree gateway reported a launch error.');
+            }
             return;
           }
 
