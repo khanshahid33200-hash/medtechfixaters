@@ -75,8 +75,10 @@ export default function DoctorsManager() {
   // Filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [clientTypeFilter, setClientTypeFilter] = useState('all');
   const [onboardingFilter, setOnboardingFilter] = useState('all');
   const [exemptOnly, setExemptOnly] = useState(false);
+  const [isRealtimeActive, setIsRealtimeActive] = useState(true);
 
   // Modals
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorProfileItem | null>(null);
@@ -117,6 +119,7 @@ export default function DoctorsManager() {
         page: String(page),
         limit: String(limit),
         status: statusFilter,
+        client_type: clientTypeFilter,
         onboarding_status: onboardingFilter,
         exempt_only: String(exemptOnly),
         search,
@@ -147,11 +150,63 @@ export default function DoctorsManager() {
     } finally {
       setLoading(false);
     }
-  }, [page, limit, statusFilter, onboardingFilter, exemptOnly, search]);
+  }, [page, limit, statusFilter, clientTypeFilter, onboardingFilter, exemptOnly, search]);
 
   useEffect(() => {
     fetchDoctors();
+
+    // Live Real-Time Supabase Subscription
+    const channel = supabase
+      .channel('admin_doctors_realtime_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        fetchDoctors();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'doctor_details' }, () => {
+        fetchDoctors();
+      })
+      .subscribe(status => {
+        setIsRealtimeActive(status === 'SUBSCRIBED');
+      });
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, [fetchDoctors]);
+
+  // Action: Soft Delete User (status = deleted) & Revoke Auth
+  const handleDeleteDoctor = async (doc: DoctorProfileItem) => {
+    if (!window.confirm(`Are you sure you want to delete ${doc.full_name || 'this doctor'}? Their status will transition to 'deleted' and their Supabase Auth access will be permanently revoked.`)) {
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const token = await getAuthToken();
+      const res = await fetch('/api/admin/doctors', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          action: 'delete_user',
+          user_id: doc.id,
+          reason: 'Deleted by Super Admin via /mrshahidbabu dashboard',
+        }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        setNotice(`User ${doc.full_name} status permanently set to DELETED.`);
+        fetchDoctors();
+      } else {
+        throw new Error(data.error || 'Failed to delete user');
+      }
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setActionLoading(false);
+    }
+  };
 
   // Action: Update Account Status
   const handleUpdateStatus = async () => {
@@ -326,12 +381,18 @@ export default function DoctorsManager() {
       {/* Header & Controls */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
-            <Stethoscope size={22} className="text-indigo-600" />
-            <span>Doctor Management & Fee Exemptions</span>
-          </h2>
-          <p className="text-xs text-slate-500 font-medium">
-            Search doctor directories, manage account statuses, issue password resets, and grant platform fee exemptions.
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-xl font-black text-slate-900 tracking-tight flex items-center gap-2.5">
+              <Stethoscope size={22} className="text-indigo-600" />
+              <span>Doctor Management & Fee Exemptions</span>
+            </h2>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-full text-[11px] font-bold">
+              <span className={`w-2 h-2 rounded-full ${isRealtimeActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`}></span>
+              <span>{isRealtimeActive ? 'Live Realtime Sync' : 'Sync Standby'}</span>
+            </div>
+          </div>
+          <p className="text-xs text-slate-500 font-medium mt-0.5">
+            Search doctor directories, manage account statuses (Active, Blocked, Deleted), issue password resets, and grant platform fee exemptions.
           </p>
         </div>
 
@@ -357,7 +418,7 @@ export default function DoctorsManager() {
 
       {/* Filter Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3">
           {/* Search Box */}
           <div className="lg:col-span-2 relative">
             <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
@@ -370,6 +431,19 @@ export default function DoctorsManager() {
             />
           </div>
 
+          {/* Practice Type Filter (Hospital vs Solo Clinic) */}
+          <div>
+            <select
+              value={clientTypeFilter}
+              onChange={e => { setClientTypeFilter(e.target.value); setPage(1); }}
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 transition"
+            >
+              <option value="all">All Practice Types</option>
+              <option value="hospital">Hospital Specialists</option>
+              <option value="individual_doctor">Clinic & Solo Doctors</option>
+            </select>
+          </div>
+
           {/* Account Status Filter */}
           <div>
             <select
@@ -378,10 +452,9 @@ export default function DoctorsManager() {
               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 focus:outline-none focus:border-indigo-500 transition"
             >
               <option value="all">All Account Statuses</option>
-              <option value="active">Active</option>
-              <option value="suspended">Suspended</option>
-              <option value="banned">Banned</option>
-              <option value="deleted">Soft Deleted</option>
+              <option value="active">🟢 Active</option>
+              <option value="blocked">🔴 Blocked / Suspended</option>
+              <option value="deleted">⚪ Deleted from Auth</option>
             </select>
           </div>
 
@@ -491,17 +564,22 @@ export default function DoctorsManager() {
                     </td>
 
                     <td className="py-3.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
-                        doc.account_status === 'active'
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : doc.account_status === 'banned'
-                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                          : doc.account_status === 'deleted'
-                          ? 'bg-slate-100 text-slate-500 border border-slate-300'
-                          : 'bg-amber-50 text-amber-700 border border-amber-200'
-                      }`}>
-                        {doc.account_status || 'active'}
-                      </span>
+                      {doc.account_status === 'deleted' ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-300">
+                          <span className="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+                          <span>Deleted</span>
+                        </span>
+                      ) : (doc.account_status === 'blocked' || doc.account_status === 'banned' || doc.account_status === 'suspended' || !doc.is_active) ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-rose-50 text-rose-700 border border-rose-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500"></span>
+                          <span>{doc.account_status === 'banned' ? 'Banned' : doc.account_status === 'suspended' ? 'Suspended' : 'Blocked'}</span>
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>Active</span>
+                        </span>
+                      )}
                     </td>
 
                     <td className="py-3.5 px-4 text-slate-500 text-[11px]">
@@ -541,6 +619,18 @@ export default function DoctorsManager() {
                             className="p-1.5 bg-purple-50 hover:bg-purple-100 text-purple-700 rounded-lg transition cursor-pointer"
                           >
                             <Gift size={13} />
+                          </button>
+                        )}
+
+                        {/* Permanently Soft-Delete User */}
+                        {doc.account_status !== 'deleted' && (
+                          <button
+                            onClick={() => handleDeleteDoctor(doc)}
+                            disabled={actionLoading}
+                            title="Soft-Delete User (Sets status = deleted and disables Supabase Auth access)"
+                            className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition cursor-pointer"
+                          >
+                            <Trash2 size={13} />
                           </button>
                         )}
                       </div>

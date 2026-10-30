@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { Link } from 'react-router-dom'
 import {
   motion,
@@ -13,7 +13,8 @@ import {
   TrendingUp, BarChart3, AlertCircle, Trash2, Edit3, Key,
   Radio, X, UserCheck, Stethoscope, Layers, Sliders, Phone,
   Server, Globe, QrCode, Download, Printer, Copy, ExternalLink,
-  Eye, EyeOff, LockKeyhole, Mail, ArrowRight, ArrowLeft
+  Eye, EyeOff, LockKeyhole, Mail, ArrowRight, ArrowLeft,
+  RefreshCw, ShieldAlert
 } from 'lucide-react'
 import { useAuth } from '../context/AuthContext'
 import { useSEO } from '../hooks/useSEO'
@@ -40,7 +41,8 @@ interface HospitalItem {
   joinedOn: string
   plan: 'Single OPD' | 'Hospital Pro' | 'Enterprise'
   revenue: number
-  status: 'active' | 'pending' | 'suspended'
+  status: string
+  client_type?: string
 }
 
 interface IndividualDoctorItem {
@@ -196,9 +198,16 @@ export default function OwnerAdmin() {
   const [qrCopied, setQrCopied] = useState(false)
   const [hospSecurityModal, setHospSecurityModal] = useState<{ hospital: HospitalItem; action: 'blocked' | 'banned' | 'suspended' | 'deleted' | 'unblock' } | null>(null)
   const [hospSecurityReason, setHospSecurityReason] = useState('Administrative Action / Compliance Review')
-  const [resettingHospital, setResettingHospital] = useState<HospitalItem | null>(null)
   const [activityCategoryFilter, setActivityCategoryFilter] = useState<string>('All')
+  const [resettingHospital, setResettingHospital] = useState<HospitalItem | null>(null)
   const [newPassword, setNewPassword] = useState('')
+
+  // Supabase Real-Time Live Sync & Separation States
+  const [liveSyncStatus, setLiveSyncStatus] = useState<'connected' | 'syncing' | 'error'>('connected')
+  const [lastSyncedAt, setLastSyncedAt] = useState<Date>(new Date())
+  const [manualSyncLoading, setManualSyncLoading] = useState(false)
+  const [hospitalStatusFilter, setHospitalStatusFilter] = useState<'all' | 'active' | 'blocked' | 'deleted'>('all')
+  const [soloStatusFilter, setSoloStatusFilter] = useState<'all' | 'active' | 'blocked' | 'deleted'>('all')
 
   // Feature Flags
   const [featuresState, setFeaturesState] = useState({
@@ -349,227 +358,306 @@ export default function OwnerAdmin() {
     return () => { cancelled = true }
   }, [])
 
+  const loadPlatformData = useCallback(async () => {
+    try {
+      setLiveSyncStatus('syncing')
+      // 1. Fetch ALL real hospitals and clinics (never exclude individual doctor clinics)
+      const { data: dbHosps } = await supabase
+        .from('hospitals')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      // 2. Fetch distinct QR codes
+      const { data: dbQrs } = await supabase
+        .from('qr_codes')
+        .select('*')
+
+      const qrMap = new Map((dbQrs || []).map(q => [q.hospital_id, q.token]))
+      const docQrMap = new Map((dbQrs || []).filter(q => q.doctor_id).map(q => [q.doctor_id, q.token]))
+
+      // 3. Fetch Individual Doctors & Clinics (Fix: doctor_details primary key is id, not user_id)
+      try {
+        const { data: indDocs } = await supabase
+          .from('doctor_details')
+          .select(`
+            id,
+            clinic_name,
+            specialization,
+            consultation_fee,
+            onboarding_status,
+            created_at,
+            profiles(id, full_name, email, doctor_code, is_active, account_status, client_type, hospital_id),
+            hospitals(id, name, city, phone, status, client_type)
+          `)
+          .order('created_at', { ascending: false })
+
+        if (indDocs) {
+          const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[]).map(d => {
+            const docId = d.id || d.profiles?.id || ''
+            const hospId = d.hospitals?.id || d.profiles?.hospital_id
+            const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
+            return {
+              doctor_id: docId,
+              doctor_code: d.profiles?.doctor_code || `DOC-${docId.slice(-4).toUpperCase()}`,
+              doctor_name: d.profiles?.full_name || 'Doctor',
+              clinic_name: d.clinic_name || d.hospitals?.name || 'Clinic',
+              clinic_id: hospId || '',
+              email: d.profiles?.email || '',
+              phone: d.hospitals?.phone || '',
+              specialization: d.specialization || 'General Physician',
+              consultation_fee: Number(d.consultation_fee) || 500,
+              plan_tier: d.onboarding_status === 'ACTIVE' ? 'Pro' : 'Starter',
+              onboarding_status: d.onboarding_status || 'ACTIVE',
+              account_status: d.profiles?.account_status || (d.profiles?.is_active ? 'active' : 'inactive'),
+              is_active: Boolean(d.profiles?.is_active),
+              qr_token: token,
+              booking_url: `/book/${token}`,
+              joined_on: d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+            }
+          })
+          setIndividualDoctorsList(mappedIndDocs)
+        }
+      } catch (indErr) {
+        console.warn('Individual doctors fetch notice:', indErr)
+      }
+
+      if (dbHosps) {
+        const mapped: HospitalItem[] = dbHosps.map(h => {
+          let uniqueToken = qrMap.get(h.id)
+          if (!uniqueToken) {
+            uniqueToken = `QR-${h.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`
+            // Auto-provision distinct QR code in Supabase qr_codes table
+            supabase.from('qr_codes').upsert([{
+              hospital_id: h.id,
+              token: uniqueToken,
+              booking_url: `/book/${uniqueToken}`,
+              intake_url: `/book/${uniqueToken}`,
+              status: 'active',
+              is_active: true
+            }]).then(() => {})
+          }
+          return {
+            id: h.id,
+            name: h.name,
+            location: h.city || 'India',
+            license: h.license || `LIC-${h.id.slice(0, 4).toUpperCase()}`,
+            phone: h.phone || '',
+            email: h.email,
+            intake_token: uniqueToken,
+            qr_token: uniqueToken,
+            address: h.address || 'Central OPD Block',
+            doctor_limit: h.doctor_limit || 10,
+            doctor_count: 0,
+            joinedOn: new Date(h.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
+            plan: (h.plan as any) || (h.client_type === 'individual_doctor' ? 'Single OPD' : 'Hospital Pro'),
+            revenue: 0,
+            status: h.status || 'active',
+            client_type: h.client_type || (h.plan === 'Single OPD' ? 'individual_doctor' : 'hospital'),
+          }
+        })
+        setHospitalsList(mapped)
+        localStorage.setItem('clinicos_hospitals', JSON.stringify(mapped))
+      }
+
+      // 4. Fetch ALL doctors (hospital specialists, private clinics, and Google account registrations)
+      try {
+        const { data: allProfiles } = await supabase
+          .from('profiles')
+          .select('id, full_name, email, doctor_code, hospital_id, is_active, account_status, role, client_type, created_at')
+          .order('created_at', { ascending: false })
+
+        const { data: docDetails } = await supabase
+          .from('doctor_details')
+          .select('id, specialization, clinic_name, consultation_fee, onboarding_status, created_at')
+
+        const { data: allHosps } = await supabase
+          .from('hospitals')
+          .select('id, name, phone, client_type, city')
+
+        const todayStr = new Date().toISOString().split('T')[0]
+        const { data: todayAppts } = await supabase
+          .from('appointments')
+          .select('doctor_id')
+          .gte('created_at', `${todayStr}T00:00:00`)
+
+        const docDetailMap = new Map((docDetails || []).map(d => [d.id, d]))
+        const hospMap = new Map((allHosps || []).map(h => [h.id, h]))
+        const apptCountMap = new Map<string, number>()
+        todayAppts?.forEach(a => {
+          if (a.doctor_id) {
+            apptCountMap.set(a.doctor_id, (apptCountMap.get(a.doctor_id) || 0) + 1)
+          }
+        })
+
+        const doctorMap = new Map<string, any>()
+
+        // A) Profiles marked as doctor or individual doctor
+        ;(allProfiles || []).forEach(p => {
+          const detail = docDetailMap.get(p.id)
+          const isDoc = p.role === 'doctor' || p.client_type === 'individual_doctor' || Boolean(detail) || (p.doctor_code && p.doctor_code.startsWith('DOC'))
+          if (isDoc) {
+            doctorMap.set(p.id, p)
+          }
+        })
+
+        // B) Records in doctor_details (including Google signups before profile role update)
+        ;(docDetails || []).forEach(d => {
+          if (d.id && !doctorMap.has(d.id)) {
+            const prof = (allProfiles || []).find(p => p.id === d.id)
+            doctorMap.set(d.id, prof || {
+              id: d.id,
+              full_name: 'Dr. (Google Registered)',
+              email: '',
+              doctor_code: `DOC-${d.id.slice(0, 4).toUpperCase()}`,
+              role: 'doctor',
+              is_active: true,
+              account_status: 'active',
+              created_at: d.created_at,
+            })
+          }
+        })
+
+        // C) Any other user who signed up as doctor or with Google for clinic
+        ;(allProfiles || []).forEach(p => {
+          if (!doctorMap.has(p.id) && p.role !== 'super_admin' && p.role !== 'hospital_admin' && p.role !== 'staff') {
+            if (p.email?.toLowerCase().includes('doc') || p.full_name?.toLowerCase().includes('dr') || p.doctor_code) {
+              doctorMap.set(p.id, p)
+            }
+          }
+        })
+
+        const mappedDoctors: DoctorItem[] = Array.from(doctorMap.values()).map(p => {
+          const detail = docDetailMap.get(p.id)
+          const hosp = p.hospital_id ? hospMap.get(p.hospital_id) : null
+          const hospName = hosp?.name || detail?.clinic_name || (p.client_type === 'individual_doctor' ? 'Solo Clinic' : 'Clinical OPD')
+          const docPhone = hosp?.phone || ''
+          const isGoogle = Boolean(p.email && p.email.toLowerCase().endsWith('@gmail.com'))
+          const authProvider = isGoogle ? 'Google Auth' : (p.doctor_code ? 'Doctor ID / Password' : 'Email Auth')
+
+          return {
+            id: p.id,
+            name: p.full_name || 'Dr. Consultant',
+            doctor_code: p.doctor_code || `DOC-${p.id.slice(0, 4).toUpperCase()}`,
+            hospital: hospName,
+            hospital_id: p.hospital_id || undefined,
+            specialty: detail?.specialization || 'General Physician',
+            email: p.email || '',
+            phone: docPhone,
+            status: p.is_active !== false ? 'online' : 'off_duty',
+            account_status: p.account_status || (p.is_active !== false ? 'active' : 'suspended'),
+            is_active: p.is_active !== false,
+            auth_provider: authProvider,
+            todayConsults: apptCountMap.get(p.id) || 0,
+            onboarding_status: detail?.onboarding_status || 'ACTIVE',
+            joinedOn: p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
+          }
+        })
+
+        setDoctorsList(mappedDoctors)
+        setRealDoctorCount(mappedDoctors.filter(d => d.is_active).length)
+      } catch (docErr) {
+        console.warn('Doctors list load error:', docErr)
+      }
+
+      // 5. Count real appointments
+      const { count: apptCount } = await supabase
+        .from('appointments')
+        .select('id', { count: 'exact', head: true })
+      setRealApptCount(apptCount || 0)
+
+      // 6. Calculate real revenue from completed appointments
+      const { data: paidAppts } = await supabase
+        .from('appointments')
+        .select('id, fee')
+        .eq('status', 'completed')
+      const rev = (paidAppts || []).reduce((acc: number, curr: any) => acc + (Number(curr.fee) || 0), 0)
+      setRealRevenue(rev)
+
+      setLastSyncedAt(new Date())
+      setLiveSyncStatus('connected')
+    } catch (e) {
+      console.warn('Platform data load error:', e)
+      setLiveSyncStatus('error')
+    }
+  }, [])
+
+  // Live Supabase Real-Time Channel Subscription
   useEffect(() => {
     if (!isOwnerAuthenticated) return
 
-    async function loadPlatformData() {
-      try {
-        // 1. Fetch ALL real hospitals and clinics (never exclude individual doctor clinics)
-        const { data: dbHosps } = await supabase
-          .from('hospitals')
-          .select('*')
-          .order('created_at', { ascending: false })
-
-        // 2. Fetch distinct QR codes
-        const { data: dbQrs } = await supabase
-          .from('qr_codes')
-          .select('*')
-
-        const qrMap = new Map((dbQrs || []).map(q => [q.hospital_id, q.token]))
-        const docQrMap = new Map((dbQrs || []).filter(q => q.doctor_id).map(q => [q.doctor_id, q.token]))
-
-        // 3. Fetch Individual Doctors & Clinics
-        try {
-          const { data: indDocs } = await supabase
-            .from('doctor_details')
-            .select(`
-              user_id,
-              clinic_name,
-              specialization,
-              consultation_fee,
-              onboarding_status,
-              created_at,
-              profiles(id, full_name, email, doctor_code, is_active, account_status, client_type, hospital_id),
-              hospitals(id, name, city, phone, status, client_type)
-            `)
-            .order('created_at', { ascending: false })
-
-          if (indDocs) {
-            const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[]).map(d => {
-              const docId = d.user_id
-              const hospId = d.hospitals?.id || d.profiles?.hospital_id
-              const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
-              return {
-                doctor_id: docId,
-                doctor_code: d.profiles?.doctor_code || `DOC-${docId.slice(-4).toUpperCase()}`,
-                doctor_name: d.profiles?.full_name || 'Doctor',
-                clinic_name: d.clinic_name || d.hospitals?.name || 'Clinic',
-                clinic_id: hospId || '',
-                email: d.profiles?.email || '',
-                phone: d.hospitals?.phone || '',
-                specialization: d.specialization || 'General Physician',
-                consultation_fee: Number(d.consultation_fee) || 500,
-                plan_tier: d.onboarding_status === 'ACTIVE' ? 'Pro' : 'Starter',
-                onboarding_status: d.onboarding_status || 'ACTIVE',
-                account_status: d.profiles?.account_status || (d.profiles?.is_active ? 'active' : 'inactive'),
-                is_active: Boolean(d.profiles?.is_active),
-                qr_token: token,
-                booking_url: `/book/${token}`,
-                joined_on: d.created_at ? new Date(d.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
-              }
-            })
-            setIndividualDoctorsList(mappedIndDocs)
-          }
-        } catch (indErr) {
-          console.warn('Individual doctors fetch notice:', indErr)
-        }
-
-        if (dbHosps) {
-          const mapped: HospitalItem[] = dbHosps.map(h => {
-            let uniqueToken = qrMap.get(h.id)
-            if (!uniqueToken) {
-              uniqueToken = `QR-${h.id.replace(/-/g, '').slice(0, 8).toUpperCase()}`
-              // Auto-provision distinct QR code in Supabase qr_codes table
-              supabase.from('qr_codes').upsert([{
-                hospital_id: h.id,
-                token: uniqueToken,
-                booking_url: `/book/${uniqueToken}`,
-                intake_url: `/book/${uniqueToken}`,
-                status: 'active',
-                is_active: true
-              }]).then(() => {})
-            }
-            return {
-              id: h.id,
-              name: h.name,
-              location: h.city || 'India',
-              license: h.license || `LIC-${h.id.slice(0, 4).toUpperCase()}`,
-              phone: h.phone || '',
-              email: h.email,
-              intake_token: uniqueToken,
-              qr_token: uniqueToken,
-              address: h.address || 'Central OPD Block',
-              doctor_limit: h.doctor_limit || 10,
-              doctor_count: 0,
-              joinedOn: new Date(h.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }),
-              plan: (h.plan as any) || (h.client_type === 'individual_doctor' ? 'Single OPD' : 'Hospital Pro'),
-              revenue: 0,
-              status: h.status || 'active'
-            }
-          })
-          setHospitalsList(mapped)
-          localStorage.setItem('clinicos_hospitals', JSON.stringify(mapped))
-        }
-
-        // 4. Fetch ALL doctors (hospital specialists, private clinics, and Google account registrations)
-        try {
-          const { data: allProfiles } = await supabase
-            .from('profiles')
-            .select('id, full_name, email, doctor_code, hospital_id, is_active, account_status, role, client_type, created_at')
-            .order('created_at', { ascending: false })
-
-          const { data: docDetails } = await supabase
-            .from('doctor_details')
-            .select('user_id, specialization, clinic_name, consultation_fee, onboarding_status, created_at')
-
-          const { data: allHosps } = await supabase
-            .from('hospitals')
-            .select('id, name, phone, client_type, city')
-
-          const todayStr = new Date().toISOString().split('T')[0]
-          const { data: todayAppts } = await supabase
-            .from('appointments')
-            .select('doctor_id')
-            .gte('created_at', `${todayStr}T00:00:00`)
-
-          const docDetailMap = new Map((docDetails || []).map(d => [d.user_id, d]))
-          const hospMap = new Map((allHosps || []).map(h => [h.id, h]))
-          const apptCountMap = new Map<string, number>()
-          todayAppts?.forEach(a => {
-            if (a.doctor_id) {
-              apptCountMap.set(a.doctor_id, (apptCountMap.get(a.doctor_id) || 0) + 1)
-            }
-          })
-
-          const doctorMap = new Map<string, any>()
-
-          // A) Profiles marked as doctor or individual doctor
-          ;(allProfiles || []).forEach(p => {
-            const detail = docDetailMap.get(p.id)
-            const isDoc = p.role === 'doctor' || p.client_type === 'individual_doctor' || Boolean(detail) || (p.doctor_code && p.doctor_code.startsWith('DOC'))
-            if (isDoc) {
-              doctorMap.set(p.id, p)
-            }
-          })
-
-          // B) Records in doctor_details (including Google signups before profile role update)
-          ;(docDetails || []).forEach(d => {
-            if (d.user_id && !doctorMap.has(d.user_id)) {
-              const prof = (allProfiles || []).find(p => p.id === d.user_id)
-              doctorMap.set(d.user_id, prof || {
-                id: d.user_id,
-                full_name: 'Dr. (Google Registered)',
-                email: '',
-                doctor_code: `DOC-${d.user_id.slice(0, 4).toUpperCase()}`,
-                role: 'doctor',
-                is_active: true,
-                account_status: 'active',
-                created_at: d.created_at,
-              })
-            }
-          })
-
-          // C) Any other user who signed up as doctor or with Google for clinic
-          ;(allProfiles || []).forEach(p => {
-            if (!doctorMap.has(p.id) && p.role !== 'super_admin' && p.role !== 'hospital_admin' && p.role !== 'staff') {
-              if (p.email?.toLowerCase().includes('doc') || p.full_name?.toLowerCase().includes('dr') || p.doctor_code) {
-                doctorMap.set(p.id, p)
-              }
-            }
-          })
-
-          const mappedDoctors: DoctorItem[] = Array.from(doctorMap.values()).map(p => {
-            const detail = docDetailMap.get(p.id)
-            const hosp = p.hospital_id ? hospMap.get(p.hospital_id) : null
-            const hospName = hosp?.name || detail?.clinic_name || (p.client_type === 'individual_doctor' ? 'Solo Clinic' : 'Clinical OPD')
-            const docPhone = hosp?.phone || ''
-            const isGoogle = Boolean(p.email && p.email.toLowerCase().endsWith('@gmail.com'))
-            const authProvider = isGoogle ? 'Google Auth' : (p.doctor_code ? 'Doctor ID / Password' : 'Email Auth')
-
-            return {
-              id: p.id,
-              name: p.full_name || 'Dr. Consultant',
-              doctor_code: p.doctor_code || `DOC-${p.id.slice(0, 4).toUpperCase()}`,
-              hospital: hospName,
-              hospital_id: p.hospital_id || undefined,
-              specialty: detail?.specialization || 'General Physician',
-              email: p.email || '',
-              phone: docPhone,
-              status: p.is_active !== false ? 'online' : 'off_duty',
-              account_status: p.account_status || (p.is_active !== false ? 'active' : 'suspended'),
-              is_active: p.is_active !== false,
-              auth_provider: authProvider,
-              todayConsults: apptCountMap.get(p.id) || 0,
-              onboarding_status: detail?.onboarding_status || 'ACTIVE',
-              joinedOn: p.created_at ? new Date(p.created_at).toLocaleDateString('en-IN', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Recently',
-            }
-          })
-
-          setDoctorsList(mappedDoctors)
-          setRealDoctorCount(mappedDoctors.filter(d => d.is_active).length)
-        } catch (docErr) {
-          console.warn('Doctors list load error:', docErr)
-        }
-
-        // 5. Count real appointments
-        const { count: apptCount } = await supabase
-          .from('appointments')
-          .select('id', { count: 'exact', head: true })
-        setRealApptCount(apptCount || 0)
-
-        // 6. Calculate real revenue from completed appointments
-        const { data: paidAppts } = await supabase
-          .from('appointments')
-          .select('id, fee')
-          .eq('status', 'completed')
-        const rev = (paidAppts || []).reduce((acc: number, curr: any) => acc + (Number(curr.fee) || 0), 0)
-        setRealRevenue(rev)
-      } catch (e) {
-        console.warn('Platform data load error:', e)
-      }
-    }
     loadPlatformData()
-  }, [isOwnerAuthenticated])
+
+    // Subscribe to all changes in public tables for real-time live synchronization
+    const channel = supabase
+      .channel('owner_admin_live_channel')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hospitals' }, () => {
+        loadPlatformData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        loadPlatformData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'doctor_details' }, () => {
+        loadPlatformData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'hospital_inquiries' }, () => {
+        loadPlatformData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
+        loadPlatformData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'admin_audit_logs' }, () => {
+        loadPlatformData()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'appointments' }, () => {
+        loadPlatformData()
+      })
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          setLiveSyncStatus('connected')
+        } else if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+          setLiveSyncStatus('error')
+        }
+      })
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [isOwnerAuthenticated, loadPlatformData])
+
+  // Manual Trigger to Sync Supabase Database and Reconcile Auth User Deletions
+  const handleManualSync = async () => {
+    setManualSyncLoading(true)
+    setLiveSyncStatus('syncing')
+    try {
+      // 1. Authoritative check: if any user was deleted from Supabase Auth user list, flag status = deleted
+      try {
+        await supabase.rpc('admin_sync_auth_users_status')
+      } catch (rpcErr) {
+        // Fallback to API sync action if direct RPC call requires higher privilege
+        try {
+          const { data: { session } } = await supabase.auth.getSession()
+          if (session?.access_token) {
+            await fetch('/api/admin/doctors', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${session.access_token}`
+              },
+              body: JSON.stringify({ action: 'sync_auth_users' })
+            })
+          }
+        } catch {}
+      }
+
+      await loadPlatformData()
+      setNotice('Supabase live database synchronized!')
+      setTimeout(() => setNotice(null), 3000)
+    } catch (err: any) {
+      setNotice(`Sync notice: ${err.message || 'Complete'}`)
+    } finally {
+      setManualSyncLoading(false)
+    }
+  }
 
   // Dynamic real calculations from live database
   const totalHospitals = hospitalsList.length
@@ -796,7 +884,7 @@ export default function OwnerAdmin() {
         const { data: indDocs } = await supabase
           .from('doctor_details')
           .select(`
-            user_id,
+            id,
             clinic_name,
             specialization,
             consultation_fee,
@@ -815,7 +903,7 @@ export default function OwnerAdmin() {
           const mappedIndDocs: IndividualDoctorItem[] = (indDocs as any[])
             .filter(d => d.profiles?.client_type === 'individual_doctor' || d.hospitals?.client_type === 'individual_doctor')
             .map(d => {
-              const docId = d.user_id
+              const docId = d.id || d.profiles?.id || ''
               const hospId = d.hospitals?.id || d.profiles?.hospital_id
               const token = docQrMap.get(docId) || qrMap.get(hospId) || `QR-DOC-${docId.slice(-6).toUpperCase()}`
               return {
@@ -1028,26 +1116,186 @@ export default function OwnerAdmin() {
     }
   }
 
-  // Filtered lists
-  const filteredHospitals = hospitalsList.filter(h =>
-    h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    h.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    h.email.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // ─── STRICT SEPARATION: REGISTERED HOSPITALS VS CLINIC + SOLO DOCTORS ───
+  const isRegisteredHospital = (h: HospitalItem) => {
+    if (h.client_type === 'hospital') return true
+    if (h.client_type === 'individual_doctor') return false
+    const nameLower = (h.name || '').toLowerCase()
+    if (nameLower.includes('clinic')) return false
+    if (h.plan === 'Single OPD') return false
+    return true
+  }
 
-  const filteredDoctors = doctorsList.filter(d =>
-    d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.hospital.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    d.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (d.doctor_code && d.doctor_code.toLowerCase().includes(searchQuery.toLowerCase())) ||
-    (d.auth_provider && d.auth_provider.toLowerCase().includes(searchQuery.toLowerCase()))
-  )
+  // True Multi-Doctor Registered Hospital Centers
+  const registeredHospitals = hospitalsList.filter(isRegisteredHospital)
 
+  // Independent Solo Clinics from Hospitals Table
+  const soloClinicsList = hospitalsList.filter(h => !isRegisteredHospital(h))
+
+  // Authoritative Status Resolver (Active 🟢, Blocked 🔴, Deleted ⚪)
+  const getRecordStatus = (item: { account_status?: string; is_active?: boolean; status?: string }) => {
+    const acc = (item.account_status || '').toLowerCase()
+    const st = (item.status || '').toLowerCase()
+    if (acc === 'deleted' || st === 'deleted') {
+      return {
+        key: 'deleted' as const,
+        label: 'Deleted',
+        badge: 'bg-slate-100 text-slate-600 border border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+        dot: 'bg-slate-400',
+      }
+    }
+    if (acc === 'blocked' || acc === 'banned' || acc === 'suspended' || st === 'blocked' || st === 'banned' || st === 'suspended' || item.is_active === false) {
+      return {
+        key: 'blocked' as const,
+        label: acc === 'banned' ? 'Banned' : acc === 'suspended' ? 'Suspended' : 'Blocked',
+        badge: 'bg-rose-50 text-rose-700 border border-rose-200 dark:bg-rose-950/40 dark:text-rose-400 dark:border-rose-800',
+        dot: 'bg-rose-500',
+      }
+    }
+    return {
+      key: 'active' as const,
+      label: 'Active',
+      badge: 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/40 dark:text-emerald-400 dark:border-emerald-800',
+      dot: 'bg-emerald-500 animate-pulse',
+    }
+  }
+
+  // Unified Clinic & Solo Doctors (Single-Practitioner Accounts)
+  const soloClinicsAndDoctors: IndividualDoctorItem[] = (() => {
+    const map = new Map<string, IndividualDoctorItem>()
+
+    // 1. Populate from doctor_details + profiles
+    individualDoctorsList.forEach(doc => {
+      map.set(doc.doctor_id || doc.clinic_id, doc)
+    })
+
+    // 2. Populate any single OPD clinics recorded in hospitals table
+    soloClinicsList.forEach(sc => {
+      const match = Array.from(map.values()).find(
+        d => d.clinic_id === sc.id || (d.email && sc.email && d.email.toLowerCase() === sc.email.toLowerCase())
+      )
+      if (!match) {
+        map.set(sc.id, {
+          doctor_id: sc.id,
+          doctor_code: `DOC-${sc.id.slice(0, 4).toUpperCase()}`,
+          doctor_name: sc.name.replace(/\s+Clinic$/i, ''),
+          clinic_name: sc.name,
+          clinic_id: sc.id,
+          email: sc.email,
+          phone: sc.phone,
+          specialization: 'Solo Practitioner',
+          consultation_fee: 500,
+          plan_tier: sc.plan === 'Enterprise' ? 'Enterprise' : 'Starter',
+          onboarding_status: 'ACTIVE',
+          account_status: sc.status || 'active',
+          is_active: sc.status !== 'suspended' && sc.status !== 'blocked' && sc.status !== 'deleted',
+          qr_token: sc.qr_token || sc.intake_token || `QR-${sc.id.slice(0, 8).toUpperCase()}`,
+          booking_url: `/book/${sc.qr_token || sc.intake_token}`,
+          joined_on: sc.joinedOn,
+        })
+      }
+    })
+
+    return Array.from(map.values())
+  })()
+
+  // Filtered Registered Hospitals (Search + Status Filter)
+  const filteredHospitals = registeredHospitals.filter(h => {
+    const matchesSearch =
+      h.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      h.location.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      h.email.toLowerCase().includes(searchQuery.toLowerCase())
+    if (!matchesSearch) return false
+    const statusKey = getRecordStatus(h).key
+    if (hospitalStatusFilter === 'all') return true
+    return statusKey === hospitalStatusFilter
+  })
+
+  // Filtered Clinic & Solo Doctors (Search + Status Filter)
+  const filteredSoloDoctors = soloClinicsAndDoctors.filter(d => {
+    const matchesSearch =
+      d.doctor_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.clinic_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.specialization.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.doctor_code && d.doctor_code.toLowerCase().includes(searchQuery.toLowerCase()))
+    if (!matchesSearch) return false
+    const statusKey = getRecordStatus(d).key
+    if (soloStatusFilter === 'all') return true
+    return statusKey === soloStatusFilter
+  })
+
+  // Filtered Doctor Profiles
+  const filteredDoctors = doctorsList.filter(d => {
+    const matchesSearch =
+      d.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.hospital.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      d.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (d.doctor_code && d.doctor_code.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (d.auth_provider && d.auth_provider.toLowerCase().includes(searchQuery.toLowerCase()))
+    return matchesSearch
+  })
+
+  // Filtered Activity Logs
   const filteredLogs = auditLogs.filter(l =>
     (activityCategoryFilter === 'All' || l.category === activityCategoryFilter) &&
     (l.action.toLowerCase().includes(searchQuery.toLowerCase()) || l.actor.toLowerCase().includes(searchQuery.toLowerCase()))
   )
+
+  // Soft Delete Solo Doctor / User Action
+  const handleSoftDeleteSoloDoctor = async (doc: IndividualDoctorItem) => {
+    if (!window.confirm(`Are you sure you want to delete ${doc.doctor_name} (${doc.clinic_name})? Their status will be permanently marked as 'deleted' and their Supabase Auth access will be revoked.`)) {
+      return
+    }
+    try {
+      // 1. Update profiles
+      await supabase
+        .from('profiles')
+        .update({ account_status: 'deleted', is_active: false })
+        .eq('id', doc.doctor_id)
+
+      // 2. Update clinic hospital if present
+      if (doc.clinic_id) {
+        await supabase
+          .from('hospitals')
+          .update({ status: 'deleted' })
+          .eq('id', doc.clinic_id)
+      }
+
+      // 3. Update doctor details if present
+      await supabase
+        .from('doctor_details')
+        .update({ is_active: false, availability_status: 'deleted', onboarding_status: 'DELETED' })
+        .eq('id', doc.doctor_id)
+
+      // 4. Call server API to delete from Supabase Auth user list
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        await fetch('/api/admin/doctors', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.access_token}`
+          },
+          body: JSON.stringify({ action: 'delete_user', user_id: doc.doctor_id })
+        })
+      }
+
+      setNotice(`✅ Dr. ${doc.doctor_name} status updated to DELETED.`)
+      setTimeout(() => setNotice(null), 3000)
+      loadPlatformData()
+    } catch (delErr: any) {
+      setNotice(`❌ Error deleting user: ${delErr.message}`)
+    }
+  }
+
+  // Authoritative Platform Counts
+  const totalRegisteredHospitals = registeredHospitals.length
+  const totalSoloClinics = soloClinicsAndDoctors.length
+  const totalActiveUsers = doctorsList.filter(d => getRecordStatus(d).key === 'active').length + registeredHospitals.filter(h => getRecordStatus(h).key === 'active').length
+  const totalBlockedUsers = doctorsList.filter(d => getRecordStatus(d).key === 'blocked').length + registeredHospitals.filter(h => getRecordStatus(h).key === 'blocked').length
+  const totalDeletedUsers = doctorsList.filter(d => getRecordStatus(d).key === 'deleted').length + registeredHospitals.filter(h => getRecordStatus(h).key === 'deleted').length
 
   // ----------------------------------------------------
   // LOGIN SCREEN
@@ -1388,8 +1636,8 @@ export default function OwnerAdmin() {
             <div className="space-y-1">
               <span className="px-3 text-[10px] font-black text-slate-400 uppercase tracking-wider block mb-2">CLIENT & CLINIC MANAGEMENT</span>
               {[
-                { id: 'hospitals', label: 'Hospitals', icon: <Building2 size={16} /> },
-                { id: 'individual_doctors', label: 'Individual Doctors', icon: <Stethoscope size={16} /> },
+                { id: 'hospitals', label: 'Registered Hospitals', icon: <Building2 size={16} />, badge: registeredHospitals.length },
+                { id: 'individual_doctors', label: 'Clinic & Solo Doctors', icon: <Stethoscope size={16} />, badge: soloClinicsAndDoctors.length },
                 { id: 'create-hospital', label: 'Add New Client', icon: <Plus size={16} />, isAction: true },
                 { id: 'hospital-admins', label: 'Hospital Admins', icon: <UserCheck size={16} /> },
                 { id: 'departments', label: 'Departments', icon: <Sliders size={16} /> },
@@ -1413,7 +1661,15 @@ export default function OwnerAdmin() {
                     {item.icon}
                     <span>{item.label}</span>
                   </div>
-                  {item.isAction && <span className="text-slate-400 hover:text-indigo-600 font-bold">+</span>}
+                  {item.badge !== undefined ? (
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
+                      activeNav === item.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {item.badge}
+                    </span>
+                  ) : item.isAction ? (
+                    <span className="text-slate-400 hover:text-indigo-600 font-bold">+</span>
+                  ) : null}
                 </button>
               ))}
             </div>
@@ -1534,7 +1790,26 @@ export default function OwnerAdmin() {
             <p className="text-xs font-semibold text-slate-400 mt-0.5">Welcome back, Platform Administrator 👋</p>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
+            {/* Live Supabase Sync Status Indicator & Manual Sync */}
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50/90 border border-emerald-200/80 text-emerald-800 rounded-xl text-xs font-bold shadow-sm">
+              <span className={`w-2 h-2 rounded-full ${
+                liveSyncStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : liveSyncStatus === 'syncing' ? 'bg-amber-500 animate-spin' : 'bg-rose-500'
+              }`}></span>
+              <span className="hidden sm:inline">Live Supabase Sync</span>
+              <span className="text-[10px] text-emerald-600 font-semibold">
+                • {lastSyncedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+              </span>
+              <button
+                onClick={handleManualSync}
+                disabled={manualSyncLoading}
+                title="Synchronize live details with Supabase database and check deleted auth users"
+                className="ml-1 p-1 hover:bg-emerald-100 rounded-lg text-emerald-700 transition cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw size={12} className={manualSyncLoading ? 'animate-spin' : ''} />
+              </button>
+            </div>
+
             {/* Search Input (⌘ K) */}
             <div className="relative w-72">
               <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1628,44 +1903,44 @@ export default function OwnerAdmin() {
             <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {[
                 {
-                  title: 'Total Hospitals',
-                  value: totalHospitals.toString(),
-                  badge: totalHospitals > 0 ? `${totalHospitals} Registered` : 'No Hospitals',
+                  title: 'Registered Hospitals',
+                  value: totalRegisteredHospitals.toString(),
+                  badge: totalRegisteredHospitals > 0 ? `${totalRegisteredHospitals} Multi-Doctor Centers` : '0 Centers',
                   icon: <Building2 size={18} className="text-indigo-600" />,
                   iconBg: 'bg-indigo-50 text-indigo-600',
                   onClick: () => setActiveNav('hospitals')
                 },
                 {
-                  title: 'Total Doctors',
-                  value: totalDoctors.toString(),
-                  badge: totalDoctors > 0 ? `${totalDoctors} Active` : '0 Active',
-                  icon: <Users size={18} className="text-blue-600" />,
+                  title: 'Clinic & Solo Doctors',
+                  value: totalSoloClinics.toString(),
+                  badge: `${totalSoloClinics} Solo Practices`,
+                  icon: <Stethoscope size={18} className="text-blue-600" />,
                   iconBg: 'bg-blue-50 text-blue-600',
+                  onClick: () => setActiveNav('individual_doctors')
+                },
+                {
+                  title: 'Active Users',
+                  value: totalActiveUsers.toString(),
+                  badge: '🟢 Active & Verified',
+                  icon: <CheckCircle2 size={18} className="text-emerald-600" />,
+                  iconBg: 'bg-emerald-50 text-emerald-600',
                   onClick: () => setActiveNav('doctors')
                 },
                 {
-                  title: 'Total Patients',
-                  value: '0',
-                  badge: 'Live Database Clean',
-                  icon: <ShieldCheck size={18} className="text-emerald-600" />,
-                  iconBg: 'bg-emerald-50 text-emerald-600',
-                  onClick: () => setActiveNav('patients')
+                  title: 'Blocked / Suspended',
+                  value: totalBlockedUsers.toString(),
+                  badge: '🔴 Security Blocked',
+                  icon: <ShieldAlert size={18} className="text-rose-600" />,
+                  iconBg: 'bg-rose-50 text-rose-600',
+                  onClick: () => setActiveNav('doctors')
                 },
                 {
-                  title: 'Appointments Today',
-                  value: '0',
-                  badge: '0 Queue In Progress',
-                  icon: <Calendar size={18} className="text-amber-600" />,
-                  iconBg: 'bg-amber-50 text-amber-600',
-                  onClick: () => setActiveNav('analytics')
-                },
-                {
-                  title: 'Revenue (MTD)',
-                  value: `₹${totalRevenue.toLocaleString('en-IN')}`,
-                  badge: totalRevenue > 0 ? 'Active Subscriptions' : '₹0 Collected',
-                  icon: <CreditCard size={18} className="text-purple-600" />,
-                  iconBg: 'bg-purple-50 text-purple-600',
-                  onClick: () => setActiveNav('revenue')
+                  title: 'Deleted from Auth',
+                  value: totalDeletedUsers.toString(),
+                  badge: '⚪ Deleted Status Retained',
+                  icon: <Trash2 size={18} className="text-slate-600" />,
+                  iconBg: 'bg-slate-100 text-slate-600',
+                  onClick: () => setActiveNav('doctors')
                 },
               ].map((card, idx) => (
                 <div
@@ -2149,8 +2424,8 @@ export default function OwnerAdmin() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-black text-slate-900">Individual Doctors & Solo Clinics ({individualDoctorsList.length})</h2>
-                <p className="text-xs text-slate-500">Dedicated single-doctor client accounts with unique QR booking and direct patient intake.</p>
+                <h2 className="text-xl font-black text-slate-900">Clinic & Solo Doctors ({soloClinicsAndDoctors.length})</h2>
+                <p className="text-xs text-slate-500">Dedicated single-practitioner private clinics and individual doctors with QR booking, daily consults, and intake tokens.</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -2158,27 +2433,55 @@ export default function OwnerAdmin() {
                     setClientTypeToCreate('individual_doctor')
                     setShowCreateHospitalModal(true)
                   }}
-                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/20 transition flex items-center gap-2"
+                  className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl shadow-lg shadow-indigo-500/20 transition flex items-center gap-2 cursor-pointer"
                 >
-                  <Plus size={15} /> Add Individual Doctor
+                  <Plus size={15} /> Add Clinic / Solo Doctor
                 </button>
               </div>
             </div>
 
+            {/* Status Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {[
+                { id: 'all', label: 'All Practitioners', count: soloClinicsAndDoctors.length, dot: 'bg-slate-400' },
+                { id: 'active', label: 'Active', count: soloClinicsAndDoctors.filter(d => getRecordStatus(d).key === 'active').length, dot: 'bg-emerald-500' },
+                { id: 'blocked', label: 'Blocked / Suspended', count: soloClinicsAndDoctors.filter(d => getRecordStatus(d).key === 'blocked').length, dot: 'bg-rose-500' },
+                { id: 'deleted', label: 'Deleted from Auth', count: soloClinicsAndDoctors.filter(d => getRecordStatus(d).key === 'deleted').length, dot: 'bg-slate-400' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setSoloStatusFilter(tab.id as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-2 whitespace-nowrap cursor-pointer ${
+                    soloStatusFilter === tab.id
+                      ? 'bg-slate-900 text-white shadow-sm'
+                      : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${tab.dot}`}></span>
+                  <span>{tab.label}</span>
+                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                    soloStatusFilter === tab.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-700'
+                  }`}>
+                    {tab.count}
+                  </span>
+                </button>
+              ))}
+            </div>
+
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {individualDoctorsList.length === 0 ? (
+              {filteredSoloDoctors.length === 0 ? (
                 <div className="p-16 text-center space-y-3">
                   <Stethoscope size={36} className="mx-auto text-slate-300" />
-                  <h3 className="font-black text-base text-slate-800">No Individual Doctors Registered Yet</h3>
+                  <h3 className="font-black text-base text-slate-800">No Practitioners Found in this Filter</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Create your first single-doctor client account or share the signup link with practitioners.
+                    No solo doctors or clinics match the selected status or search filter.
                   </p>
                   <button
                     onClick={() => {
                       setClientTypeToCreate('individual_doctor')
                       setShowCreateHospitalModal(true)
                     }}
-                    className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow mt-2"
+                    className="px-4 py-2 bg-indigo-600 text-white font-bold text-xs rounded-xl shadow mt-2 cursor-pointer"
                   >
                     + Register Individual Doctor
                   </button>
@@ -2197,98 +2500,119 @@ export default function OwnerAdmin() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {individualDoctorsList.map(doc => (
-                      <tr key={doc.doctor_id} className="hover:bg-slate-50/80 transition-colors">
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
-                              🩺
+                    {filteredSoloDoctors.map(doc => {
+                      const st = getRecordStatus(doc)
+                      return (
+                        <tr key={doc.doctor_id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-2.5">
+                              <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center font-bold text-sm">
+                                🩺
+                              </div>
+                              <div>
+                                <span className="font-extrabold text-slate-900 block text-sm">{doc.doctor_name}</span>
+                                <span className="text-[10px] text-slate-400 font-medium">{doc.clinic_name}</span>
+                              </div>
                             </div>
-                            <div>
-                              <span className="font-extrabold text-slate-900 block text-sm">{doc.doctor_name}</span>
-                              <span className="text-[10px] text-slate-400 font-medium">{doc.clinic_name}</span>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-mono text-xs font-bold text-indigo-700 block">{doc.doctor_code}</span>
-                          <span className="text-[11px] text-slate-500">{doc.email}</span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="font-bold text-slate-800 block">{doc.specialization}</span>
-                          <span className="text-[10px] text-emerald-600 font-bold">₹{doc.consultation_fee} / consult</span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <span className="px-2 py-0.5 bg-purple-50 text-purple-700 font-black text-[10px] rounded-lg inline-block mb-0.5">
-                            {doc.plan_tier}
-                          </span>
-                          <span className={`text-[10px] block font-bold ${
-                            doc.onboarding_status === 'ACTIVE' ? 'text-emerald-600' : 'text-amber-600'
-                          }`}>
-                            {doc.onboarding_status}
-                          </span>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <div className="flex items-center gap-1.5">
-                            <span className="px-2 py-0.5 font-mono text-[11px] font-black bg-blue-50 text-blue-700 border border-blue-200 rounded-lg">
-                              {doc.qr_token}
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-mono text-xs font-bold text-indigo-700 block">{doc.doctor_code}</span>
+                            <span className="text-[11px] text-slate-500">{doc.email}</span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="font-bold text-slate-800 block">{doc.specialization}</span>
+                            <span className="text-[10px] text-emerald-600 font-bold">₹{doc.consultation_fee} / consult</span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className="px-2 py-0.5 bg-purple-50 text-purple-700 font-black text-[10px] rounded-lg inline-block mb-0.5">
+                              {doc.plan_tier}
                             </span>
-                            <button
-                              onClick={() => setSelectedIndividualDoctorForQR(doc)}
-                              title="View & Download Unique Doctor QR"
-                              className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer"
-                            >
-                              <QrCode size={12} />
-                              <span>QR</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                const fullUrl = `${window.location.origin}/book/${doc.qr_token}`
-                                navigator.clipboard.writeText(fullUrl)
-                                setNotice(`Copied direct booking link: ${fullUrl}`)
-                                setTimeout(() => setNotice(null), 3000)
-                              }}
-                              title="Copy Direct Patient Booking Link"
-                              className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] transition cursor-pointer"
-                            >
-                              <Copy size={12} />
-                            </button>
-                          </div>
-                        </td>
-                        <td className="py-3.5 px-4">
-                          <button
-                            onClick={() => handleToggleIndividualDoctorStatus(doc)}
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition cursor-pointer ${
-                              doc.is_active
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700'
-                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-emerald-50 hover:text-emerald-700'
-                            }`}
-                          >
-                            {doc.is_active ? 'Active' : 'Suspended'}
-                          </button>
-                        </td>
-                        <td className="py-3.5 px-4 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <a
-                              href={`/book/${doc.qr_token}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="Test Direct Booking Link"
-                              className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition"
-                            >
-                              <ExternalLink size={14} />
-                            </a>
-                            <button
-                              onClick={() => setSelectedIndividualDoctorForQR(doc)}
-                              title="Doctor QR Standee"
-                              className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition cursor-pointer"
-                            >
-                              <QrCode size={14} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                            <span className={`text-[10px] block font-bold ${
+                              doc.onboarding_status === 'ACTIVE' ? 'text-emerald-600' : 'text-amber-600'
+                            }`}>
+                              {doc.onboarding_status}
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <div className="flex items-center gap-1.5">
+                              <span className="px-2 py-0.5 font-mono text-[11px] font-black bg-blue-50 text-blue-700 border border-blue-200 rounded-lg">
+                                {doc.qr_token}
+                              </span>
+                              <button
+                                onClick={() => setSelectedIndividualDoctorForQR(doc)}
+                                title="View & Download Unique Doctor QR"
+                                className="px-2 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-[10px] font-extrabold flex items-center gap-1 transition cursor-pointer"
+                              >
+                                <QrCode size={12} />
+                                <span>QR</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  const fullUrl = `${window.location.origin}/book/${doc.qr_token}`
+                                  navigator.clipboard.writeText(fullUrl)
+                                  setNotice(`Copied direct booking link: ${fullUrl}`)
+                                  setTimeout(() => setNotice(null), 3000)
+                                }}
+                                title="Copy Direct Patient Booking Link"
+                                className="p-1 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] transition cursor-pointer"
+                              >
+                                <Copy size={12} />
+                              </button>
+                            </div>
+                          </td>
+                          <td className="py-3.5 px-4">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${st.badge}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`}></span>
+                              <span>{st.label}</span>
+                            </span>
+                          </td>
+                          <td className="py-3.5 px-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <a
+                                href={`/book/${doc.qr_token}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title="Test Direct Booking Link"
+                                className="p-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg transition"
+                              >
+                                <ExternalLink size={14} />
+                              </a>
+                              <button
+                                onClick={() => setSelectedIndividualDoctorForQR(doc)}
+                                title="Doctor QR Standee"
+                                className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg transition cursor-pointer"
+                              >
+                                <QrCode size={14} />
+                              </button>
+
+                              {/* Toggle Active / Blocked */}
+                              {st.key !== 'deleted' && (
+                                <button
+                                  onClick={() => handleToggleIndividualDoctorStatus(doc)}
+                                  title={st.key === 'active' ? 'Block / Suspend Practitioner' : 'Activate / Unblock Practitioner'}
+                                  className={`p-1.5 rounded-lg transition cursor-pointer ${
+                                    st.key === 'active' ? 'bg-amber-50 hover:bg-amber-100 text-amber-700' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'
+                                  }`}
+                                >
+                                  <ShieldAlert size={14} />
+                                </button>
+                              )}
+
+                              {/* Permanently Soft-Delete User */}
+                              {st.key !== 'deleted' && (
+                                <button
+                                  onClick={() => handleSoftDeleteSoloDoctor(doc)}
+                                  title="Permanently Soft-Delete Doctor (Status = Deleted & revokes Auth)"
+                                  className="p-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-lg transition cursor-pointer"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    })}
                   </tbody>
                 </table>
               )}
@@ -2301,8 +2625,8 @@ export default function OwnerAdmin() {
           <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div>
-                <h2 className="text-xl font-black text-slate-900">Hospital Multi-Tenant Directory ({hospitalsList.length})</h2>
-                <p className="text-xs text-slate-500">Manage registered clinics, doctor quotas, and login credentials.</p>
+                <h2 className="text-xl font-black text-slate-900">Registered Multi-Doctor Hospitals ({registeredHospitals.length})</h2>
+                <p className="text-xs text-slate-500">Separated registry for multi-specialty hospitals with staff & multi-doctor quotas.</p>
               </div>
               <div className="flex items-center gap-3">
                 <button
@@ -2320,13 +2644,38 @@ export default function OwnerAdmin() {
               </div>
             </div>
 
+            {/* Status Filter Pills for Hospitals */}
+            <div className="flex items-center gap-2">
+              {[
+                { key: 'all', label: `All Hospitals (${registeredHospitals.length})` },
+                { key: 'active', label: `Active (${registeredHospitals.filter(h => getRecordStatus(h).key === 'active').length})`, dot: 'bg-emerald-500' },
+                { key: 'blocked', label: `Blocked (${registeredHospitals.filter(h => getRecordStatus(h).key === 'blocked').length})`, dot: 'bg-rose-500' },
+                { key: 'deleted', label: `Deleted (${registeredHospitals.filter(h => getRecordStatus(h).key === 'deleted').length})`, dot: 'bg-slate-400' },
+              ].map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setHospitalStatusFilter(f.key as any)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                    hospitalStatusFilter === f.key
+                      ? 'bg-slate-900 text-white shadow-xs'
+                      : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {f.dot && <span className={`w-1.5 h-1.5 rounded-full ${f.dot}`}></span>}
+                  <span>{f.label}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-              {hospitalsList.length === 0 ? (
+              {filteredHospitals.length === 0 ? (
                 <div className="p-16 text-center space-y-3">
                   <Building2 size={36} className="mx-auto text-slate-300" />
-                  <h3 className="font-black text-base text-slate-800">No Hospitals Registered Yet</h3>
+                  <h3 className="font-black text-base text-slate-800">No Hospitals Found</h3>
                   <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    The platform database is clean. Register a hospital to auto-generate admin credentials and an intake token.
+                    {registeredHospitals.length === 0
+                      ? 'No multi-doctor hospitals registered yet. Solo clinics and doctors are catalogued in the "Clinic & Solo Doctors" tab.'
+                      : 'No hospitals match the selected status filter.'}
                   </p>
                   <button
                     onClick={() => setShowCreateHospitalModal(true)}
@@ -2391,16 +2740,20 @@ export default function OwnerAdmin() {
                           </div>
                         </td>
                         <td className="py-3.5 px-4">
-                          <button
-                            onClick={() => handleToggleStatus(h.id)}
-                            className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border transition ${
-                              h.status === 'active'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-rose-50 hover:text-rose-700'
-                                : 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-emerald-50 hover:text-emerald-700'
-                            }`}
-                          >
-                            {h.status}
-                          </button>
+                          {(() => {
+                            const st = getRecordStatus(h);
+                            return (
+                              <button
+                                onClick={() => st.key !== 'deleted' && handleToggleStatus(h.id)}
+                                disabled={st.key === 'deleted'}
+                                title={st.key === 'deleted' ? 'User account deleted from Supabase Auth' : st.key === 'active' ? 'Click to Block' : 'Click to Activate'}
+                                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider transition ${st.badge} ${st.key !== 'deleted' ? 'cursor-pointer hover:opacity-80' : 'cursor-not-allowed opacity-75'}`}
+                              >
+                                <span className={`w-1.5 h-1.5 rounded-full ${st.dot}`}></span>
+                                <span>{st.label}</span>
+                              </button>
+                            );
+                          })()}
                         </td>
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">

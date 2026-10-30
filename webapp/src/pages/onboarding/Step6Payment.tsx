@@ -13,6 +13,7 @@ import {
   CreditCard,
   Building,
   Tag,
+  ExternalLink,
   X as XIcon,
 } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
@@ -118,14 +119,19 @@ export default function Step6Payment() {
     }
   };
 
-  const handlePayActivation = async () => {
+  const [activeSessionId, setActiveSessionId] = useState<string>('');
+  const [modalStuckWarning, setModalStuckWarning] = useState(false);
+
+  const handlePayActivation = async (targetMode: '_self' | '_modal' = '_self') => {
+    if (loading) return; // Prevent duplicate payment submissions
     setLoading(true);
     setCheckoutStage('creating_order');
     setError(null);
+    setModalStuckWarning(false);
 
     try {
       // 1. Direct server-side order creation with plan_id, coupon_code, and customer details
-      const internalId = `MTF-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+      const internalId = activeInternalOrderId || `MTF-${Date.now().toString().slice(-8)}-${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
       
       const res = await fetch('/api/cashfree/create-order', {
         method: 'POST',
@@ -158,46 +164,85 @@ export default function Step6Payment() {
       }
 
       if (!order?.payment_session_id) {
-        throw new Error(order?.error || 'Could not initialize Cashfree payment session. Please verify test credentials.');
+        throw new Error(order?.error || 'Could not initialize Cashfree payment session. Please check your network and try again.');
       }
 
-      setActiveOrderId(order.order_id || '');
-      setActiveInternalOrderId(order.internal_order_id || internalId);
+      const activeOrder = order.order_id || '';
+      const activeIntOrder = order.internal_order_id || internalId;
+      setActiveOrderId(activeOrder);
+      setActiveInternalOrderId(activeIntOrder);
+      setActiveSessionId(order.payment_session_id);
 
-      // 2. Open Cashfree Checkout Modal
+      // Persist active order for immediate recovery if user refreshes or redirects
+      try {
+        sessionStorage.setItem('medtech_active_payment', JSON.stringify({
+          internal_order_id: activeIntOrder,
+          order_id: activeOrder,
+          payment_session_id: order.payment_session_id,
+          timestamp: Date.now(),
+        }));
+      } catch {}
+
+      // 2. Load SDK & Initialize Cashfree Checkout
       setCheckoutStage('opening_checkout');
       await loadCashfreeSDK();
 
-      if (window.Cashfree) {
-        const cashfreeMode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox') as 'sandbox' | 'production';
-        const cashfree = window.Cashfree({ mode: cashfreeMode });
+      if (!window.Cashfree) {
+        throw new Error('Cashfree Payment SDK is still loading or blocked. Please refresh or disable content blockers.');
+      }
 
-        const checkoutResult = await cashfree.checkout({
+      const cashfreeMode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox') as 'sandbox' | 'production';
+      const cashfree = window.Cashfree({ mode: cashfreeMode });
+
+      // If user selected Full-Page Redirect (Default & Recommended)
+      if (targetMode === '_self') {
+        await cashfree.checkout({
           paymentSessionId: order.payment_session_id,
-          redirectTarget: '_modal',
+          redirectTarget: '_self',
         });
-
-        if (checkoutResult?.error) {
-          console.log('Cashfree modal closed or error:', checkoutResult.error);
-          setLoading(false);
-          setCheckoutStage('idle');
-          return;
-        }
-
-        // Modal finished payment capture -> route to server verification
-        setCheckoutStage('verifying_payment');
-        navigate(
-          `/onboarding/payment/pending?internal_order_id=${encodeURIComponent(order.internal_order_id || internalId)}` +
-          `&gateway_order_id=${encodeURIComponent(order.order_id || '')}` +
-          `&payment_id=${encodeURIComponent(checkoutResult?.paymentDetails?.payment_id || '')}`
-        );
         return;
       }
 
-      throw new Error('Cashfree Web SDK was not loaded. Please try again.');
+      // If user opted for Popup Modal, setup safety timer
+      const stuckTimer = setTimeout(() => {
+        setModalStuckWarning(true);
+      }, 10000);
+
+      const checkoutResult = await cashfree.checkout({
+        paymentSessionId: order.payment_session_id,
+        redirectTarget: '_modal',
+      });
+
+      clearTimeout(stuckTimer);
+      setModalStuckWarning(false);
+
+      if (checkoutResult?.error) {
+        console.warn('Cashfree modal closed or reported notice:', checkoutResult.error);
+        // Verify with backend whether payment was captured before failing
+        setCheckoutStage('verifying_payment');
+        const vRes = await fetch(`/api/cashfree/verify?order_id=${encodeURIComponent(activeOrder)}&internal_order_id=${encodeURIComponent(activeIntOrder)}`);
+        if (vRes.ok) {
+          const vData = await vRes.json();
+          if (vData.status === 'completed') {
+            navigate(`/onboarding/payment/success?internal_order_id=${encodeURIComponent(activeIntOrder)}`, { replace: true });
+            return;
+          }
+        }
+        setLoading(false);
+        setCheckoutStage('idle');
+        return;
+      }
+
+      // Modal finished payment capture -> route to server verification
+      setCheckoutStage('verifying_payment');
+      navigate(
+        `/onboarding/payment/pending?internal_order_id=${encodeURIComponent(activeIntOrder)}` +
+        `&gateway_order_id=${encodeURIComponent(activeOrder)}` +
+        `&payment_id=${encodeURIComponent(checkoutResult?.paymentDetails?.payment_id || '')}`
+      );
     } catch (err: any) {
-      console.error('Payment error:', err);
-      setError(err.message || 'Unable to start Cashfree checkout session. Please try again.');
+      console.error('Payment initialization error:', err);
+      setError(err.message || 'Unable to open Cashfree gateway. Please try full-page redirect checkout.');
       setLoading(false);
       setCheckoutStage('idle');
     }
@@ -408,17 +453,46 @@ export default function Step6Payment() {
           </div>
         </div>
 
+          {/* Sandbox Test Guidelines Banner */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-xs text-amber-900 space-y-1.5 shadow-2xs">
+            <div className="flex items-center gap-1.5 font-extrabold text-amber-950 text-xs">
+              <Sparkles size={14} className="text-amber-600 shrink-0" />
+              <span>Cashfree Sandbox Test Environment</span>
+            </div>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              • <strong>Instant Automated Testing:</strong> Use <strong>Cards</strong> (Test Card Number: <span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">4012 0000 0000 0002</span>, any future MM/YY & CVV <span className="font-mono bg-amber-100/90 px-1 py-0.5 rounded font-bold">123</span>) or <strong>UPI</strong> (<span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">success@upi</span>).
+              <br />
+              • <strong>Third-party Wallets Notice:</strong> In Cashfree Sandbox, external wallet aggregators (MobiKwik, FreeCharge) require real-world mobile OTP and do not provide automated sandbox webhooks. Please test with Cards, UPI, or NetBanking simulation.
+            </p>
+          </div>
+
+        {modalStuckWarning && (
+          <div className="p-3.5 rounded-2xl bg-orange-50 border border-orange-200 text-xs text-orange-900 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in duration-300">
+            <div className="flex items-center gap-2">
+              <AlertCircle size={16} className="text-[#FF6A00] shrink-0" />
+              <span>Checkout modal taking longer than expected?</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => handlePayActivation('_self')}
+              className="px-3 py-1.5 bg-[#FF6A00] hover:bg-[#E55F00] text-white font-bold text-xs rounded-xl shadow-xs transition"
+            >
+              Switch to Full-Page Checkout →
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-center gap-2 text-xs text-slate-500 font-medium">
           <Lock size={14} className="text-emerald-600" />
-          <span>Cashfree Payments. 256-bit bank encrypted. UPI, Cards & NetBanking accepted.</span>
+          <span>Cashfree Payments. 256-bit bank encrypted. Full-page secure gateway.</span>
         </div>
 
-        {/* Pay Button */}
-        <div className="pt-2">
+        {/* Primary Checkout: Full-Page Redirect */}
+        <div className="space-y-3 pt-2">
           <button
             type="button"
             disabled={loading}
-            onClick={handlePayActivation}
+            onClick={() => handlePayActivation('_self')}
             className="w-full py-4 px-6 rounded-2xl bg-[#FF6A00] hover:bg-[#E55F00] text-white font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition-all cursor-pointer disabled:opacity-50"
           >
             {loading ? (
@@ -444,6 +518,19 @@ export default function Step6Payment() {
               </>
             )}
           </button>
+
+          {/* Alternative: Modal Popup */}
+          <div className="flex items-center justify-center">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => handlePayActivation('_modal')}
+              className="text-xs font-bold text-slate-500 hover:text-slate-800 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+            >
+              <span>Or open checkout in popup modal</span>
+              <ExternalLink size={12} />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -64,8 +64,20 @@ export default async function handler(req, res) {
       `, { count: 'exact' })
       .in('role', ['doctor', 'hospital_admin']);
 
+    if (query.client_type && query.client_type !== 'all') {
+      dbQuery = dbQuery.eq('client_type', query.client_type);
+    }
+
     if (query.status && query.status !== 'all') {
-      dbQuery = dbQuery.eq('account_status', query.status);
+      if (query.status === 'blocked') {
+        dbQuery = dbQuery.in('account_status', ['blocked', 'suspended', 'banned']);
+      } else if (query.status === 'active') {
+        dbQuery = dbQuery.eq('account_status', 'active').eq('is_active', true);
+      } else if (query.status === 'deleted') {
+        dbQuery = dbQuery.eq('account_status', 'deleted');
+      } else {
+        dbQuery = dbQuery.eq('account_status', query.status);
+      }
     }
 
     if (query.onboarding_status && query.onboarding_status !== 'all') {
@@ -123,6 +135,104 @@ export default async function handler(req, res) {
       }
 
       return res.json({ success: true, result: rpcRes });
+    }
+
+    // Action A2: Permanently soft-delete user (account_status = 'deleted', deactivate, log audit, and remove from auth if possible)
+    if (action === 'delete_user') {
+      const { user_id, reason, admin_notes } = body;
+      const targetId = user_id || body.doctor_id;
+      if (!targetId) {
+        return res.status(400).json({ success: false, error: 'User/Doctor ID is required for deletion.' });
+      }
+
+      // 1. Get previous state for audit
+      const { data: prevProf } = await client
+        .from('profiles')
+        .select('*')
+        .eq('id', targetId)
+        .maybeSingle();
+
+      // 2. Mark profile as deleted and inactive
+      const { data: updatedProf, error: profErr } = await client
+        .from('profiles')
+        .update({
+          account_status: 'deleted',
+          is_active: false,
+          admin_notes: admin_notes || 'User deleted from platform by Super Admin',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetId)
+        .select()
+        .maybeSingle();
+
+      if (profErr) {
+        return res.status(500).json({ success: false, error: profErr.message });
+      }
+
+      // 3. Mark doctor_details as inactive and deleted
+      await client
+        .from('doctor_details')
+        .update({
+          is_active: false,
+          availability_status: 'deleted',
+          onboarding_status: 'DELETED',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', targetId);
+
+      // 4. If target had a solo clinic hospital, update hospital status to deleted
+      if (prevProf?.hospital_id && prevProf?.client_type === 'individual_doctor') {
+        await client
+          .from('hospitals')
+          .update({
+            status: 'deleted',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', prevProf.hospital_id);
+      }
+
+      // 5. If adminClient has access to auth.admin, delete from auth.users (profile persists as deleted)
+      if (adminClient?.auth?.admin?.deleteUser) {
+        try {
+          await adminClient.auth.admin.deleteUser(targetId);
+        } catch (authDelErr) {
+          console.warn('Auth admin delete notice (profile soft-deleted cleanly):', authDelErr.message);
+        }
+      }
+
+      // 6. Record audit log
+      try {
+        await client.rpc('log_admin_audit_event', {
+          p_action: 'delete_user',
+          p_target_type: 'user',
+          p_target_id: targetId,
+          p_previous_state: prevProf || {},
+          p_new_state: { account_status: 'deleted', is_active: false },
+          p_reason: reason || 'Super Admin deleted user',
+          p_result: 'success',
+        });
+      } catch (auditErr) {
+        console.warn('Audit log write error:', auditErr.message);
+      }
+
+      return res.json({
+        success: true,
+        message: 'User account status set to deleted and disabled.',
+        user: updatedProf
+      });
+    }
+
+    // Action A3: Authoritative Sync with Supabase Auth user list
+    if (action === 'sync_auth_users') {
+      try {
+        const { data: syncRes, error: syncErr } = await client.rpc('admin_sync_auth_users_status');
+        if (syncErr) {
+          return res.status(500).json({ success: false, error: syncErr.message });
+        }
+        return res.json({ success: true, result: syncRes });
+      } catch (err) {
+        return res.status(500).json({ success: false, error: err.message });
+      }
     }
 
     // Action B: Grant Platform Fee Exemption

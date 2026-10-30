@@ -11,7 +11,60 @@ function getSupabase() {
   return createClient(SUPABASE_URL, key, { auth: { persistSession: false } });
 }
 
+function logDiagnostic(event, data) {
+  try {
+    console.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      service: 'cashfree_verify_order',
+      event,
+      internal_order_id: data.internal_order_id || null,
+      order_id: data.order_id || null,
+      payment_id: data.payment_id || null,
+      provider_status: data.provider_status || null,
+      payment_method: data.payment_method || null,
+      duration_ms: data.duration_ms || null,
+      stage: data.stage || null,
+      error_code: data.error_code || null,
+      error_message: data.error_message || null,
+    }));
+  } catch {}
+}
+
+function fetchCashfree(hostname, path, appId, secretKey) {
+  return new Promise((resolve, reject) => {
+    const req = https.request(
+      {
+        hostname,
+        path,
+        method: 'GET',
+        headers: {
+          'x-client-id': appId,
+          'x-client-secret': secretKey,
+          'x-api-version': '2023-08-01',
+          'Content-Type': 'application/json',
+        },
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (c) => (body += c));
+        res.on('end', () => {
+          try {
+            const parsed = JSON.parse(body);
+            resolve({ statusCode: res.statusCode || 200, data: parsed });
+          } catch {
+            resolve({ statusCode: res.statusCode || 200, data: body });
+          }
+        });
+      }
+    );
+    req.on('error', (err) => reject(err));
+    req.end();
+  });
+}
+
 export default async function handler(req, res) {
+  const startTime = Date.now();
+
   if (req.method !== 'POST' && req.method !== 'GET') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -31,7 +84,13 @@ export default async function handler(req, res) {
 
   const supabase = getSupabase();
 
-  // Check if simulated
+  logDiagnostic('verification_started', {
+    internal_order_id: internalOrderId,
+    order_id: orderId,
+    stage: 'calling_cashfree_apis',
+  });
+
+  // Check if simulated order
   const simulatedOrders = globalThis.__simulatedOrders;
   if (simulatedOrders) {
     const sim = simulatedOrders.get(orderId) || simulatedOrders.get(internalOrderId);
@@ -49,7 +108,7 @@ export default async function handler(req, res) {
             })
             .or(`provider_order_id.eq.${orderId},internal_transaction_id.eq.${internalOrderId}`);
         } catch (dbErr) {
-          console.warn('[verify:simulate] db update notice:', dbErr);
+          logDiagnostic('db_update_sim_notice', { error_message: dbErr.message });
         }
       }
 
@@ -96,120 +155,122 @@ export default async function handler(req, res) {
     }
   }
 
-  const cfReq = https.request(
-    {
-      hostname: host,
-      path: `/pg/orders/${encodeURIComponent(orderId)}/payments`,
-      method: 'GET',
-      headers: {
-        'x-client-id': appId,
-        'x-client-secret': secretKey,
-        'x-api-version': '2023-08-01',
-        'Content-Type': 'application/json',
-      },
-    },
-    (cfRes) => {
-      let cfBody = '';
-      cfRes.on('data', (c) => (cfBody += c));
-      cfRes.on('end', async () => {
-        res.setHeader('Content-Type', 'application/json');
-        res.status(cfRes.statusCode || 200);
-        try {
-          const payments = JSON.parse(cfBody);
-          const successfulPayment = Array.isArray(payments)
-            ? payments.find((p) => p.payment_status === 'SUCCESS')
-            : null;
-          const failedPayment = Array.isArray(payments)
-            ? payments.find((p) => p.payment_status === 'FAILED')
-            : null;
-          const cancelledPayment = Array.isArray(payments)
-            ? payments.find((p) => p.payment_status === 'USER_DROPPED' || p.payment_status === 'CANCELLED')
-            : null;
+  try {
+    // 1. Check order level first
+    const orderResult = await fetchCashfree(host, `/pg/orders/${encodeURIComponent(orderId)}`, appId, secretKey);
+    const orderObj = typeof orderResult.data === 'object' ? orderResult.data : {};
 
-          // Synchronize status with Supabase payment_transactions
-          if (supabase && orderId) {
-            try {
-              const updatePayload = {
-                updated_at: new Date().toISOString(),
-                provider_response: Array.isArray(payments) ? { payments } : payments,
-              };
+    // 2. Check payments level
+    const paymentsResult = await fetchCashfree(host, `/pg/orders/${encodeURIComponent(orderId)}/payments`, appId, secretKey);
+    const payments = Array.isArray(paymentsResult.data) ? paymentsResult.data : [];
 
-              if (successfulPayment) {
-                updatePayload.payment_status = 'completed';
-                updatePayload.provider_payment_id = successfulPayment.cf_payment_id || successfulPayment.payment_id;
-                updatePayload.payment_method = successfulPayment.payment_group || successfulPayment.payment_method || 'online';
-                updatePayload.provider_reference = successfulPayment.bank_reference || String(updatePayload.provider_payment_id);
-                updatePayload.reconciliation_status = 'verified_success';
-                updatePayload.reconciliation_evidence = successfulPayment;
-              } else if (failedPayment) {
-                updatePayload.payment_status = 'failed';
-                updatePayload.provider_payment_id = failedPayment.cf_payment_id || failedPayment.payment_id;
-                updatePayload.review_notes = failedPayment.payment_message || 'Payment declined by bank or issuer';
-              } else if (cancelledPayment) {
-                updatePayload.payment_status = 'cancelled';
-                updatePayload.review_notes = 'Payment cancelled or abandoned by user';
-              }
+    const duration = Date.now() - startTime;
 
-              await supabase
-                .from('payment_transactions')
-                .update(updatePayload)
-                .or(`provider_order_id.eq.${orderId},internal_transaction_id.eq.${internalOrderId}`);
-            } catch (dbErr) {
-              console.warn('[cashfree:verify] payment_transactions update warning:', dbErr);
-            }
-          }
+    const successfulPayment = payments.find((p) => p.payment_status === 'SUCCESS');
+    const failedPayment = payments.find((p) => p.payment_status === 'FAILED');
+    const cancelledPayment = payments.find((p) => p.payment_status === 'USER_DROPPED' || p.payment_status === 'CANCELLED');
 
-          if (successfulPayment) {
-            return res.json({
-              success: true,
-              verified: true,
-              status: 'completed',
-              payment_id: successfulPayment.cf_payment_id || successfulPayment.payment_id,
-              order_id: orderId,
-              internal_order_id: internalOrderId,
-              payments: Array.isArray(payments) ? payments : [],
-            });
-          }
+    const isPaid = orderObj.order_status === 'PAID' || Boolean(successfulPayment);
 
-          if (failedPayment) {
-            return res.json({
-              success: false,
-              verified: false,
-              status: 'failed',
-              error: failedPayment.payment_message || 'Payment was declined by bank or card issuer.',
-              order_id: orderId,
-              payments: Array.isArray(payments) ? payments : [],
-            });
-          }
+    logDiagnostic('verification_completed', {
+      internal_order_id: internalOrderId,
+      order_id: orderId,
+      provider_status: isPaid ? 'SUCCESS' : failedPayment ? 'FAILED' : cancelledPayment ? 'CANCELLED' : orderObj.order_status || 'PENDING',
+      payment_method: successfulPayment?.payment_group || successfulPayment?.payment_method || null,
+      payment_id: successfulPayment?.cf_payment_id || successfulPayment?.payment_id || null,
+      duration_ms: duration,
+      stage: 'cashfree_verification_resolved',
+    });
 
-          if (cancelledPayment) {
-            return res.json({
-              success: false,
-              verified: false,
-              status: 'cancelled',
-              error: 'Payment was cancelled during checkout.',
-              order_id: orderId,
-              payments: Array.isArray(payments) ? payments : [],
-            });
-          }
+    // Synchronize status with Supabase payment_transactions
+    if (supabase && orderId) {
+      try {
+        const updatePayload = {
+          updated_at: new Date().toISOString(),
+          provider_response: { order: orderObj, payments },
+        };
 
-          return res.json({
-            success: false,
-            verified: false,
-            status: 'pending',
-            payment_id: null,
-            payments: Array.isArray(payments) ? payments : [],
-          });
-        } catch {
-          res.send(cfBody);
+        if (isPaid) {
+          updatePayload.payment_status = 'completed';
+          updatePayload.provider_payment_id = successfulPayment?.cf_payment_id || successfulPayment?.payment_id || `cf_pay_${Date.now()}`;
+          updatePayload.payment_method = successfulPayment?.payment_group || successfulPayment?.payment_method || 'online';
+          updatePayload.provider_reference = successfulPayment?.bank_reference || String(updatePayload.provider_payment_id);
+          updatePayload.reconciliation_status = 'verified_success';
+          updatePayload.reconciliation_evidence = successfulPayment || orderObj;
+        } else if (failedPayment) {
+          updatePayload.payment_status = 'failed';
+          updatePayload.provider_payment_id = failedPayment.cf_payment_id || failedPayment.payment_id;
+          updatePayload.review_notes = failedPayment.payment_message || 'Payment declined by bank or issuer';
+        } else if (cancelledPayment) {
+          updatePayload.payment_status = 'cancelled';
+          updatePayload.review_notes = 'Payment cancelled or abandoned by user';
         }
+
+        await supabase
+          .from('payment_transactions')
+          .update(updatePayload)
+          .or(`provider_order_id.eq.${orderId},internal_transaction_id.eq.${internalOrderId}`);
+      } catch (dbErr) {
+        logDiagnostic('db_update_warning', { error_message: dbErr.message });
+      }
+    }
+
+    if (isPaid) {
+      return res.status(200).json({
+        success: true,
+        verified: true,
+        status: 'completed',
+        payment_id: successfulPayment?.cf_payment_id || successfulPayment?.payment_id || `cf_pay_${Date.now()}`,
+        order_id: orderId,
+        internal_order_id: internalOrderId,
+        payment_method: successfulPayment?.payment_group || successfulPayment?.payment_method || 'online',
+        payments,
       });
     }
-  );
 
-  cfReq.on('error', (err) => {
-    res.status(500).json({ success: false, error: err.message });
-  });
+    if (failedPayment) {
+      return res.status(200).json({
+        success: false,
+        verified: false,
+        status: 'failed',
+        error: failedPayment.payment_message || 'Payment was declined by bank or card issuer.',
+        order_id: orderId,
+        internal_order_id: internalOrderId,
+        payments,
+      });
+    }
 
-  cfReq.end();
+    if (cancelledPayment) {
+      return res.status(200).json({
+        success: false,
+        verified: false,
+        status: 'cancelled',
+        error: 'Payment was cancelled or closed during checkout.',
+        order_id: orderId,
+        internal_order_id: internalOrderId,
+        payments,
+      });
+    }
+
+    // Still active / pending
+    return res.status(200).json({
+      success: false,
+      verified: false,
+      status: 'pending',
+      error: 'Payment transaction is pending bank authorization.',
+      order_id: orderId,
+      internal_order_id: internalOrderId,
+      payment_id: null,
+      payments,
+    });
+  } catch (err) {
+    const duration = Date.now() - startTime;
+    logDiagnostic('verification_network_error', {
+      internal_order_id: internalOrderId,
+      order_id: orderId,
+      duration_ms: duration,
+      error_message: err.message,
+    });
+    return res.status(500).json({ success: false, error: err.message });
+  }
 }

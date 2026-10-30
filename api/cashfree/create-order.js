@@ -11,7 +11,29 @@ function getSupabase() {
   return createClient(SUPABASE_URL, key, { auth: { persistSession: false } });
 }
 
+function logDiagnostic(event, data) {
+  try {
+    console.log(JSON.stringify({
+      timestamp: new Date().toISOString(),
+      service: 'cashfree_create_order',
+      event,
+      internal_order_id: data.internal_order_id || null,
+      order_id: data.order_id || null,
+      cf_order_id: data.cf_order_id || null,
+      plan_id: data.plan_id || null,
+      amount_rupees: data.amount_rupees || null,
+      environment: data.environment || null,
+      stage: data.stage || null,
+      duration_ms: data.duration_ms || null,
+      error_code: data.error_code || null,
+      error_message: data.error_message || null,
+    }));
+  } catch {}
+}
+
 export default async function handler(req, res) {
+  const startTime = Date.now();
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -22,7 +44,7 @@ export default async function handler(req, res) {
   const host = isProd ? 'api.cashfree.com' : 'sandbox.cashfree.com';
 
   const data = typeof req.body === 'string' ? JSON.parse(req.body || '{}') : (req.body || {});
-  
+
   // Dynamic Plan Pricing Resolution
   let baseAmount = 500;
   if (data.plan_id === 'doctor_yearly_50000') {
@@ -53,7 +75,7 @@ export default async function handler(req, res) {
         appliedCoupon = cRes.code;
       }
     } catch (cErr) {
-      console.warn('[cashfree:create-order] coupon validation error:', cErr.message);
+      logDiagnostic('coupon_validation_notice', { error_message: cErr.message });
     }
   }
 
@@ -61,10 +83,19 @@ export default async function handler(req, res) {
   const cfOrderId = `mtf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
   const internalOrderId = data.internal_order_id || `MTF-${Date.now().toString().slice(-8)}`;
 
-  // Dynamic origin resolution
+  // Dynamic origin resolution for return URL
   const forwardedProto = req.headers['x-forwarded-proto'] || 'https';
   const origin = req.headers.origin || (req.headers.host ? `${forwardedProto}://${req.headers.host}` : 'https://www.medtechfixaters.in');
   const returnUrl = data.return_url || `${origin}/onboarding/payment/pending?order_id={order_id}&internal_order_id=${encodeURIComponent(internalOrderId)}`;
+
+  logDiagnostic('order_creation_initiated', {
+    internal_order_id: internalOrderId,
+    order_id: cfOrderId,
+    plan_id: data.plan_id || 'doctor_intro_500',
+    amount_rupees: orderAmount,
+    environment: isProd ? 'PROD' : 'SANDBOX',
+    stage: 'initiating_cashfree_pg_order'
+  });
 
   const payload = JSON.stringify({
     order_id: cfOrderId,
@@ -105,11 +136,23 @@ export default async function handler(req, res) {
       let cfBody = '';
       cfRes.on('data', (c) => (cfBody += c));
       cfRes.on('end', async () => {
+        const duration = Date.now() - startTime;
         res.setHeader('Content-Type', 'application/json');
         res.status(cfRes.statusCode || 200);
+
         try {
           const parsed = JSON.parse(cfBody);
           const isSuccess = cfRes.statusCode === 200;
+
+          logDiagnostic(isSuccess ? 'order_created_success' : 'order_created_failed', {
+            internal_order_id: internalOrderId,
+            order_id: parsed.order_id || cfOrderId,
+            cf_order_id: parsed.cf_order_id,
+            duration_ms: duration,
+            environment: isProd ? 'PROD' : 'SANDBOX',
+            error_code: isSuccess ? null : cfRes.statusCode,
+            error_message: isSuccess ? null : (parsed.message || parsed.error),
+          });
 
           // Record transaction in Supabase payment_transactions
           if (supabase && isSuccess && parsed.order_id) {
@@ -133,7 +176,7 @@ export default async function handler(req, res) {
                 updated_at: new Date().toISOString()
               }]);
             } catch (dbErr) {
-              console.warn('[cashfree:create-order] payment_transactions insert warning:', dbErr);
+              logDiagnostic('payment_transaction_insert_warning', { error_message: dbErr.message });
             }
           }
 
@@ -148,9 +191,15 @@ export default async function handler(req, res) {
             amount: orderAmount * 100,
             amount_rupees: orderAmount,
             currency: 'INR',
+            return_url: returnUrl,
             error: parsed.message || parsed.error,
           });
-        } catch {
+        } catch (parseErr) {
+          logDiagnostic('order_response_parse_error', {
+            internal_order_id: internalOrderId,
+            duration_ms: duration,
+            error_message: parseErr.message
+          });
           res.send(cfBody);
         }
       });
@@ -158,6 +207,13 @@ export default async function handler(req, res) {
   );
 
   cfReq.on('error', (err) => {
+    const duration = Date.now() - startTime;
+    logDiagnostic('order_network_failure', {
+      internal_order_id: internalOrderId,
+      order_id: cfOrderId,
+      duration_ms: duration,
+      error_message: err.message
+    });
     res.status(500).json({ success: false, error: err.message });
   });
 

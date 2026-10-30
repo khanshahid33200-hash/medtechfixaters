@@ -46,7 +46,8 @@ export default function IntroductoryCheckoutPage() {
     timeZone: 'Asia/Kolkata',
   });
 
-  const handlePayIntroductory = async () => {
+  const handlePayIntroductory = async (targetMode: '_self' | '_modal' = '_self') => {
+    if (loading) return; // Prevent duplicate payment attempts
     setLoading(true);
     setError(null);
 
@@ -58,22 +59,34 @@ export default function IntroductoryCheckoutPage() {
         throw new Error(order.error || 'Failed to create payment order.');
       }
 
-      // 2. Check for Cashfree payment session
-      const isCashfree =
-        import.meta.env.VITE_PAYMENT_GATEWAY_PROVIDER === 'cashfree' ||
-        order.gateway === 'cashfree' ||
-        Boolean(order.paymentSessionId);
-
       setActiveOrderId(order.gatewayOrderId || '');
       setActiveInternalOrderId(order.internalOrderId || '');
 
-      // 2. Open Cashfree Checkout Modal
+      // Persist order in sessionStorage for fast recovery
+      try {
+        sessionStorage.setItem('medtech_active_payment', JSON.stringify({
+          internal_order_id: order.internalOrderId,
+          order_id: order.gatewayOrderId,
+          payment_session_id: order.paymentSessionId,
+          timestamp: Date.now(),
+        }));
+      } catch {}
+
+      // 2. Open Cashfree Checkout (Full-Page Redirect is default)
       if (order.paymentSessionId) {
         await loadCashfreeSDK();
 
         if (window.Cashfree) {
           const cashfreeMode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox') as 'sandbox' | 'production';
           const cashfree = window.Cashfree({ mode: cashfreeMode });
+
+          if (targetMode === '_self') {
+            await cashfree.checkout({
+              paymentSessionId: order.paymentSessionId,
+              redirectTarget: '_self',
+            });
+            return;
+          }
 
           const checkoutResult = await cashfree.checkout({
             paymentSessionId: order.paymentSessionId,
@@ -88,7 +101,7 @@ export default function IntroductoryCheckoutPage() {
 
           // Payment completed inside modal, route to server verification
           navigate(
-            `/checkout/pending?internal_order_id=${encodeURIComponent(order.internalOrderId)}` +
+            `/onboarding/payment/pending?internal_order_id=${encodeURIComponent(order.internalOrderId)}` +
             `&gateway_order_id=${encodeURIComponent(order.gatewayOrderId || '')}` +
             `&payment_id=${encodeURIComponent(checkoutResult?.paymentDetails?.payment_id || '')}`
           );
@@ -188,11 +201,24 @@ export default function IntroductoryCheckoutPage() {
             </div>
           </div>
 
+          {/* Sandbox Test Guidelines */}
+          <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-xs text-amber-900 space-y-1.5 shadow-2xs">
+            <div className="flex items-center gap-1.5 font-extrabold text-amber-950 text-xs">
+              <Sparkles size={14} className="text-amber-600 shrink-0" />
+              <span>Cashfree Sandbox Test Environment</span>
+            </div>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              • <strong>Recommended for instant testing:</strong> Use <strong>Cards</strong> (Test Card: <span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">4012 0000 0000 0002</span>, any future MM/YY & CVV <span className="font-mono bg-amber-100/90 px-1 py-0.5 rounded font-bold">123</span>) or <strong>UPI</strong> (<span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">success@upi</span>).
+              <br />
+              • <strong>Notice regarding Wallets:</strong> In Cashfree Sandbox, external wallet aggregators require live mobile OTP. Please use test Cards, UPI, or NetBanking simulation.
+            </p>
+          </div>
+
           {/* Pay Button */}
           <div className="space-y-3 pt-2">
             <button
               type="button"
-              onClick={handlePayIntroductory}
+              onClick={() => handlePayIntroductory('_self')}
               disabled={loading}
               className={`w-full py-4 px-6 rounded-2xl ${PRIMARY_BUTTON} font-bold text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer disabled:opacity-60`}
             >
@@ -204,10 +230,21 @@ export default function IntroductoryCheckoutPage() {
               ) : (
                 <>
                   <Lock size={16} />
-                  <span>Pay ₹500</span>
+                  <span>Pay ₹500 (Full-Page Secure Checkout)</span>
                 </>
               )}
             </button>
+
+            <div className="flex items-center justify-center">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handlePayIntroductory('_modal')}
+                className="text-xs font-bold text-stone-500 hover:text-stone-800 transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40"
+              >
+                <span>Or open in popup modal</span>
+              </button>
+            </div>
 
             <p className="text-[11px] text-[#6B6B6B] text-center leading-relaxed">
               Payments are verified server-side. Your practice workspace will activate immediately upon verified transaction receipt.

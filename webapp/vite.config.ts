@@ -34,91 +34,53 @@ export default defineConfig(({ mode }) => {
     name: 'cashfree-dev-middleware',
     configureServer(server: any) {
       server.middlewares.use(async (req: any, res: any, next: any) => {
+        // Shared Express-like helper polyfills for Vite Connect middleware
+        if (!res.status) {
+          res.status = (code: number) => {
+            res.statusCode = code
+            return res
+          }
+        }
+        if (!res.json) {
+          res.json = (data: any) => {
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify(data))
+            return res
+          }
+        }
+        if (!res.send) {
+          res.send = (data: any) => {
+            res.end(data)
+            return res
+          }
+        }
+        if (!req.query && req.url) {
+          try {
+            const parsed = new URL(req.url, 'http://localhost:5173')
+            req.query = Object.fromEntries(parsed.searchParams.entries())
+          } catch {}
+        }
+
+        // Expose simulated store globally for verify handlers
+        ;(globalThis as any).__simulatedOrders = simulatedOrders
+
         // 1. Create order: POST /api/cashfree/create-order
         if (req.url?.startsWith('/api/cashfree/create-order') && req.method === 'POST') {
           let body = ''
           req.on('data', (chunk: any) => (body += chunk))
-          req.on('end', () => {
+          req.on('end', async () => {
             try {
-              const data = JSON.parse(body || '{}')
-              const orderAmount = data.plan_id === 'doctor_monthly_5000' ? 5000 : 500
-              const cfOrderId = `mtf_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`
-              const internalOrderId = data.internal_order_id || `MTF-${Date.now().toString().slice(-8)}`
-              const origin = req.headers.origin || (isProd ? 'https://www.medtechfixaters.in' : 'http://localhost:5173')
-
-              const returnUrl = `${origin}/onboarding/payment/pending?order_id={order_id}&internal_order_id=${encodeURIComponent(internalOrderId)}`
-
-              const payload = JSON.stringify({
-                order_id: cfOrderId,
-                order_amount: orderAmount,
-                order_currency: 'INR',
-                customer_details: {
-                  customer_id: data.customer_id || `cust_${Date.now()}`,
-                  customer_name: data.customer_name || 'Healthcare Practitioner',
-                  customer_email: data.customer_email || 'doctor@medtechfixaters.in',
-                  customer_phone: String(data.customer_phone || data.phone || '9999999999').replace(/[^0-9]/g, '').slice(-10) || '9999999999',
-                },
-                order_meta: {
-                  return_url: returnUrl,
-                },
-                order_note: data.order_note || (orderAmount === 500 ? 'Solo Doctor & Clinic — Platform Activation' : 'Doctor & Clinic — Monthly Subscription'),
-              })
-
-              const cfReq = https.request(
-                {
-                  hostname: host,
-                  path: '/pg/orders',
-                  method: 'POST',
-                  headers: {
-                    'x-client-id': appId,
-                    'x-client-secret': secretKey,
-                    'x-api-version': '2023-08-01',
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(payload),
-                  },
-                },
-                (cfRes: any) => {
-                  let cfBody = ''
-                  cfRes.on('data', (c: any) => (cfBody += c))
-                  cfRes.on('end', () => {
-                    res.setHeader('Content-Type', 'application/json')
-                    res.statusCode = cfRes.statusCode || 200
-                    try {
-                      const parsed = JSON.parse(cfBody)
-                      res.end(
-                        JSON.stringify({
-                          success: cfRes.statusCode === 200,
-                          gateway: 'cashfree',
-                          environment: isProd ? 'PROD' : 'TEST',
-                          payment_session_id: parsed.payment_session_id,
-                          order_id: parsed.order_id,
-                          cf_order_id: parsed.cf_order_id,
-                          internal_order_id: internalOrderId,
-                          amount: orderAmount * 100,
-                          amount_rupees: orderAmount,
-                          currency: 'INR',
-                          error: parsed.message || parsed.error,
-                        })
-                      )
-                    } catch {
-                      res.end(cfBody)
-                    }
-                  })
+              if (body) {
+                try {
+                  req.body = JSON.parse(body)
+                } catch {
+                  req.body = body
                 }
-              )
-
-              cfReq.on('error', (err: any) => {
-                res.setHeader('Content-Type', 'application/json')
-                res.statusCode = 500
-                res.end(JSON.stringify({ success: false, error: err.message }))
-              })
-
-              cfReq.write(payload)
-              cfReq.end()
+              }
+              const handler = (await import('./api/cashfree/create-order.js')).default
+              return await handler(req, res)
             } catch (err: any) {
-              res.setHeader('Content-Type', 'application/json')
-              res.statusCode = 400
-              res.end(JSON.stringify({ success: false, error: err.message }))
+              res.status(500).json({ success: false, error: err.message || 'Internal create-order error' })
             }
           })
           return
@@ -297,169 +259,19 @@ export default defineConfig(({ mode }) => {
         ) {
           let body = ''
           req.on('data', (chunk: any) => (body += chunk))
-          req.on('end', () => {
+          req.on('end', async () => {
             try {
-              const url = new URL(req.url, 'http://localhost:5173')
-              const parsedBody = body ? JSON.parse(body) : {}
-              const orderId = String(parsedBody.order_id || url.searchParams.get('order_id') || '')
-              const internalOrderId = String(parsedBody.internal_order_id || url.searchParams.get('internal_order_id') || orderId)
-
-              if (!orderId && !internalOrderId) {
-                res.setHeader('Content-Type', 'application/json')
-                res.statusCode = 400
-                res.end(JSON.stringify({ success: false, error: 'Missing order_id' }))
-                return
-              }
-
-              // Check if order has a simulated state
-              const sim = simulatedOrders.get(orderId) || simulatedOrders.get(internalOrderId)
-              if (sim) {
-                res.setHeader('Content-Type', 'application/json')
-                res.statusCode = 200
-                if (sim.status === 'completed') {
-                  res.end(
-                    JSON.stringify({
-                      success: true,
-                      verified: true,
-                      status: 'completed',
-                      payment_id: sim.payment_id,
-                      order_id: sim.order_id,
-                      internal_order_id: sim.internal_order_id,
-                      amount_paise: sim.amount,
-                      simulated: true,
-                    })
-                  )
-                } else if (sim.status === 'failed') {
-                  res.end(
-                    JSON.stringify({
-                      success: false,
-                      verified: false,
-                      status: 'failed',
-                      error: sim.error || 'Simulated payment failure.',
-                      order_id: sim.order_id,
-                      simulated: true,
-                    })
-                  )
-                } else if (sim.status === 'cancelled') {
-                  res.end(
-                    JSON.stringify({
-                      success: false,
-                      verified: false,
-                      status: 'cancelled',
-                      error: sim.error || 'Payment was cancelled.',
-                      order_id: sim.order_id,
-                      simulated: true,
-                    })
-                  )
-                } else {
-                  res.end(
-                    JSON.stringify({
-                      success: false,
-                      verified: false,
-                      status: 'pending',
-                      error: 'Payment transaction is pending.',
-                      order_id: sim.order_id,
-                      simulated: true,
-                    })
-                  )
+              if (body) {
+                try {
+                  req.body = JSON.parse(body)
+                } catch {
+                  req.body = body
                 }
-                return
               }
-
-              // Query Cashfree API directly for authoritative order and payments
-              const cfReq = https.request(
-                {
-                  hostname: host,
-                  path: `/pg/orders/${orderId}/payments`,
-                  method: 'GET',
-                  headers: {
-                    'x-client-id': appId,
-                    'x-client-secret': secretKey,
-                    'x-api-version': '2023-08-01',
-                    'Content-Type': 'application/json',
-                  },
-                },
-                (cfRes: any) => {
-                  let cfBody = ''
-                  cfRes.on('data', (c: any) => (cfBody += c))
-                  cfRes.on('end', () => {
-                    res.setHeader('Content-Type', 'application/json')
-                    res.statusCode = cfRes.statusCode || 200
-                    try {
-                      const payments = JSON.parse(cfBody)
-                      const successfulPayment = Array.isArray(payments)
-                        ? payments.find((p: any) => p.payment_status === 'SUCCESS')
-                        : null
-                      const failedPayment = Array.isArray(payments)
-                        ? payments.find((p: any) => p.payment_status === 'FAILED')
-                        : null
-                      const cancelledPayment = Array.isArray(payments)
-                        ? payments.find((p: any) => p.payment_status === 'USER_DROPPED' || p.payment_status === 'CANCELLED')
-                        : null
-
-                      if (successfulPayment) {
-                        res.end(
-                          JSON.stringify({
-                            success: true,
-                            verified: true,
-                            status: 'completed',
-                            payment_id: successfulPayment.cf_payment_id || successfulPayment.payment_id,
-                            order_id: orderId,
-                            internal_order_id: internalOrderId,
-                            payments: Array.isArray(payments) ? payments : [],
-                          })
-                        )
-                      } else if (failedPayment) {
-                        res.end(
-                          JSON.stringify({
-                            success: false,
-                            verified: false,
-                            status: 'failed',
-                            error: failedPayment.payment_message || 'Payment was declined by bank or card issuer.',
-                            order_id: orderId,
-                            payments: Array.isArray(payments) ? payments : [],
-                          })
-                        )
-                      } else if (cancelledPayment) {
-                        res.end(
-                          JSON.stringify({
-                            success: false,
-                            verified: false,
-                            status: 'cancelled',
-                            error: 'Payment was cancelled in checkout.',
-                            order_id: orderId,
-                            payments: Array.isArray(payments) ? payments : [],
-                          })
-                        )
-                      } else {
-                        res.end(
-                          JSON.stringify({
-                            success: false,
-                            verified: false,
-                            status: 'pending',
-                            payment_id: null,
-                            payments: Array.isArray(payments) ? payments : [],
-                          })
-                        )
-                      }
-                    } catch {
-                      res.end(cfBody)
-                    }
-                  })
-                }
-              )
-
-              cfReq.on('error', (err: any) => {
-                res.setHeader('Content-Type', 'application/json')
-                res.statusCode = 500
-                res.end(JSON.stringify({ success: false, error: err.message }))
-              })
-
-              cfReq.end()
+              const handler = (await import('./api/cashfree/verify.js')).default
+              return await handler(req, res)
             } catch (err: any) {
-              res.setHeader('Content-Type', 'application/json')
-              res.statusCode = 400
-              res.end(JSON.stringify({ success: false, error: err.message }))
+              res.status(500).json({ success: false, error: err.message || 'Internal verify route error' })
             }
           })
           return

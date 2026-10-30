@@ -341,32 +341,44 @@ export function loadCashfreeSDK(): Promise<void> {
       return;
     }
 
+    let intervalId: any = null;
+    let resolved = false;
+
     const timeout = setTimeout(() => {
+      if (intervalId) clearInterval(intervalId);
       if (window.Cashfree) {
         resolve();
       } else {
         cashfreeSdkPromise = null;
-        reject(new Error('Cashfree SDK load timeout (8s). Please check your network and try again.'));
+        reject(new Error('Cashfree SDK initialization timeout (20s). Please check your internet connectivity and disable ad-blockers.'));
       }
-    }, 8000);
+    }, 20000);
 
     const onReady = () => {
-      clearTimeout(timeout);
-      resolve();
+      if (resolved) return;
+      if (window.Cashfree) {
+        resolved = true;
+        clearTimeout(timeout);
+        if (intervalId) clearInterval(intervalId);
+        resolve();
+      }
     };
+
+    // Active polling for instant resolution if script was loaded in index.html
+    intervalId = setInterval(() => {
+      if (window.Cashfree) {
+        onReady();
+      }
+    }, 50);
 
     const existing = document.getElementById('cashfree-sdk-v3') as HTMLScriptElement | null;
     if (existing) {
-      if (window.Cashfree) {
-        clearTimeout(timeout);
-        resolve();
-        return;
-      }
       existing.addEventListener('load', onReady, { once: true });
       existing.addEventListener('error', () => {
         clearTimeout(timeout);
+        if (intervalId) clearInterval(intervalId);
         cashfreeSdkPromise = null;
-        reject(new Error('Failed to load Cashfree SDK script.'));
+        reject(new Error('Failed to load Cashfree SDK script from CDN.'));
       }, { once: true });
       return;
     }
@@ -378,10 +390,11 @@ export function loadCashfreeSDK(): Promise<void> {
     script.onload = onReady;
     script.onerror = () => {
       clearTimeout(timeout);
+      if (intervalId) clearInterval(intervalId);
       cashfreeSdkPromise = null;
       reject(new Error('Failed to load Cashfree Payment SDK from CDN.'));
     };
-    document.body.appendChild(script);
+    document.head.appendChild(script);
   });
 
   return cashfreeSdkPromise;
@@ -395,6 +408,23 @@ export class CashfreePaymentGatewayAdapter implements PaymentGatewayAdapter {
   constructor(appId: string, mode: 'sandbox' | 'production' = 'sandbox') {
     this.appId = appId;
     this.mode = mode;
+  }
+
+  async triggerCheckout(options: {
+    paymentSessionId: string;
+    redirectTarget?: '_self' | '_modal';
+    returnUrl?: string;
+  }): Promise<{ error?: { message: string; code?: string }; redirect?: boolean; paymentDetails?: any }> {
+    await loadCashfreeSDK();
+    if (!window.Cashfree) {
+      throw new Error('Cashfree Web SDK is unavailable. Please verify network connectivity.');
+    }
+    const cashfree = window.Cashfree({ mode: this.mode });
+    return cashfree.checkout({
+      paymentSessionId: options.paymentSessionId,
+      redirectTarget: options.redirectTarget || '_self',
+      returnUrl: options.returnUrl,
+    });
   }
 
   async createPaymentOrder(params: CreateOrderParams): Promise<CreateOrderResponse> {

@@ -27,9 +27,19 @@ export default function PaymentPendingOrFailedPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
 
-  const internalOrderId = searchParams.get('internal_order_id') || searchParams.get('order_id') || '';
-  const gatewayOrderId = searchParams.get('gateway_order_id') || searchParams.get('order_id') || '';
-  const gatewayPaymentId = searchParams.get('payment_id') || searchParams.get('gateway_payment_id') || '';
+  const urlInternalId = searchParams.get('internal_order_id') || searchParams.get('order_id') || '';
+  const urlGatewayId = searchParams.get('gateway_order_id') || searchParams.get('order_id') || '';
+  const urlPaymentId = searchParams.get('payment_id') || searchParams.get('gateway_payment_id') || '';
+
+  let savedOrder: any = null;
+  try {
+    const raw = sessionStorage.getItem('medtech_active_payment');
+    if (raw) savedOrder = JSON.parse(raw);
+  } catch {}
+
+  const internalOrderId = urlInternalId || savedOrder?.internal_order_id || '';
+  const gatewayOrderId = urlGatewayId || savedOrder?.order_id || '';
+  const gatewayPaymentId = urlPaymentId || '';
 
   const [viewMode, setViewMode] = useState<ViewMode>('polling');
   const [pollAttempt, setPollAttempt] = useState(1);
