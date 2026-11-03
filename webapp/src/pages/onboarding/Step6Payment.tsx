@@ -194,7 +194,7 @@ export default function Step6Payment() {
         throw new Error('Cashfree Payment SDK is still loading or blocked. Please refresh or disable content blockers.');
       }
 
-      const cashfreeMode = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox') as 'sandbox' | 'production';
+      const cashfreeMode = (order.environment === 'PROD' ? 'production' : (import.meta.env.VITE_CASHFREE_MODE || 'sandbox')) as 'sandbox' | 'production';
       const cashfree = window.Cashfree({ mode: cashfreeMode });
 
       // If user selected Full-Page Redirect (Default & Recommended)
