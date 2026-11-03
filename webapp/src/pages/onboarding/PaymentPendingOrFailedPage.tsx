@@ -19,7 +19,6 @@ import {
 import { supabase } from '../../lib/supabase';
 import { subscriptionService } from '../../services/subscriptionService';
 import { onboardingService } from '../../services/onboardingService';
-import PaymentSimulatorPanel from '../../components/payment/PaymentSimulatorPanel';
 
 type ViewMode = 'polling' | 'pending' | 'failed' | 'cancelled';
 
@@ -167,41 +166,6 @@ export default function PaymentPendingOrFailedPage() {
     };
   }, [internalOrderId, gatewayOrderId, gatewayPaymentId, navigate]);
 
-  // Handle Simulator State Changes
-  const handleSimulatorStatusChange = (status: 'completed' | 'failed' | 'pending' | 'cancelled' | 'reset', details?: any) => {
-    if (pollingRef.current) clearTimeout(pollingRef.current);
-
-    if (status === 'completed') {
-      navigate(`/onboarding/payment/success?internal_order_id=${encodeURIComponent(internalOrderId)}`, {
-        replace: true,
-      });
-    } else if (status === 'failed') {
-      setFailureReason(details?.error || 'Simulated payment failure (Bank declined).');
-      setViewMode('failed');
-    } else if (status === 'cancelled') {
-      setViewMode('cancelled');
-    } else if (status === 'pending') {
-      setViewMode('pending');
-      setStatusMessage('Simulated payment transaction is awaiting bank confirmation.');
-    } else if (status === 'reset') {
-      setViewMode('polling');
-      pollCountRef.current = 0;
-      setPollAttempt(1);
-      // Re-trigger polling
-      checkPaymentStatus().then((res) => {
-        if (res.status === 'completed') {
-          navigate(`/onboarding/payment/success?internal_order_id=${encodeURIComponent(internalOrderId)}`, { replace: true });
-        } else if (res.status === 'failed') {
-          setViewMode('failed');
-        } else if (res.status === 'cancelled') {
-          setViewMode('cancelled');
-        } else {
-          setViewMode('pending');
-        }
-      });
-    }
-  };
-
   // Manual Recheck Status
   const handleManualRecheck = async () => {
     setRechecking(true);
@@ -288,7 +252,7 @@ export default function PaymentPendingOrFailedPage() {
               </div>
               <div className="flex items-center gap-2.5">
                 <div className={`w-2 h-2 rounded-full ${pollAttempt >= 2 ? 'bg-[#FF6A00] animate-pulse' : 'bg-slate-300'}`} />
-                <span>2. Querying Cashfree Sandbox payment capture status</span>
+                <span>2. Querying Cashfree payment gateway status</span>
               </div>
               <div className="flex items-center gap-2.5">
                 <div className={`w-2 h-2 rounded-full ${pollAttempt >= 3 ? 'bg-[#FF6A00] animate-pulse' : 'bg-slate-300'}`} />
@@ -688,13 +652,6 @@ export default function PaymentPendingOrFailedPage() {
       <footer className="py-6 text-center text-xs text-slate-400 font-medium">
         MedTechFixaters Healthcare Cloud Platform. 100% Data Preservation Guarantee.
       </footer>
-
-      {/* Developer Sandbox Simulator Panel */}
-      <PaymentSimulatorPanel
-        orderId={gatewayOrderId || internalOrderId}
-        internalOrderId={internalOrderId}
-        onStatusChange={handleSimulatorStatusChange}
-      />
     </div>
   );
 }

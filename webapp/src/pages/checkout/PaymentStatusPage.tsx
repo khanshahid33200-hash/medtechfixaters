@@ -21,7 +21,6 @@ import PublicHeader from '../../components/PublicHeader';
 import PublicFooter from '../../components/PublicFooter';
 import AmbientBackground from '../../components/motion/AmbientBackground';
 import { PRIMARY_BUTTON } from '../../lib/motion';
-import PaymentSimulatorPanel from '../../components/payment/PaymentSimulatorPanel';
 
 type PaymentScreenState = 'verifying' | 'success' | 'failed' | 'cancelled' | 'pending';
 
@@ -157,36 +156,6 @@ export default function PaymentStatusPage() {
     };
   }, [internalOrderId, gatewayOrderId, gatewayPaymentId]);
 
-  const handleSimulatorStatusChange = (status: 'completed' | 'failed' | 'pending' | 'cancelled' | 'reset', details?: any) => {
-    if (pollingRef.current) clearTimeout(pollingRef.current);
-
-    if (status === 'completed') {
-      setScreenState('success');
-      const nextMonth = new Date();
-      nextMonth.setMonth(nextMonth.getMonth() + 1);
-      setRenewalDate(
-        nextMonth.toLocaleDateString('en-IN', {
-          day: 'numeric',
-          month: 'long',
-          year: 'numeric',
-        })
-      );
-    } else if (status === 'failed') {
-      setScreenState('failed');
-      setErrorMessage(details?.error || 'Simulated payment failure (Bank declined).');
-    } else if (status === 'cancelled') {
-      setScreenState('cancelled');
-    } else if (status === 'pending') {
-      setScreenState('pending');
-      setErrorMessage('Payment transaction is pending bank confirmation.');
-    } else if (status === 'reset') {
-      setScreenState('verifying');
-      pollCountRef.current = 0;
-      setPollAttempt(1);
-      setVerificationStep(1);
-    }
-  };
-
   const handleManualRecheck = async () => {
     setRechecking(true);
     const res = await verifyOnce();
@@ -239,7 +208,7 @@ export default function PaymentStatusPage() {
                 Verifying Transaction...
               </h2>
               <p className="text-xs text-[#6B6B6B] font-medium max-w-sm mx-auto leading-relaxed">
-                Contacting Cashfree Sandbox adapter and confirming transaction capture with your bank.
+                Contacting Cashfree payment gateway and confirming transaction capture with your bank.
               </p>
             </div>
 
@@ -490,13 +459,6 @@ export default function PaymentStatusPage() {
       </main>
 
       <PublicFooter />
-
-      {/* Developer Sandbox Simulator Panel */}
-      <PaymentSimulatorPanel
-        orderId={gatewayOrderId || internalOrderId}
-        internalOrderId={internalOrderId}
-        onStatusChange={handleSimulatorStatusChange}
-      />
     </div>
   );
 }

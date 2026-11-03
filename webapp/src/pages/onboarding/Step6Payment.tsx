@@ -21,7 +21,6 @@ import { subscriptionService } from '../../services/subscriptionService';
 import { onboardingService } from '../../services/onboardingService';
 import { loadCashfreeSDK } from '../../services/paymentGatewayAdapter';
 import OnboardingLayout from '../../components/onboarding/OnboardingLayout';
-import PaymentSimulatorPanel from '../../components/payment/PaymentSimulatorPanel';
 
 export default function Step6Payment() {
   const navigate = useNavigate();
@@ -55,9 +54,6 @@ export default function Step6Payment() {
     year: 'numeric',
     timeZone: 'Asia/Kolkata',
   });
-
-  const isSandbox = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox').toLowerCase().includes('sandbox') ||
-                    (import.meta.env.VITE_CASHFREE_MODE || 'sandbox').toLowerCase().includes('test');
 
   useEffect(() => {
     async function init() {
@@ -459,21 +455,6 @@ export default function Step6Payment() {
           </div>
         </div>
 
-          {/* Sandbox Test Guidelines Banner */}
-          {isSandbox && (
-            <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-xs text-amber-900 space-y-1.5 shadow-2xs">
-              <div className="flex items-center gap-1.5 font-extrabold text-amber-950 text-xs">
-                <Sparkles size={14} className="text-amber-600 shrink-0" />
-                <span>Cashfree Sandbox Test Environment</span>
-              </div>
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                • <strong>Instant Automated Testing:</strong> Use <strong>Cards</strong> (Test Card Number: <span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">4012 0000 0000 0002</span>, any future MM/YY & CVV <span className="font-mono bg-amber-100/90 px-1 py-0.5 rounded font-bold">123</span>) or <strong>UPI</strong> (<span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">success@upi</span>).
-                <br />
-                • <strong>Third-party Wallets Notice:</strong> In Cashfree Sandbox, external wallet aggregators (MobiKwik, FreeCharge) require real-world mobile OTP and do not provide automated sandbox webhooks. Please test with Cards, UPI, or NetBanking simulation.
-              </p>
-            </div>
-          )}
-
         {modalStuckWarning && (
           <div className="p-3.5 rounded-2xl bg-orange-50 border border-orange-200 text-xs text-orange-900 flex flex-col sm:flex-row items-center justify-between gap-3 animate-in fade-in duration-300">
             <div className="flex items-center gap-2">
@@ -541,23 +522,6 @@ export default function Step6Payment() {
           </div>
         </div>
       </div>
-
-      {isSandbox && (
-        <PaymentSimulatorPanel
-          orderId={activeOrderId}
-          internalOrderId={activeInternalOrderId}
-          onStatusChange={(status, details) => {
-            if (status === 'completed') {
-              navigate(`/onboarding/payment/success?internal_order_id=${encodeURIComponent(activeInternalOrderId || 'MTF-SIM-ORD')}`);
-            } else if (status === 'failed' || status === 'pending' || status === 'cancelled') {
-              navigate(
-                `/onboarding/payment/pending?internal_order_id=${encodeURIComponent(activeInternalOrderId || 'MTF-SIM-ORD')}` +
-                `&gateway_order_id=${encodeURIComponent(activeOrderId || '')}`
-              );
-            }
-          }}
-        />
-      )}
     </OnboardingLayout>
   );
 }

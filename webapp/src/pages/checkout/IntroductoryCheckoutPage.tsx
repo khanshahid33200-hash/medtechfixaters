@@ -20,7 +20,6 @@ import PublicHeader from '../../components/PublicHeader';
 import PublicFooter from '../../components/PublicFooter';
 import AmbientBackground from '../../components/motion/AmbientBackground';
 import { PRIMARY_BUTTON } from '../../lib/motion';
-import PaymentSimulatorPanel from '../../components/payment/PaymentSimulatorPanel';
 
 export default function IntroductoryCheckoutPage() {
   useSEO({
@@ -45,9 +44,6 @@ export default function IntroductoryCheckoutPage() {
     year: 'numeric',
     timeZone: 'Asia/Kolkata',
   });
-
-  const isSandbox = (import.meta.env.VITE_CASHFREE_MODE || 'sandbox').toLowerCase().includes('sandbox') ||
-                    (import.meta.env.VITE_CASHFREE_MODE || 'sandbox').toLowerCase().includes('test');
 
   const handlePayIntroductory = async (targetMode: '_self' | '_modal' = '_self') => {
     if (loading) return; // Prevent duplicate payment attempts
@@ -207,21 +203,6 @@ export default function IntroductoryCheckoutPage() {
             </div>
           </div>
 
-          {/* Sandbox Test Guidelines */}
-          {isSandbox && (
-            <div className="p-3.5 rounded-2xl bg-amber-50/90 border border-amber-200/90 text-xs text-amber-900 space-y-1.5 shadow-2xs">
-              <div className="flex items-center gap-1.5 font-extrabold text-amber-950 text-xs">
-                <Sparkles size={14} className="text-amber-600 shrink-0" />
-                <span>Cashfree Sandbox Test Environment</span>
-              </div>
-              <p className="text-[11px] text-amber-800 leading-relaxed">
-                • <strong>Recommended for instant testing:</strong> Use <strong>Cards</strong> (Test Card: <span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">4012 0000 0000 0002</span>, any future MM/YY & CVV <span className="font-mono bg-amber-100/90 px-1 py-0.5 rounded font-bold">123</span>) or <strong>UPI</strong> (<span className="font-mono bg-amber-100/90 px-1.5 py-0.5 rounded font-bold text-amber-950">success@upi</span>).
-                <br />
-                • <strong>Notice regarding Wallets:</strong> In Cashfree Sandbox, external wallet aggregators require live mobile OTP. Please use test Cards, UPI, or NetBanking simulation.
-              </p>
-            </div>
-          )}
-
           {/* Pay Button */}
           <div className="space-y-3 pt-2">
             <button
@@ -274,20 +255,6 @@ export default function IntroductoryCheckoutPage() {
       </main>
 
       <PublicFooter />
-
-      {isSandbox && (
-        <PaymentSimulatorPanel
-          orderId={activeOrderId}
-          internalOrderId={activeInternalOrderId}
-          onStatusChange={(status) => {
-            if (status === 'completed') {
-              navigate(`/checkout/pending?internal_order_id=${encodeURIComponent(activeInternalOrderId || 'MTF-SIM-ORD')}&gateway_order_id=${encodeURIComponent(activeOrderId || '')}`);
-            } else if (status === 'failed' || status === 'pending' || status === 'cancelled') {
-              navigate(`/checkout/pending?internal_order_id=${encodeURIComponent(activeInternalOrderId || 'MTF-SIM-ORD')}&gateway_order_id=${encodeURIComponent(activeOrderId || '')}`);
-            }
-          }}
-        />
-      )}
     </div>
   );
 }
